@@ -76,26 +76,13 @@ export function AdminPage(): JSX.Element {
         ? `${baseMessage} Database error: ${diagnostics.error}`
         : baseMessage
       setManualCheckNote(note)
+      await refetchAuctions()
     } catch (error) {
       console.error('Manual import check failed', error)
       setManualCheckNote('The importer did not respond. Please verify credentials and the database connection.')
-    } finally {
-      setLastManualCheckAt(new Date().toISOString())
-      setManualCheckPending(false)
-    try {
-      const result = await refetchAuctions()
-      const count = result.data?.length ?? 0
-      setManualCheckNote(
-        result.error
-          ? 'The importer did not respond. Please verify credentials and the database connection.'
-          : `Latest fetch returned ${count.toLocaleString('sv-SE')} auctions.`
-      )
-      setLastManualCheckAt(new Date().toISOString())
-    } catch (error) {
-      console.error('Manual import check failed', error)
-      setManualCheckNote('The importer did not respond. Please verify credentials and the database connection.')
-      setLastManualCheckAt(new Date().toISOString())
     }
+    setLastManualCheckAt(new Date().toISOString())
+    setManualCheckPending(false)
   }
 
   const formattedCoverageRange = `${format(new Date(importSettings.coverageStart), 'PP')} – ${format(
@@ -131,19 +118,19 @@ export function AdminPage(): JSX.Element {
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Active</p>
-              <p className="text-2xl font-semibold text-emerald-600 dark:text-emerald-200">{totals.active}</p>
+              <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Active</p>
+                <p className="text-2xl font-semibold text-emerald-600 dark:text-emerald-200">{totals.active}</p>
+              </div>
+              <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Trialing</p>
+                <p className="text-2xl font-semibold text-sky-600 dark:text-sky-200">{totals.trialing}</p>
+              </div>
+              <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Inactive</p>
+                <p className="text-2xl font-semibold text-amber-600 dark:text-amber-200">{totals.inactive}</p>
+              </div>
             </div>
-            <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Trialing</p>
-              <p className="text-2xl font-semibold text-sky-600 dark:text-sky-200">{totals.trialing}</p>
-            </div>
-            <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Inactive</p>
-              <p className="text-2xl font-semibold text-amber-600 dark:text-amber-200">{totals.inactive}</p>
-            </div>
-          </div>
 
             <div className="mt-4 overflow-hidden rounded-xl border border-slate-900/80">
               <Table>
@@ -173,7 +160,6 @@ export function AdminPage(): JSX.Element {
                           }
                         >
                           {user.billingPlan === 'comped' ? 'comped (admin)' : user.subscription}
-                          {user.subscription}
                         </Badge>
                       </TableCell>
                       <TableCell>{user.seats}</TableCell>
@@ -205,9 +191,6 @@ export function AdminPage(): JSX.Element {
             >
               <UploadCloud className="h-4 w-4" />
               {manualCheckPending ? 'Contacting importer…' : 'Import new'}
-            <Button onClick={handleManualImport} disabled={isFetching} variant="secondary" className="gap-2">
-              <UploadCloud className="h-4 w-4" />
-              {isFetching ? 'Contacting importer…' : 'Import new'}
             </Button>
           </CardHeader>
           <CardContent className="space-y-4">
