@@ -30,4 +30,8 @@ function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
   return <div className={cn('p-4', className)} {...props} />
 }
 
-export { Card, CardContent, CardDescription, CardHeader, CardTitle }
+function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>): JSX.Element {
+  return <div className={cn('border-t border-slate-800 p-4', className)} {...props} />
+}
+
+export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
