@@ -10,7 +10,6 @@ const distPath = path.join(__dirname, 'dashboard', 'dist')
 app.use(compression())
 app.use(express.json())
 
-const MAX_RESULTS = Number(process.env.MAX_API_RESULTS || 250)
 const DATABASE_URL = process.env.DATABASE_URL
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 
@@ -245,10 +244,9 @@ async function fetchAuctionsFromDatabase() {
     FROM tradera_sales ts
     JOIN cards c ON c.id = ts.card_id
     ORDER BY ts.end_date DESC
-    LIMIT $1
   `
 
-  const { rows } = await pool.query(query, [MAX_RESULTS])
+  const { rows } = await pool.query(query)
   return rows.map(normalizeAuctionRow)
 }
 
