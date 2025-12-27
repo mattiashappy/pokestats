@@ -90,22 +90,21 @@ class TraderaClient:
         # NOTE: Tradera WSDL requires SearchInDescription in the request schema.
         # Also adding SearchWords="" as a safe default to avoid "missing element" errors.
         search_request = {
-            "CategoryId": CATEGORY_ID,
-            "ItemType": "Auction",
-            "ItemStatus": "Ended",
-            "OrderBy": "EndDateDescending",
-            "BidsMinimum": 1,
-            "PageNumber": page_number,
-            "ItemsPerPage": ITEMS_PER_PAGE,
-
-            # ✅ Required by WSDL:
-            "SearchInDescription": False,
-
-            # ✅ Safe default (often required in SOAP schemas):
-            "SearchWords": "",
-            # ✅ Required by WSDL
-            "CountyId": 0,
-        }
+        "CategoryId": CATEGORY_ID,
+        "ItemType": "Auction",
+        "ItemStatus": "Ended",
+        "OrderBy": "EndDateDescending",
+        "BidsMinimum": 1,
+        "PageNumber": page_number,
+        "ItemsPerPage": ITEMS_PER_PAGE,
+    
+        "SearchInDescription": False,
+        "SearchWords": "",
+        "CountyId": 0,
+    
+        # ✅ Required by WSDL
+        "OnlyAuctionsWithBuyNow": False,
+    }
 
         auth_header = self.AuthHeaderType(AppId=self.app_id, AppKey=self.app_key)
 
