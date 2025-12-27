@@ -1,0 +1,16 @@
+{
+  "name": "PokéStats",
+  "description": "Frontend-first PokéStats dashboard served by Express",
+  "buildpacks": [
+    { "url": "heroku/nodejs" }
+  ],
+  "env": {
+    "NODE_ENV": {
+      "description": "Set production for optimized builds",
+      "value": "production"
+    }
+  },
+  "scripts": {
+    "postdeploy": "npm run build"
+  }
+}
