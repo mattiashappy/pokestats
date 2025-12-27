@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format, formatDistanceToNow, parseISO } from 'date-fns'
-import { ArrowUpDown, CalendarClock, ExternalLink, Loader2, TrendingUp } from 'lucide-react'
+import { ArrowUpDown, CalendarClock, ChevronDown, ExternalLink, Loader2, Search, TrendingUp } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer } from 'recharts'
 
@@ -32,6 +32,8 @@ export function AuctionsPage(): JSX.Element {
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [sortBy, setSortBy] = useState<string>('endDesc')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
 
   const eras = useMemo(() => {
     const unique = new Set<string>(data?.map((auction) => auction.cardEra || 'Unknown era') ?? [])
@@ -126,7 +128,14 @@ export function AuctionsPage(): JSX.Element {
   const filteredAndSorted = useMemo(() => {
     if (!data) return []
 
+    const query = searchTerm.trim().toLowerCase()
+
     const filtered = data.filter((auction) => {
+      const matchesSearch =
+        !query ||
+        [auction.cardName, auction.title, auction.cardSetName]
+          .filter(Boolean)
+          .some((value) => value?.toLowerCase().includes(query))
       const matchesPriceMin = minPrice ? auction.finalPrice >= Number(minPrice) : true
       const matchesPriceMax = maxPrice ? auction.finalPrice <= Number(maxPrice) : true
       const matchesEra = era === 'all' || (auction.cardEra || 'Unknown era') === era
@@ -136,6 +145,7 @@ export function AuctionsPage(): JSX.Element {
       const matchesGrade = grade === 'all' || (auction.grade || 'Not graded') === grade
 
       return (
+        matchesSearch &&
         matchesPriceMin &&
         matchesPriceMax &&
         matchesEra &&
@@ -152,6 +162,7 @@ export function AuctionsPage(): JSX.Element {
     })
   }, [
     data,
+    searchTerm,
     maxPrice,
     minPrice,
     era,
@@ -302,7 +313,7 @@ export function AuctionsPage(): JSX.Element {
             <div className="space-y-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Auction archive</p>
               <CardTitle className="text-2xl font-semibold text-slate-900 dark:text-slate-50">Ended auctions</CardTitle>
-              <CardDescription>Filter the archive directly from the list with lightweight chips.</CardDescription>
+              <CardDescription>Search the archive and refine by language, grading, era, and price.</CardDescription>
             </div>
             <Button
               variant="ghost"
@@ -316,105 +327,130 @@ export function AuctionsPage(): JSX.Element {
                 setMinPrice('')
                 setMaxPrice('')
                 setSortBy('endDesc')
+                setSearchTerm('')
+                setShowFilters(false)
               }}
             >
               Reset
             </Button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/70 p-3 shadow-sm dark:border-slate-900/70 dark:bg-slate-950/50">
-            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-slate-900 dark:bg-slate-900/70 dark:text-slate-100">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Era</span>
-              <Select
-                value={era}
-                onChange={(event) => setEra(event.target.value)}
-                className="h-9 w-36 border-none bg-transparent px-2 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-              >
-                {eras.map((option) => (
-                  <option key={option} value={option}>
-                    {option === 'all' ? 'All eras' : option}
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-slate-900 dark:bg-slate-900/70 dark:text-slate-100">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Language</span>
-              <Select
-                value={language}
-                onChange={(event) => setLanguage(event.target.value)}
-                className="h-9 w-40 border-none bg-transparent px-2 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-              >
-                {languages.map((option) => (
-                  <option key={option} value={option}>
-                    {option === 'all' ? 'All languages' : option}
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-slate-900 dark:bg-slate-900/70 dark:text-slate-100">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Grading co.</span>
-              <Select
-                value={gradingCompany}
-                onChange={(event) => setGradingCompany(event.target.value)}
-                className="h-9 w-44 border-none bg-transparent px-2 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-              >
-                {gradingCompanies.map((option) => (
-                  <option key={option} value={option}>
-                    {option === 'all' ? 'All companies' : option}
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-slate-900 dark:bg-slate-900/70 dark:text-slate-100">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Grade</span>
-              <Select
-                value={grade}
-                onChange={(event) => setGrade(event.target.value)}
-                className="h-9 w-28 border-none bg-transparent px-2 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-              >
-                {grades.map((option) => (
-                  <option key={option} value={option}>
-                    {option === 'all' ? 'All grades' : option}
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-slate-900 dark:bg-slate-900/70 dark:text-slate-100">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Price</span>
-              <Input
-                value={minPrice}
-                onChange={(event) => setMinPrice(event.target.value)}
-                placeholder="Min"
-                inputMode="numeric"
-                className="h-9 w-20 border-none bg-transparent px-2 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-              />
-              <span className="text-xs text-slate-400">–</span>
-              <Input
-                value={maxPrice}
-                onChange={(event) => setMaxPrice(event.target.value)}
-                placeholder="Max"
-                inputMode="numeric"
-                className="h-9 w-20 border-none bg-transparent px-2 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-              />
-            </div>
-
-            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-slate-900 dark:bg-slate-900/70 dark:text-slate-100">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Sort</span>
-              <Select
-                value={sortBy}
-                onChange={(event) => setSortBy(event.target.value)}
-                className="h-9 w-44 border-none bg-transparent px-2 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-              >
-                {sortOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
+          <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3 shadow-sm dark:border-slate-900/70 dark:bg-slate-950/50">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex flex-1 items-center gap-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 shadow-inner dark:border-slate-800 dark:bg-slate-900/70">
+                <Search className="h-4 w-4 text-slate-400" />
+                <Input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search cards, titles, or sets"
+                  className="h-9 border-none bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                />
+              </div>
+              <div className="relative sm:w-auto">
+                <Button
+                  variant="outline"
+                  className="flex w-full items-center justify-between gap-2 border-slate-200 bg-white/90 text-slate-700 shadow-sm hover:bg-white dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-100"
+                  onClick={() => setShowFilters((prev) => !prev)}
+                >
+                  <span>Filters</span>
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+                {showFilters ? (
+                  <div className="absolute right-0 z-20 mt-2 w-[360px] space-y-4 rounded-2xl border border-slate-200 bg-white/95 p-4 text-sm shadow-xl backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Era</p>
+                        <Select value={era} onChange={(event) => setEra(event.target.value)}>
+                          {eras.map((option) => (
+                            <option key={option} value={option}>
+                              {option === 'all' ? 'All eras' : option}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Language</p>
+                        <Select value={language} onChange={(event) => setLanguage(event.target.value)}>
+                          {languages.map((option) => (
+                            <option key={option} value={option}>
+                              {option === 'all' ? 'All languages' : option}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Grading company</p>
+                        <Select value={gradingCompany} onChange={(event) => setGradingCompany(event.target.value)}>
+                          {gradingCompanies.map((option) => (
+                            <option key={option} value={option}>
+                              {option === 'all' ? 'All companies' : option}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Grade</p>
+                        <Select value={grade} onChange={(event) => setGrade(event.target.value)}>
+                          {grades.map((option) => (
+                            <option key={option} value={option}>
+                              {option === 'all' ? 'All grades' : option}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Min price</p>
+                        <Input
+                          type="number"
+                          value={minPrice}
+                          onChange={(event) => setMinPrice(event.target.value)}
+                          placeholder="No minimum"
+                          inputMode="numeric"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Max price</p>
+                        <Input
+                          type="number"
+                          value={maxPrice}
+                          onChange={(event) => setMaxPrice(event.target.value)}
+                          placeholder="No maximum"
+                          inputMode="numeric"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Sort by</p>
+                      <Select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+                        {sortOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div className="flex justify-end">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-slate-600 dark:text-slate-200"
+                        onClick={() => {
+                          setEra('all')
+                          setLanguage('all')
+                          setGradingCompany('all')
+                          setGrade('all')
+                          setMinPrice('')
+                          setMaxPrice('')
+                          setSortBy('endDesc')
+                          setShowFilters(false)
+                        }}
+                      >
+                        Clear filters
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </CardHeader>
