@@ -7,7 +7,7 @@ import { useAuth } from '../../providers/auth'
 import { cn } from '../../lib/utils'
 
 const navLinks = [
-  { to: '/app/auctions', label: 'Auctions', icon: Table },
+  { to: '/app/auctions', label: 'Auction archive', icon: Table },
   { to: '/app/settings', label: 'Settings', icon: Settings },
   { to: '/app/admin', label: 'Admin', icon: Shield },
   { to: '/billing', label: 'Billing', icon: CreditCard }
@@ -27,9 +27,9 @@ export function AppLayout(): JSX.Element {
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-sm font-semibold text-sky-300">
               <Filter className="h-4 w-4" />
-              Tradera scout
+              Tradera archive
             </div>
-            <p className="text-xs text-slate-500">Auction intelligence workspace</p>
+            <p className="text-xs text-slate-500">Ended auction intelligence workspace</p>
           </div>
           <Badge
             variant={
@@ -77,7 +77,7 @@ export function AppLayout(): JSX.Element {
         <header className="flex flex-wrap items-center gap-4 border-b border-slate-900/80 bg-slate-950/70 px-6 py-4">
           <div className="min-w-[200px] flex-1">
             <div className="text-xs uppercase tracking-wide text-slate-500">{location.pathname}</div>
-            <h1 className="text-lg font-semibold text-slate-50">Tradera auctions</h1>
+            <h1 className="text-lg font-semibold text-slate-50">Tradera auction archive</h1>
           </div>
           <div className="flex items-center gap-2">
             {user?.role !== 'admin' ? (

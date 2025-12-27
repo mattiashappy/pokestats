@@ -1,5 +1,6 @@
 **/.DS_Store
 dashboard/node_modules
+node_modules
 dashboard/dist
 dashboard/.vite
 **/.env.local
