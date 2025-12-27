@@ -1,6 +1,16 @@
 -- Schema for storing sold Tradera Pokémon card auctions.
 -- Run once to create the table and supporting indexes.
 
+CREATE TABLE IF NOT EXISTS cards (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    era TEXT,
+    set_name TEXT,
+    card_number TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE (name, set_name)
+);
+
 CREATE TABLE IF NOT EXISTS tradera_sales (
     item_id BIGINT PRIMARY KEY,
     category_id INT NOT NULL,
@@ -16,7 +26,8 @@ CREATE TABLE IF NOT EXISTS tradera_sales (
     thumbnail_url TEXT,
     image_urls JSONB,
     attributes JSONB,
-    fetched_at TIMESTAMPTZ DEFAULT now()
+    fetched_at TIMESTAMPTZ DEFAULT now(),
+    card_id INT NOT NULL REFERENCES cards(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_tradera_sales_end_date ON tradera_sales (end_date);
