@@ -103,6 +103,8 @@ class TraderaClient:
 
             # ✅ Safe default (often required in SOAP schemas):
             "SearchWords": "",
+            # ✅ Required by WSDL
+            "CountyId": 0,
         }
 
         auth_header = self.AuthHeaderType(AppId=self.app_id, AppKey=self.app_key)
