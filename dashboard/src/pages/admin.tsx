@@ -1,0 +1,153 @@
+import { useMemo, useState } from 'react'
+import { format } from 'date-fns'
+import { CalendarClock, RefreshCw, Shield, Users } from 'lucide-react'
+
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { Badge } from '../components/ui/badge'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
+import { Input } from '../components/ui/input'
+import { Button } from '../components/ui/button'
+import { registeredUsers } from '../data/users'
+import { useAdminSettings } from '../providers/admin-settings'
+
+export function AdminPage(): JSX.Element {
+  const { importSettings, updateImportSchedule } = useAdminSettings()
+  const [date, setDate] = useState(() => format(new Date(importSettings.nextImportAt), 'yyyy-MM-dd'))
+  const [time, setTime] = useState(() => format(new Date(importSettings.nextImportAt), 'HH:mm'))
+
+  const totals = useMemo(() => {
+    return registeredUsers.reduce(
+      (acc, user) => {
+        acc[user.subscription] += 1
+        acc.seats += user.seats
+        return acc
+      },
+      { active: 0, inactive: 0, trialing: 0, seats: 0 }
+    )
+  }, [])
+
+  const handleSubmit = (event: React.FormEvent): void => {
+    event.preventDefault()
+    updateImportSchedule(date, time)
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Admin</p>
+          <h1 className="text-3xl font-bold text-slate-50">Control center</h1>
+          <p className="text-sm text-slate-400">Monitor registered users and steer the Tradera import cadence.</p>
+        </div>
+        <Badge variant="secondary" className="inline-flex items-center gap-2">
+          <Shield className="h-4 w-4" />
+          Restricted area
+        </Badge>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle>Registered users</CardTitle>
+              <CardDescription>Preview of who can access PokéStats today.</CardDescription>
+            </div>
+            <Badge variant="success">{totals.seats} seats</Badge>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-slate-900/60 p-3 text-sm text-slate-300">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Active</p>
+                <p className="text-2xl font-semibold text-emerald-200">{totals.active}</p>
+              </div>
+              <div className="rounded-xl bg-slate-900/60 p-3 text-sm text-slate-300">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Trialing</p>
+                <p className="text-2xl font-semibold text-sky-200">{totals.trialing}</p>
+              </div>
+              <div className="rounded-xl bg-slate-900/60 p-3 text-sm text-slate-300">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Inactive</p>
+                <p className="text-2xl font-semibold text-amber-200">{totals.inactive}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-xl border border-slate-900/80">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Billing status</TableHead>
+                    <TableHead>Seats</TableHead>
+                    <TableHead>Role</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {registeredUsers.map((user) => (
+                    <TableRow key={user.email}>
+                      <TableCell className="font-semibold text-slate-100">{user.name}</TableCell>
+                      <TableCell className="text-slate-300">{user.email}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            user.subscription === 'active'
+                              ? 'success'
+                              : user.subscription === 'trialing'
+                                ? 'secondary'
+                                : 'warning'
+                          }
+                        >
+                          {user.billingPlan === 'comped' ? 'comped (admin)' : user.subscription}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{user.seats}</TableCell>
+                      <TableCell className="capitalize">{user.role}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarClock className="h-5 w-5 text-sky-300" />
+              Tradera import cadence
+            </CardTitle>
+            <CardDescription>Decide when to sweep ended auctions and make the plan visible to every user.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-lg border border-slate-900/70 bg-slate-900/50 p-3 text-sm text-slate-200">
+              <p className="font-semibold text-slate-100">Next import</p>
+              <p className="text-slate-300">{format(new Date(importSettings.nextImportAt), 'PPpp')}</p>
+              <p className="text-xs text-slate-400">{importSettings.coverageLabel}</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="grid gap-3 sm:grid-cols-[1fr_auto]">
+              <label className="space-y-2">
+                <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Import date</span>
+                <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
+              </label>
+              <label className="space-y-2">
+                <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Import time</span>
+                <Input type="time" value={time} onChange={(event) => setTime(event.target.value)} required />
+              </label>
+              <Button type="submit" className="sm:col-span-2">
+                <RefreshCw className="mr-2 h-4 w-4" /> Update schedule
+              </Button>
+            </form>
+
+            <div className="flex items-start gap-3 rounded-lg bg-slate-900/60 p-3 text-xs text-slate-300">
+              <Users className="mt-0.5 h-4 w-4 text-emerald-300" />
+              <p>
+                Once saved, the import window is broadcast across the app so teammates know when the Tradera sweep will run and
+                that it always targets yesterday&apos;s finished auctions.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
