@@ -63,17 +63,12 @@ export function AuctionsPage(): JSX.Element {
         totalBids: 0,
         averagePrice: 0,
         averageBids: 0,
-        highestSale: 0,
-        uniqueSellers: 0
+        highestSale: 0
       }
     }
 
-    const sellersSet = new Set<string>()
-
     const aggregates = data.reduce(
       (acc, auction) => {
-        sellersSet.add(auction.seller)
-
         return {
           totalSales: acc.totalSales + auction.finalPrice,
           totalBids: acc.totalBids + auction.bids,
@@ -88,8 +83,7 @@ export function AuctionsPage(): JSX.Element {
       totalBids: aggregates.totalBids,
       averagePrice: aggregates.totalSales / data.length,
       averageBids: aggregates.totalBids / data.length,
-      highestSale: aggregates.highestSale,
-      uniqueSellers: sellersSet.size
+      highestSale: aggregates.highestSale
     }
   }, [data])
 
@@ -210,15 +204,6 @@ export function AuctionsPage(): JSX.Element {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200/60 bg-white/60 shadow-sm dark:border-slate-900/60 dark:bg-slate-900/60">
-            <CardContent className="p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Unique sellers</p>
-              <p className="mt-2 text-xl font-semibold leading-tight text-slate-900 dark:text-slate-50">
-                {stats.uniqueSellers.toLocaleString('sv-SE')}
-              </p>
-              <p className="text-xs text-slate-500">Helps spot supply concentration</p>
-            </CardContent>
-          </Card>
         </div>
       </div>
       <Card>

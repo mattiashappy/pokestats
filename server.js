@@ -230,7 +230,7 @@ async function fetchAuctionsFromDatabase(filters = {}) {
     grade = null,
     minPrice = null,
     maxPrice = null,
-    limit = 250,
+    limit = null,
     offset = 0
   } = filters
 
@@ -266,19 +266,19 @@ async function fetchAuctionsFromDatabase(filters = {}) {
       AND ($5::int IS NULL OR ts.price >= $5)
       AND ($6::int IS NULL OR ts.price <= $6)
     ORDER BY ts.end_date DESC
-    LIMIT $7 OFFSET $8
   `
 
-  const params = [
-    era,
-    language,
-    gradingIssuer,
-    grade,
-    minPrice,
-    maxPrice,
-    limit,
-    offset
-  ]
+  const params = [era, language, gradingIssuer, grade, minPrice, maxPrice]
+
+  if (typeof limit === 'number' && Number.isFinite(limit)) {
+    params.push(limit)
+    query += ` LIMIT $${params.length}`
+
+    if (typeof offset === 'number' && Number.isFinite(offset) && offset > 0) {
+      params.push(offset)
+      query += ` OFFSET $${params.length}`
+    }
+  }
 
   const { rows } = await pool.query(query, params)
   return rows.map(normalizeAuctionRow)
@@ -420,8 +420,9 @@ app.get('/api/health', (_req, res) => {
 
 app.get('/api/sales', async (req, res) => {
   try {
-    const limit = Math.min(Number(req.query.limit) || 250, 500)
-    const offset = Number(req.query.offset) || 0
+    const parsedLimit = req.query.limit ? Number(req.query.limit) : null
+    const limit = Number.isFinite(parsedLimit) ? parsedLimit : null
+    const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0
 
     const auctions = await fetchAuctionsFromDatabase({
       era: req.query.era || null,
