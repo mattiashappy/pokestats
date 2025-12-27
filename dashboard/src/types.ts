@@ -18,6 +18,9 @@ export type AuctionRecord = {
   url: string
   addedAt: string
   thumbnail: string | null
+  language?: string | null
+  gradingCompany?: string | null
+  grade?: string | null
 }
 
 export type CardResponse = {
