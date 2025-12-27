@@ -2,6 +2,43 @@
 Tradera importer (RAW SOAP) -> PostgreSQL
 
 Network-robust: timeouts + retries with backoff.
+Pagination-robust: retries + skip empty pages (prevents early stop).
+Card linking: creates/updates cards table and stores card_id on tradera_sales.
+
+ENV (Heroku config vars):
+Required:
+- DATABASE_URL
+- TRADERA_APP_ID
+- TRADERA_APP_KEY
+
+Optional:
+- TRADERA_CATEGORY_ID (default 1001337)
+- ITEMS_PER_PAGE (default 500)
+- START_PAGE (default 1)
+- MAX_PAGES (default 10000)
+- SLEEP_MS (default 150)
+
+- ITEM_STATUS (default Ended)
+- ITEM_TYPE (default Auction)
+- BIDS_MINIMUM (default 1)
+- ORDER_BY (default EndDateDescending)
+
+- MODE (default FULL)          # FULL or YESTERDAY
+- TZ   (default Europe/Stockholm)
+
+Network tuning:
+- TRADERA_CONNECT_TIMEOUT (default 10)
+- TRADERA_READ_TIMEOUT (default 60)
+- TRADERA_RETRIES (default 6)
+- TRADERA_BACKOFF (default 0.8)
+
+Empty page handling:
+- EMPTY_PAGE_RETRIES (default 3)
+- EMPTY_PAGE_SKIP_LIMIT (default 10)
+
+DB assumptions:
+- tradera_sales has column card_id (nullable int, FK optional)
+- cards has unique constraint on (name, set_name) for ON CONFLICT
 """
 
 from __future__ import annotations
@@ -11,7 +48,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import psycopg2
 import pytz
@@ -27,6 +64,7 @@ SOAP_ACTION = "http://api.tradera.com/SearchAdvanced"
 
 CATEGORY_ID = int(os.getenv("TRADERA_CATEGORY_ID", "1001337"))
 ITEMS_PER_PAGE = int(os.getenv("ITEMS_PER_PAGE", "500"))
+START_PAGE = int(os.getenv("START_PAGE", "1"))
 MAX_PAGES = int(os.getenv("MAX_PAGES", "10000"))
 SLEEP_MS = int(os.getenv("SLEEP_MS", "150"))
 
@@ -43,6 +81,10 @@ CONNECT_TIMEOUT = float(os.getenv("TRADERA_CONNECT_TIMEOUT", "10"))
 READ_TIMEOUT = float(os.getenv("TRADERA_READ_TIMEOUT", "60"))
 TOTAL_RETRIES = int(os.getenv("TRADERA_RETRIES", "6"))
 BACKOFF = float(os.getenv("TRADERA_BACKOFF", "0.8"))
+
+# Empty page handling
+EMPTY_PAGE_RETRIES = int(os.getenv("EMPTY_PAGE_RETRIES", "3"))
+EMPTY_PAGE_SKIP_LIMIT = int(os.getenv("EMPTY_PAGE_SKIP_LIMIT", "10"))
 
 NS = {
     "soap": "http://schemas.xmlsoap.org/soap/envelope/",
@@ -135,7 +177,6 @@ def post_soap(session: requests.Session, xml_body: str) -> str:
         timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
     )
 
-    # If Retry handled status codes, we still need to fail on final bad status
     if r.status_code >= 400:
         snippet = (r.text or "")[:500].replace("\n", " ")
         raise RuntimeError(f"HTTP {r.status_code} from Tradera. Body: {snippet}")
@@ -184,7 +225,7 @@ def parse_bool(el: Optional[ET.Element]) -> Optional[bool]:
     t = get_text(el)
     if t is None:
         return None
-    return t.lower() in {"1", "true", "yes"}
+    return t.strip().lower() in {"1", "true", "yes"}
 
 
 def parse_dt(el: Optional[ET.Element]) -> Optional[datetime]:
@@ -233,7 +274,7 @@ class Row:
     item_url: Optional[str]
     thumbnail_url: Optional[str]
     image_urls: List[str]
-    attributes: Dict[str, List[str]]
+    attributes: Dict[str, Any]  # allow "_meta" with bool/int/float
     card_id: Optional[int] = None
 
     def as_params(self) -> Dict[str, object]:
@@ -267,17 +308,18 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
 
     category_id = parse_int(item_el.find("t:CategoryId", NS)) or CATEGORY_ID
 
-    attributes = parse_attributes(item_el)
-    extra_attributes = {
+    attributes: Dict[str, Any] = parse_attributes(item_el)
+
+    meta = {
         "has_bids": parse_bool(item_el.find("t:HasBids", NS)),
         "is_ended": parse_bool(item_el.find("t:IsEnded", NS)),
         "item_type": get_text(item_el.find("t:ItemType", NS)),
         "next_bid": parse_int(item_el.find("t:NextBid", NS)),
         "buy_it_now_price": parse_float(item_el.find("t:BuyItNowPrice", NS)),
     }
-    for key, value in extra_attributes.items():
-        if value is not None:
-            attributes[key] = value
+    meta = {k: v for k, v in meta.items() if v is not None}
+    if meta:
+        attributes["_meta"] = meta
 
     return Row(
         item_id=item_id,
@@ -308,21 +350,22 @@ def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
         if not row.attributes:
             return None
 
-        lower_map = {k.lower(): v for k, v in row.attributes.items()}
+        # row.attributes values are usually List[str], except "_meta"
+        lower_map = {str(k).lower(): v for k, v in row.attributes.items()}
         for key in keys:
-            values = lower_map.get(key.lower()) or []
-            if values:
-                return values[0]
+            values = lower_map.get(key.lower())
+            if isinstance(values, list) and values:
+                return str(values[0])
         return None
 
-    raw_name = attr_value("card_name", "card name") or row.title or "Unknown card"
-    raw_set = attr_value("series", "set", "pokemon_set")
+    raw_name = attr_value("card_name", "card name", "Card name") or row.title or "unknown card"
+    raw_set = attr_value("series", "set", "pokemon_set", "Series", "Set")
 
     return {
         "name": normalize_card_value(raw_name),
-        "era": attr_value("pokemon_era", "era", "generation"),
+        "era": attr_value("pokemon_era", "era", "generation", "Era", "Generation"),
         "set_name": normalize_card_value(raw_set) if raw_set else "unknown",
-        "card_number": attr_value("card_number", "card number"),
+        "card_number": attr_value("card_number", "card number", "Card number"),
     }
 
 
@@ -347,13 +390,14 @@ def upsert(conn, rows: List[Row]) -> None:
     if not rows:
         return
 
+    # Create/resolve cards and set card_id
     card_cache: Dict[Tuple[str, str], int] = {}
-    for row in rows:
-        payload = extract_card_payload(row)
-        cache_key = (payload["name"], payload["set_name"])
-        if cache_key not in card_cache:
-            card_cache[cache_key] = ensure_card(conn, payload)
-        row.card_id = card_cache[cache_key]
+    for r in rows:
+        payload = extract_card_payload(r)
+        key = (payload["name"] or "unknown", payload["set_name"] or "unknown")
+        if key not in card_cache:
+            card_cache[key] = ensure_card(conn, payload)
+        r.card_id = card_cache[key]
 
     sql = """
     INSERT INTO tradera_sales (
@@ -380,6 +424,7 @@ def upsert(conn, rows: List[Row]) -> None:
         attributes = EXCLUDED.attributes,
         card_id = EXCLUDED.card_id;
     """
+
     with conn.cursor() as cur:
         execute_batch(cur, sql, [r.as_params() for r in rows], page_size=200)
     conn.commit()
@@ -392,34 +437,64 @@ def main() -> None:
 
     log(
         f"IMPORT mode={MODE}, category={CATEGORY_ID}, items_per_page={ITEMS_PER_PAGE}, "
-        f"max_pages={MAX_PAGES}, bids_min={BIDS_MINIMUM}, status={ITEM_STATUS!r}, type={ITEM_TYPE!r}, "
-        f"timeouts=({CONNECT_TIMEOUT},{READ_TIMEOUT}), retries={TOTAL_RETRIES}"
+        f"start_page={START_PAGE}, max_pages={MAX_PAGES}, bids_min={BIDS_MINIMUM}, "
+        f"status={ITEM_STATUS!r}, type={ITEM_TYPE!r}, "
+        f"timeouts=({CONNECT_TIMEOUT},{READ_TIMEOUT}), retries={TOTAL_RETRIES}, backoff={BACKOFF}"
     )
 
     session = make_session()
 
+    y_start: Optional[datetime] = None
+    y_end: Optional[datetime] = None
     if MODE == "YESTERDAY":
         y_start, y_end = calc_yesterday_window(TZ_NAME)
         log(f"Yesterday window: {y_start.isoformat()} -> {y_end.isoformat()} ({TZ_NAME})")
 
-    total_pages = None
-    total_items = None
+    total_pages: Optional[int] = None
+    total_items: Optional[int] = None
     imported_total = 0
     pages_fetched = 0
+    empty_pages_skipped = 0
 
     with psycopg2.connect(db_url) as conn:
-        page = 1
+        page = START_PAGE
+
         while page <= MAX_PAGES:
             log(f"Fetching page {page}...")
             envelope = build_envelope(app_id, app_key, page)
 
-            xml_resp = post_soap(session, envelope)
-            t_items, t_pages, item_elements = parse_response(xml_resp)
+            # retry empty pages a few times
+            item_elements: List[ET.Element] = []
+            t_items = 0
+            t_pages = 0
+
+            for attempt in range(1, EMPTY_PAGE_RETRIES + 1):
+                xml_resp = post_soap(session, envelope)
+                t_items, t_pages, item_elements = parse_response(xml_resp)
+
+                if item_elements:
+                    break
+
+                log(f"Page {page}: empty response (attempt {attempt}/{EMPTY_PAGE_RETRIES})")
+                time.sleep(1.0 * attempt)
 
             if total_pages is None and t_pages:
                 total_pages = t_pages
                 total_items = t_items
                 log(f"API totals: total_items={total_items}, total_pages={total_pages}")
+
+            # If still empty -> skip (do not stop early)
+            if not item_elements:
+                empty_pages_skipped += 1
+                log(f"Page {page}: still empty after retries; skipping (skipped={empty_pages_skipped}/{EMPTY_PAGE_SKIP_LIMIT})")
+                if empty_pages_skipped >= EMPTY_PAGE_SKIP_LIMIT:
+                    log("Too many empty pages; stopping to avoid endless run.")
+                    break
+                page += 1
+                continue
+
+            # reset empty page skip counter
+            empty_pages_skipped = 0
 
             rows: List[Row] = []
             for el in item_elements:
@@ -428,6 +503,7 @@ def main() -> None:
                     continue
 
                 if MODE == "YESTERDAY":
+                    assert y_start is not None and y_end is not None
                     tz = pytz.timezone(TZ_NAME)
                     end_local = row.end_date.astimezone(tz)
                     if not (y_start <= end_local < y_end):
@@ -439,13 +515,12 @@ def main() -> None:
             imported_total += len(rows)
             pages_fetched += 1
 
-            log(f"Page {page}/{total_pages or '?'}: received={len(item_elements)}, imported={len(rows)}, total_imported={imported_total}")
+            log(
+                f"Page {page}/{total_pages or '?'}: received={len(item_elements)}, imported={len(rows)}, total_imported={imported_total}"
+            )
 
             if total_pages and page >= total_pages:
                 log("Reached last page.")
-                break
-            if not item_elements:
-                log("No items returned; stopping.")
                 break
 
             page += 1
