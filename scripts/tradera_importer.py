@@ -101,9 +101,10 @@ class TraderaClient:
         "SearchInDescription": False,
         "SearchWords": "",
         "CountyId": 0,
+        "OnlyAuctionsWithBuyNow": False,
     
         # ✅ Required by WSDL
-        "OnlyAuctionsWithBuyNow": False,
+        "OnlyItemsWithThumbnail": False,
     }
 
         auth_header = self.AuthHeaderType(AppId=self.app_id, AppKey=self.app_key)
