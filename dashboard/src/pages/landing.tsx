@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ArrowRight, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowRight, Layers, LineChart, Link2, ShieldCheck, Sparkles, Table2 } from 'lucide-react'
 
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
@@ -56,6 +56,95 @@ export function LandingPage(): JSX.Element {
             <CardContent className="text-sm text-slate-600 dark:text-slate-300">React Query wired to /api/sales with real auctions baked in.</CardContent>
           </Card>
         </div>
+
+        <section className="space-y-8 rounded-2xl border border-slate-200 bg-white/60 p-6 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/70">
+          <div className="space-y-2 text-center">
+            <p className="text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-200">Core data strategy</p>
+            <h2 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Auctions → Cards → Market intelligence</h2>
+            <p className="text-base text-slate-600 dark:text-slate-300">
+              Raw Tradera auctions stay transparent while canonical card pages turn noisy seller listings into structured market intelligence.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card className="border-slate-200 dark:border-slate-800">
+              <CardHeader className="flex flex-row items-start gap-3">
+                <div className="rounded-lg bg-sky-100 p-2 text-sky-700 dark:bg-sky-900/60 dark:text-sky-200">
+                  <Table2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle>Auction table</CardTitle>
+                  <CardDescription>Ended Tradera auctions remain fully visible for transparency and discovery.</CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm text-slate-700 dark:text-slate-300">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Columns</p>
+                <ul className="grid gap-1 sm:grid-cols-2">
+                  <li className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/70">Picture + title from the original listing</li>
+                  <li className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/70">Era classification derived from multiple signals</li>
+                  <li className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/70">Final price and total bids</li>
+                  <li className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/70">Ended timestamp with a direct Tradera link</li>
+                </ul>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200 dark:border-slate-800">
+              <CardHeader className="flex flex-row items-start gap-3">
+                <div className="rounded-lg bg-emerald-100 p-2 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-200">
+                  <Layers className="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle>Card-centric navigation</CardTitle>
+                  <CardDescription>Picture and title clicks always route to a canonical card page.</CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Card page shows</p>
+                <ul className="list-disc space-y-1 pl-5">
+                  <li>All historical ended auctions that match the card—even if sellers mislabeled titles.</li>
+                  <li>Aggregated pricing stats, demand signals, and sell-through behavior.</li>
+                  <li>Price distribution over time for true market intelligence.</li>
+                </ul>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card className="border-slate-200 dark:border-slate-800">
+              <CardHeader className="flex flex-row items-start gap-3">
+                <div className="rounded-lg bg-amber-100 p-2 text-amber-700 dark:bg-amber-900/60 dark:text-amber-200">
+                  <Link2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle>Reduced noise</CardTitle>
+                  <CardDescription>Linking auctions to cards eliminates fragmented spellings or marketing fluff.</CardDescription>
+                </div>
+              </CardHeader>
+            </Card>
+            <Card className="border-slate-200 dark:border-slate-800">
+              <CardHeader className="flex flex-row items-start gap-3">
+                <div className="rounded-lg bg-indigo-100 p-2 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-200">
+                  <LineChart className="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle>Market insight</CardTitle>
+                  <CardDescription>Analyze volatility, demand consistency, and era-level performance at the card level.</CardDescription>
+                </div>
+              </CardHeader>
+            </Card>
+            <Card className="border-slate-200 dark:border-slate-800">
+              <CardHeader className="flex flex-row items-start gap-3">
+                <div className="rounded-lg bg-rose-100 p-2 text-rose-700 dark:bg-rose-900/60 dark:text-rose-200">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle>Premium-ready</CardTitle>
+                  <CardDescription>Era trends, volatility metrics, and strategy insights build on the card grouping.</CardDescription>
+                </div>
+              </CardHeader>
+            </Card>
+          </div>
+        </section>
 
         <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center dark:border-slate-800 dark:bg-slate-900/70">
           <div className="flex flex-col items-center gap-3">
