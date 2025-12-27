@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { CalendarClock, CheckCircle2, RefreshCw, Shield, Users } from 'lucide-react'
+import { CalendarClock, CheckCircle2, RefreshCw, Shield, UploadCloud, Users } from 'lucide-react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
@@ -10,14 +10,21 @@ import { Input } from '../components/ui/input'
 import { Button } from '../components/ui/button'
 import { registeredUsers } from '../data/users'
 import { useAdminSettings } from '../providers/admin-settings'
-import { fetchAuctions } from '../lib/api'
+import { fetchAuctionDiagnostics, fetchAuctions } from '../lib/api'
 import type { AuctionRecord } from '../types'
 
 export function AdminPage(): JSX.Element {
   const { importSettings, updateImportSchedule } = useAdminSettings()
   const [date, setDate] = useState(() => format(new Date(importSettings.nextImportAt), 'yyyy-MM-dd'))
   const [time, setTime] = useState(() => format(new Date(importSettings.nextImportAt), 'HH:mm'))
-  const { data: auctions } = useQuery<AuctionRecord[]>({ queryKey: ['auctions'], queryFn: fetchAuctions })
+  const {
+    data: auctions,
+    isFetching,
+    error: auctionsError
+  } = useQuery<AuctionRecord[]>({ queryKey: ['auctions'], queryFn: fetchAuctions })
+  const [lastManualCheckAt, setLastManualCheckAt] = useState<string | null>(null)
+  const [manualCheckNote, setManualCheckNote] = useState<string | null>(null)
+  const [manualCheckPending, setManualCheckPending] = useState(false)
 
   const totals = useMemo(() => {
     return registeredUsers.reduce(
@@ -53,6 +60,28 @@ export function AdminPage(): JSX.Element {
   const handleSubmit = (event: React.FormEvent): void => {
     event.preventDefault()
     updateImportSchedule(date, time)
+  }
+
+  const handleManualImport = async (): Promise<void> => {
+    setManualCheckNote(null)
+    setLastManualCheckAt(null)
+    setManualCheckPending(true)
+    try {
+      const diagnostics = await fetchAuctionDiagnostics()
+      const sourceLabel = diagnostics.source === 'database' ? 'database (live)' : 'mock fallback'
+      const count = diagnostics.auctions?.length ?? 0
+      const baseMessage = `Importer responded with ${count.toLocaleString('sv-SE')} auctions from ${sourceLabel}.`
+      const note = diagnostics.error
+        ? `${baseMessage} Database error: ${diagnostics.error}`
+        : baseMessage
+      setManualCheckNote(note)
+    } catch (error) {
+      console.error('Manual import check failed', error)
+      setManualCheckNote('The importer did not respond. Please verify credentials and the database connection.')
+    } finally {
+      setLastManualCheckAt(new Date().toISOString())
+      setManualCheckPending(false)
+    }
   }
 
   const formattedCoverageRange = `${format(new Date(importSettings.coverageStart), 'PP')} – ${format(
@@ -144,12 +173,25 @@ export function AdminPage(): JSX.Element {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CalendarClock className="h-5 w-5 text-sky-300" />
-              Tradera import cadence
-            </CardTitle>
-            <CardDescription>Decide when to sweep ended auctions and make the plan visible to every user.</CardDescription>
+          <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarClock className="h-5 w-5 text-sky-300" />
+                Tradera import cadence
+              </CardTitle>
+              <CardDescription>
+                Decide when to sweep ended auctions and make the plan visible to every user.
+              </CardDescription>
+            </div>
+            <Button
+              onClick={handleManualImport}
+              disabled={isFetching || manualCheckPending}
+              variant="secondary"
+              className="gap-2"
+            >
+              <UploadCloud className="h-4 w-4" />
+              {manualCheckPending ? 'Contacting importer…' : 'Import new'}
+            </Button>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-900/70 dark:bg-slate-900/50 dark:text-slate-200">
@@ -178,6 +220,23 @@ export function AdminPage(): JSX.Element {
                 Once saved, the import window is broadcast across the app so teammates know when the Tradera sweep will run and
                 that it always targets yesterday&apos;s finished auctions.
               </p>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Manual import check</p>
+              <p className="mt-1 text-sm text-slate-800 dark:text-slate-100">
+                {manualCheckNote ?? 'Run an import check to confirm the Tradera feed responds with new auctions.'}
+              </p>
+              {lastManualCheckAt && (
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                  Last checked {format(new Date(lastManualCheckAt), 'PPpp')}.
+                </p>
+              )}
+              {auctionsError && (
+                <p className="mt-1 text-xs font-semibold text-amber-600 dark:text-amber-300">
+                  Live importer error: {String(auctionsError)}
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>

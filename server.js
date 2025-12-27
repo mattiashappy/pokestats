@@ -231,6 +231,25 @@ app.get('/api/sales', async (_req, res) => {
   res.json(mockedSales)
 })
 
+app.get('/api/sales/diagnostic', async (_req, res) => {
+  let source = 'mock'
+  let auctions = mockedSales
+  let errorMessage = null
+
+  try {
+    const liveAuctions = await fetchAuctionsFromDatabase()
+    if (liveAuctions && liveAuctions.length > 0) {
+      source = 'database'
+      auctions = liveAuctions
+    }
+  } catch (error) {
+    console.error('Failed to load live auctions, falling back to mocked payload', error)
+    errorMessage = error?.message || 'Unknown database error'
+  }
+
+  res.json({ auctions, source, error: errorMessage })
+})
+
 app.use(express.static(distPath))
 
 app.get('*', (_req, res) => {
