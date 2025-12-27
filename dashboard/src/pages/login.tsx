@@ -33,7 +33,8 @@ export function LoginPage(): JSX.Element {
 
   const onSubmit = async (data: z.infer<typeof loginSchema>): Promise<void> => {
     await login(data.email, data.password)
-    const redirectPath = (location.state as { from?: Location })?.from?.pathname ?? '/billing'
+    const fallbackPath = data.email.toLowerCase() === 'ash@pokestats.app' ? '/app' : '/billing'
+    const redirectPath = (location.state as { from?: Location })?.from?.pathname ?? fallbackPath
     navigate(redirectPath, { replace: true })
   }
 

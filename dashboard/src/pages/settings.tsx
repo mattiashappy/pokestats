@@ -14,7 +14,7 @@ import { useAuth } from '../providers/auth'
 const settingsSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
-  subscriptionStatus: z.union([z.literal('active'), z.literal('inactive')])
+  subscriptionStatus: z.union([z.literal('active'), z.literal('inactive'), z.literal('trialing')])
 })
 
 export function SettingsPage(): JSX.Element {
@@ -41,7 +41,15 @@ export function SettingsPage(): JSX.Element {
           <h1 className="text-3xl font-bold text-slate-50">Profile</h1>
           <p className="text-sm text-slate-400">Update mock user info and preview subscription toggles.</p>
         </div>
-        <Badge variant={user?.subscriptionStatus === 'active' ? 'success' : 'warning'}>
+        <Badge
+          variant={
+            user?.subscriptionStatus === 'active'
+              ? 'success'
+              : user?.subscriptionStatus === 'trialing'
+                ? 'secondary'
+                : 'warning'
+          }
+        >
           {user?.subscriptionStatus ?? 'inactive'}
         </Badge>
       </div>
@@ -72,11 +80,12 @@ export function SettingsPage(): JSX.Element {
                 render={({ field }) => (
                   <Select value={field.value} onChange={(event) => field.onChange(event.target.value)}>
                     <option value="active">Active (demo)</option>
+                    <option value="trialing">Trial (14 days)</option>
                     <option value="inactive">Inactive</option>
                   </Select>
                 )}
               />
-              <p className="text-xs text-slate-400">Use this to simulate Stripe webhook state changes.</p>
+              <p className="text-xs text-slate-400">Use this to simulate Stripe webhook state changes or trial periods.</p>
             </div>
 
             <Button type="submit">Save settings</Button>

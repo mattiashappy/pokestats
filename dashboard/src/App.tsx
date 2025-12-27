@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom"
 import { AppLayout } from "./components/layout/app-layout"
 import { ProtectedRoute } from "./components/protected-route"
 import { BillingPage } from "./pages/billing"
+import { AdminPage } from "./pages/admin"
 import { DashboardPage } from "./pages/dashboard"
 import { LandingPage } from "./pages/landing"
 import { LoginPage } from "./pages/login"
@@ -23,6 +24,7 @@ function App(): JSX.Element {
           <Route path="/app" element={<DashboardPage />} />
           <Route path="/app/sales" element={<SalesPage />} />
           <Route path="/app/settings" element={<SettingsPage />} />
+          <Route path="/app/admin" element={<AdminPage />} />
         </Route>
       </Route>
 

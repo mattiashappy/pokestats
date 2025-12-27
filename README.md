@@ -1,6 +1,6 @@
 # PokéStats – Frontend-first SaaS shell
 
-A shadcn/ui + Tailwind SaaS dashboard scaffold for PokéStats. It ships a marketing landing page, mock auth + subscription gating, and protected dashboard routes ready for Stripe and importer-backed data once they are wired in. The Express server serves the Vite build and exposes mocked API routes so the app runs end-to-end on Heroku.
+A shadcn/ui + Tailwind SaaS dashboard scaffold for PokéStats. It ships a marketing landing page, mock auth + subscription gating, and protected dashboard routes ready for Stripe. The Express server serves the Vite build and exposes API routes seeded with Tradera auction data so the app runs end-to-end on Heroku without waiting on an importer.
 
 ## Project structure
 
@@ -14,7 +14,7 @@ A shadcn/ui + Tailwind SaaS dashboard scaffold for PokéStats. It ships a market
 - Fake auth layer using `localStorage` with login/signup/logout flows.
 - Subscription gating: inactive users are redirected to `/billing`; toggle status from settings or billing.
 - Dashboard pages: overview, sales table with filters, settings, and billing.
-- Mocked `/api/sales` + `/api/health` endpoints served by Express; React Query consumes the sales data.
+- Mocked `/api/sales` + `/api/health` endpoints served by Express; React Query consumes Tradera auction data baked into `/api/sales`.
 - SPA-safe routing so refreshing protected routes on Heroku continues to work.
 
 ## Local development
@@ -62,6 +62,6 @@ npm start            # starts Express on http://localhost:8000 serving the built
 ## API mocks
 
 - `GET /api/health` → `{ ok: true }`
-- `GET /api/sales` → Sample sales rows consumed by the `/app/sales` table via React Query.
+- `GET /api/sales` → Sample Tradera auction rows consumed by the `/app/sales` table via React Query.
 
-Replace these with importer-backed endpoints once the backend is ready and wire Stripe webhooks to update `subscriptionStatus` server-side.
+Swap these mocks for production endpoints when the backend is ready and wire Stripe webhooks to update `subscriptionStatus` server-side.

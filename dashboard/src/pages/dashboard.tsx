@@ -4,6 +4,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { useAdminSettings } from '../providers/admin-settings'
 
 const velocityData = [
   { day: 'Mon', sales: 12 },
@@ -16,6 +17,8 @@ const velocityData = [
 ]
 
 export function DashboardPage(): JSX.Element {
+  const { importSettings } = useAdminSettings()
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -23,8 +26,8 @@ export function DashboardPage(): JSX.Element {
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dashboard</p>
           <h1 className="text-3xl font-bold text-slate-50">PokéStats overview</h1>
           <p className="max-w-2xl text-sm text-slate-400">
-            SaaS skeleton with metrics, charts, and nav that mirrors the production experience while importer + Stripe integration
-            are finalized.
+            SaaS skeleton with metrics, charts, and nav backed by pre-imported Tradera auctions so stakeholders see live-looking
+            data on day one.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -59,7 +62,7 @@ export function DashboardPage(): JSX.Element {
             </div>
             <Badge variant="secondary">3 teams</Badge>
           </CardHeader>
-          <CardContent className="text-sm text-slate-300">User records will live in Postgres once the importer lands.</CardContent>
+          <CardContent className="text-sm text-slate-300">User records will live in Postgres once the real auth layer lands.</CardContent>
         </Card>
 
         <Card>
@@ -74,12 +77,31 @@ export function DashboardPage(): JSX.Element {
         </Card>
       </div>
 
+      <Card>
+        <CardHeader className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <CardTitle>Tradera import schedule</CardTitle>
+            <CardDescription>Everyone can see when the next sweep is planned.</CardDescription>
+          </div>
+          <Badge variant="secondary">Yesterday&apos;s auctions</Badge>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-200">
+          <div>
+            <p className="text-lg font-semibold text-slate-50">{new Date(importSettings.nextImportAt).toLocaleString()}</p>
+            <p className="text-xs text-slate-400">{importSettings.coverageLabel}</p>
+          </div>
+          <div className="rounded-lg bg-slate-900/60 px-4 py-2 text-xs text-slate-300">
+            Admins can change the run time to resync ended auctions for the previous day.
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader className="flex items-center justify-between space-y-0 pb-2">
             <div>
               <CardTitle>Weekly sales velocity</CardTitle>
-              <CardDescription>Mock area chart to visualize importer-driven data later.</CardDescription>
+              <CardDescription>Mock area chart to visualize the auction volume trend.</CardDescription>
             </div>
             <Badge variant="secondary" className="flex items-center gap-1">
               <BarChart3 className="h-4 w-4" />
@@ -101,8 +123,8 @@ export function DashboardPage(): JSX.Element {
 
         <Card>
           <CardHeader>
-            <CardTitle>Next steps</CardTitle>
-            <CardDescription>Deploy to Heroku, then swap mocks for real importer data.</CardDescription>
+          <CardTitle>Next steps</CardTitle>
+          <CardDescription>Deploy to Heroku; Stripe + webhook wiring can follow.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-slate-300">
             <div className="flex items-start gap-3">
@@ -111,7 +133,7 @@ export function DashboardPage(): JSX.Element {
             </div>
             <div className="flex items-start gap-3">
               <Clock3 className="mt-0.5 h-4 w-4 text-slate-300" />
-              <p>Replace mocked /api/sales with importer data when ready.</p>
+              <p>Swap the mocked /api/sales payload for the live Tradera feed when ready.</p>
             </div>
             <div className="flex items-start gap-3">
               <ShieldCheck className="mt-0.5 h-4 w-4 text-emerald-300" />

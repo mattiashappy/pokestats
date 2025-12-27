@@ -1,11 +1,14 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
-export type SubscriptionStatus = 'active' | 'inactive'
+export type SubscriptionStatus = 'active' | 'inactive' | 'trialing'
 
 export type AuthUser = {
   name: string
   email: string
   subscriptionStatus: SubscriptionStatus
+  trialEndsAt?: string
+  cardLast4?: string
+  role: 'admin' | 'member'
 }
 
 export type AuthContextValue = {
@@ -15,6 +18,7 @@ export type AuthContextValue = {
   signup: (name: string, email: string, password: string) => Promise<void>
   logout: () => void
   updateSubscription: (status: SubscriptionStatus) => void
+  startTrial: (cardLast4: string) => void
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -28,7 +32,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored) {
       try {
-        setUser(JSON.parse(stored))
+        const parsed: AuthUser = JSON.parse(stored)
+        const parsedWithRole: AuthUser = { ...parsed, role: parsed.role ?? 'member' }
+
+        if (parsed.subscriptionStatus === 'trialing' && parsed.trialEndsAt) {
+          const trialEnd = new Date(parsed.trialEndsAt)
+          const now = new Date()
+          if (now >= trialEnd) {
+            setUser({ ...parsedWithRole, subscriptionStatus: 'active', trialEndsAt: undefined })
+            return
+          }
+        }
+
+        setUser(parsedWithRole)
       } catch (error) {
         console.error('Failed to parse auth state', error)
         localStorage.removeItem(STORAGE_KEY)
@@ -49,19 +65,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
   const login = async (email: string, _password: string): Promise<void> => {
     const baseName = email.split('@')[0]
     const name = baseName ? `${baseName.charAt(0).toUpperCase()}${baseName.slice(1)}` : 'Trainer'
+    const role = email.toLowerCase() === 'ash@pokestats.app' ? 'admin' : 'member'
     const nextUser: AuthUser = {
       name,
       email,
-      subscriptionStatus: 'inactive'
+      subscriptionStatus: role === 'admin' ? 'active' : 'inactive',
+      role
     }
     persistUser(nextUser)
   }
 
   const signup = async (name: string, email: string, _password: string): Promise<void> => {
+    const role = email.toLowerCase() === 'ash@pokestats.app' ? 'admin' : 'member'
     const nextUser: AuthUser = {
       name: name.trim() || 'New Trainer',
       email,
-      subscriptionStatus: 'inactive'
+      subscriptionStatus: role === 'admin' ? 'active' : 'inactive',
+      role
     }
     persistUser(nextUser)
   }
@@ -72,12 +92,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
 
   const updateSubscription = (status: SubscriptionStatus): void => {
     if (!user) return
-    const nextUser = { ...user, subscriptionStatus: status }
+    if (user.role === 'admin') return
+
+    const nextUser: AuthUser = {
+      ...user,
+      subscriptionStatus: status,
+      trialEndsAt: status === 'trialing' ? user.trialEndsAt : undefined
+    }
+    persistUser(nextUser)
+  }
+
+  const startTrial = (cardLast4: string): void => {
+    if (!user || user.role === 'admin') return
+
+    const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+    const nextUser: AuthUser = {
+      ...user,
+      subscriptionStatus: 'trialing',
+      trialEndsAt,
+      cardLast4
+    }
+
     persistUser(nextUser)
   }
 
   const value = useMemo(
-    () => ({ user, loading, login, signup, logout, updateSubscription }),
+    () => ({ user, loading, login, signup, logout, updateSubscription, startTrial }),
     [user, loading]
   )
 

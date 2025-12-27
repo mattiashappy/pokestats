@@ -34,7 +34,8 @@ export function SignupPage(): JSX.Element {
 
   const onSubmit = async (data: z.infer<typeof signupSchema>): Promise<void> => {
     await signup(data.name, data.email, data.password)
-    navigate('/billing', { replace: true })
+    const path = data.email.toLowerCase() === 'ash@pokestats.app' ? '/app' : '/billing'
+    navigate(path, { replace: true })
   }
 
   return (
@@ -47,7 +48,7 @@ export function SignupPage(): JSX.Element {
               Create account
             </div>
             <CardTitle className="text-2xl">Start your trial</CardTitle>
-            <CardDescription>Spin up a mock account and preview subscription gating.</CardDescription>
+            <CardDescription>Spin up a mock account, add card details, and unlock a 14-day trial.</CardDescription>
           </CardHeader>
           <form onSubmit={handleSubmit(onSubmit)} noValidate>
             <CardContent className="space-y-4">
