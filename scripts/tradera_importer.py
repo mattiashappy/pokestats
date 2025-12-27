@@ -180,6 +180,13 @@ def parse_float(el: Optional[ET.Element]) -> Optional[float]:
         return None
 
 
+def parse_bool(el: Optional[ET.Element]) -> Optional[bool]:
+    t = get_text(el)
+    if t is None:
+        return None
+    return t.lower() in {"1", "true", "yes"}
+
+
 def parse_dt(el: Optional[ET.Element]) -> Optional[datetime]:
     t = get_text(el)
     if not t:
@@ -260,6 +267,18 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
 
     category_id = parse_int(item_el.find("t:CategoryId", NS)) or CATEGORY_ID
 
+    attributes = parse_attributes(item_el)
+    extra_attributes = {
+        "has_bids": parse_bool(item_el.find("t:HasBids", NS)),
+        "is_ended": parse_bool(item_el.find("t:IsEnded", NS)),
+        "item_type": get_text(item_el.find("t:ItemType", NS)),
+        "next_bid": parse_int(item_el.find("t:NextBid", NS)),
+        "buy_it_now_price": parse_float(item_el.find("t:BuyItNowPrice", NS)),
+    }
+    for key, value in extra_attributes.items():
+        if value is not None:
+            attributes[key] = value
+
     return Row(
         item_id=item_id,
         category_id=category_id,
@@ -274,7 +293,7 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
         item_url=get_text(item_el.find("t:ItemUrl", NS)),
         thumbnail_url=get_text(item_el.find("t:ThumbnailLink", NS)),
         image_urls=parse_image_links(item_el),
-        attributes=parse_attributes(item_el),
+        attributes=attributes,
     )
 
 
