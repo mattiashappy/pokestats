@@ -1,23 +1,22 @@
 """
 Daily importer for ended Pokémon card auctions from Tradera (SOAP SearchAdvanced).
 
-✅ Designed for Heroku Scheduler (UTC).
-✅ Uses TZ/LOCAL_TIMEZONE (default Europe/Stockholm) to compute "yesterday" window.
-✅ Fetches Ended auctions, then filters locally to yesterday and upserts into PostgreSQL.
-✅ Idempotent via ON CONFLICT (item_id) DO UPDATE.
-✅ Robust to Tradera SOAP response shape differences (Items/SearchItem vs other keys).
-✅ Includes required WSDL request fields + correct AuthenticationHeader namespace.
+Runs from Heroku Scheduler (UTC). Uses TZ/LOCAL_TIMEZONE (default Europe/Stockholm)
+to compute "yesterday" window and imports ended auctions with >= BIDS_MINIMUM bids.
 
-Heroku config vars needed:
+Idempotent via ON CONFLICT (item_id) DO UPDATE.
+
+Required Heroku config vars:
 - DATABASE_URL
 - TRADERA_APP_ID
 - TRADERA_APP_KEY
+
 Optional:
 - TRADERA_CATEGORY_ID (default 1001337)
 - ITEMS_PER_PAGE (default 500)
 - MAX_PAGES (default 100)
-- TZ or LOCAL_TIMEZONE (default Europe/Stockholm)
-- BIDS_MINIMUM (default 1) -> set to 0 if you want all ended, not only sold (>=1 bid)
+- BIDS_MINIMUM (default 1)
+- TZ / LOCAL_TIMEZONE (default Europe/Stockholm)
 """
 from __future__ import annotations
 
@@ -35,14 +34,11 @@ from psycopg2.extras import Json, execute_batch
 from zeep import Client, Settings, helpers
 from zeep.transports import Transport
 
-# --- Configuration constants ---
 WSDL_URL = "https://api.tradera.com/v3/SearchService.asmx?WSDL"
 
 CATEGORY_ID = int(os.getenv("TRADERA_CATEGORY_ID", "1001337"))
 ITEMS_PER_PAGE = int(os.getenv("ITEMS_PER_PAGE", "500"))
 MAX_PAGES = int(os.getenv("MAX_PAGES", "100"))
-
-# If you want to include ended auctions with zero bids, set BIDS_MINIMUM=0 on Heroku.
 BIDS_MINIMUM = int(os.getenv("BIDS_MINIMUM", "1"))
 
 DEFAULT_TIMEZONE = os.getenv("TZ") or os.getenv("LOCAL_TIMEZONE") or "Europe/Stockholm"
@@ -85,59 +81,6 @@ class TraderaItem:
         }
 
 
-class TraderaClient:
-    """SOAP client wrapper around SearchService.SearchAdvanced."""
-
-    def __init__(self, app_id: str, app_key: str, timeout: int = 45) -> None:
-        self.app_id = str(app_id).strip()
-        self.app_key = str(app_key).strip()
-
-        session = requests.Session()
-        session.headers.update({"User-Agent": "pokestats-importer/1.0"})
-        transport = Transport(session=session, timeout=timeout)
-        settings = Settings(strict=False)
-
-        self.client = Client(WSDL_URL, transport=transport, settings=settings)
-
-        # Force correct header element name + namespace (Tradera expects this exact wrapper)
-        from zeep import xsd
-
-        self.auth_header_el = xsd.Element(
-            "{http://api.tradera.com}AuthenticationHeader",
-            xsd.ComplexType(
-                [
-                    xsd.Element("{http://api.tradera.com}AppId", xsd.String()),
-                    xsd.Element("{http://api.tradera.com}AppKey", xsd.String()),
-                ]
-            ),
-        )
-
-    def search_page(self, page_number: int) -> dict:
-        # These are required by the WSDL schema (or safe defaults to avoid "Missing element" errors).
-        search_request = {
-            "CategoryId": CATEGORY_ID,
-            "ItemType": "Auction",
-            "ItemStatus": "Ended",
-            "OrderBy": "EndDateDescending",
-            "BidsMinimum": BIDS_MINIMUM,
-            "PageNumber": page_number,
-            "ItemsPerPage": ITEMS_PER_PAGE,
-            "SearchWords": None,  # sends xsi:nil
-            "SearchInDescription": False,
-            "CountyId": 0,
-            "OnlyAuctionsWithBuyNow": False,
-            "OnlyItemsWithThumbnail": False,
-        }
-
-        auth_header = self.auth_header_el(AppId=self.app_id, AppKey=self.app_key)
-
-        response = self.client.service.SearchAdvanced(
-            search_request,
-            _soapheaders=[auth_header],
-        )
-        return helpers.serialize_object(response, target_cls=dict)
-
-
 def log(msg: str) -> None:
     sys.stdout.write(msg + "\n")
     sys.stdout.flush()
@@ -165,6 +108,60 @@ def load_tradera_credentials() -> tuple[str, str]:
     return app_id.strip(), app_key.strip()
 
 
+class TraderaClient:
+    def __init__(self, app_id: str, app_key: str, timeout: int = 45) -> None:
+        self.app_id = str(app_id).strip()
+        self.app_key = str(app_key).strip()
+
+        session = requests.Session()
+        session.headers.update({"User-Agent": "pokestats-importer/1.0"})
+        transport = Transport(session=session, timeout=timeout)
+        settings = Settings(strict=False)
+
+        self.client = Client(WSDL_URL, transport=transport, settings=settings)
+
+        # Force correct AuthenticationHeader wrapper + namespace
+        from zeep import xsd
+
+        self.auth_header_el = xsd.Element(
+            "{http://api.tradera.com}AuthenticationHeader",
+            xsd.ComplexType(
+                [
+                    xsd.Element("{http://api.tradera.com}AppId", xsd.String()),
+                    xsd.Element("{http://api.tradera.com}AppKey", xsd.String()),
+                ]
+            ),
+        )
+
+    def search_page(self, page_number: int) -> dict:
+        search_request = {
+            "CategoryId": CATEGORY_ID,
+            "ItemType": "Auction",
+            "ItemStatus": "Ended",
+            "OrderBy": "EndDateDescending",
+            "BidsMinimum": BIDS_MINIMUM,
+            "PageNumber": page_number,
+            "ItemsPerPage": ITEMS_PER_PAGE,
+
+            # WSDL-required defaults you hit:
+            "SearchInDescription": False,
+            "CountyId": 0,
+            "OnlyAuctionsWithBuyNow": False,
+            "OnlyItemsWithThumbnail": False,
+
+            # CRITICAL FIX: don't send empty-string search, send nil
+            "SearchWords": None,
+        }
+
+        auth_header = self.auth_header_el(AppId=self.app_id, AppKey=self.app_key)
+
+        response = self.client.service.SearchAdvanced(
+            search_request,
+            _soapheaders=[auth_header],
+        )
+        return helpers.serialize_object(response, target_cls=dict)
+
+
 def _ensure_list(value) -> List:
     if value is None:
         return []
@@ -174,41 +171,81 @@ def _ensure_list(value) -> List:
 
 
 def parse_attributes(raw_attributes: Optional[dict]) -> Dict[str, List[str]]:
+    # Your Postman response uses AttributeValues/TermAttributeValues, not Attributes.
+    # We'll support BOTH shapes.
+
     if not raw_attributes:
         return {}
-    attributes: Dict[str, List[str]] = {}
-    raw_list = raw_attributes.get("Attribute") or []
-    for attribute in _ensure_list(raw_list):
-        name = attribute.get("Name")
-        values = _ensure_list(attribute.get("Values", {}).get("string"))
+
+    # shape A: {"Attribute": [ {"Name":..., "Values":{"string":[...]}} ]}
+    if isinstance(raw_attributes, dict) and "Attribute" in raw_attributes:
+        out: Dict[str, List[str]] = {}
+        for attribute in _ensure_list(raw_attributes.get("Attribute")):
+            name = attribute.get("Name")
+            values = _ensure_list((attribute.get("Values") or {}).get("string"))
+            if name:
+                out[name] = [str(v) for v in values if v is not None]
+        return out
+
+    # shape B (Postman): AttributeValues -> TermAttributeValues -> TermAttributeValue[]
+    out: Dict[str, List[str]] = {}
+    term = (raw_attributes.get("TermAttributeValues") or {}).get("TermAttributeValue") if isinstance(raw_attributes, dict) else None
+    for attr in _ensure_list(term):
+        name = attr.get("Name")
+        values = _ensure_list((attr.get("Values") or {}).get("string"))
         if name:
-            attributes[name] = [str(v) for v in values if v is not None]
-    return attributes
+            out[name] = [str(v) for v in values if v is not None]
+    return out
 
 
 def parse_image_links(raw_images: Optional[dict]) -> List[str]:
+    # Your Postman response uses ImageLinks -> ImageLink -> Url
     if not raw_images:
         return []
-    urls = raw_images.get("string")
-    return [str(u) for u in _ensure_list(urls) if u]
+
+    # shape A: {"string":[...]}
+    if isinstance(raw_images, dict) and "string" in raw_images:
+        return [str(u) for u in _ensure_list(raw_images.get("string")) if u]
+
+    # shape B: {"ImageLink":[{"Url":...}, ...]}
+    links = raw_images.get("ImageLink") if isinstance(raw_images, dict) else None
+    urls = []
+    for link in _ensure_list(links):
+        url = link.get("Url")
+        if url:
+            urls.append(str(url))
+    return urls
 
 
 def parse_tradera_item(raw_item: dict) -> TraderaItem:
     end_date = date_parser.isoparse(str(raw_item.get("EndDate"))).astimezone(pytz.UTC)
 
-    attributes = parse_attributes(raw_item.get("Attributes"))
+    # Support both attribute shapes
+    attributes = parse_attributes(raw_item.get("Attributes") or raw_item.get("AttributeValues"))
     image_urls = parse_image_links(raw_item.get("ImageLinks"))
 
     seller = raw_item.get("Seller") or {}
+    seller_id = seller.get("Id") if isinstance(seller, dict) else None
+    seller_alias = seller.get("Alias") if isinstance(seller, dict) else None
+    seller_dsr = seller.get("DSR") if isinstance(seller, dict) else None
+
+    # Postman response also has SellerId/SellerAlias/SellerDsrAverage at top-level
+    if seller_id is None:
+        seller_id = raw_item.get("SellerId")
+    if seller_alias is None:
+        seller_alias = raw_item.get("SellerAlias")
+    if seller_dsr is None:
+        seller_dsr = raw_item.get("SellerDsrAverage")
+
     return TraderaItem(
         item_id=int(raw_item.get("Id")),
         category_id=int(raw_item.get("CategoryId")),
         end_date=end_date,
         price=int(raw_item.get("MaxBid")) if raw_item.get("MaxBid") is not None else None,
         bid_count=int(raw_item.get("BidCount")) if raw_item.get("BidCount") is not None else None,
-        seller_id=int(seller.get("Id")) if seller.get("Id") is not None else None,
-        seller_alias=seller.get("Alias"),
-        seller_dsr=float(seller.get("DSR")) if seller.get("DSR") is not None else None,
+        seller_id=int(seller_id) if seller_id is not None else None,
+        seller_alias=seller_alias,
+        seller_dsr=float(seller_dsr) if seller_dsr is not None else None,
         title=raw_item.get("ShortDescription"),
         description=raw_item.get("LongDescription"),
         item_url=raw_item.get("ItemUrl") or raw_item.get("ItemURL"),
@@ -230,7 +267,6 @@ def calculate_yesterday_window(tz_name: str = DEFAULT_TIMEZONE) -> Tuple[datetim
 def filter_items_for_yesterday(items: Iterable[TraderaItem], tz_name: str) -> List[TraderaItem]:
     tz = pytz.timezone(tz_name)
     start, end = calculate_yesterday_window(tz_name)
-
     filtered: List[TraderaItem] = []
     for item in items:
         end_local = item.end_date.astimezone(tz)
@@ -240,13 +276,8 @@ def filter_items_for_yesterday(items: Iterable[TraderaItem], tz_name: str) -> Li
 
 
 def should_stop_pagination(parsed_items: List[TraderaItem], tz_name: str) -> bool:
-    """
-    Stop when the OLDEST item on this page is older than yesterday_start,
-    since results are EndDateDescending -> subsequent pages are even older.
-    """
     if not parsed_items:
-        return False  # don't stop just because parsing gave nothing; let caller decide
-
+        return False
     tz = pytz.timezone(tz_name)
     yesterday_start, _ = calculate_yesterday_window(tz_name)
     oldest_local = min(i.end_date.astimezone(tz) for i in parsed_items)
@@ -254,28 +285,33 @@ def should_stop_pagination(parsed_items: List[TraderaItem], tz_name: str) -> boo
 
 
 def extract_raw_items(response: dict) -> List[dict]:
-    """
-    Robust extraction of items from Tradera response,
-    handling slightly different shapes across SOAP serializers.
-    """
     result = (response or {}).get("SearchAdvancedResult") or {}
 
-    items_container = result.get("Items") or {}
-    candidates = (
-        items_container.get("SearchItem")
-        or items_container.get("Item")
-        or items_container.get("Items")
-        or items_container.get("item")
-    )
+    # Helpful counters (matches Postman)
+    total = result.get("TotalNumberOfItems")
+    pages = result.get("TotalNumberOfPages")
+    if total is not None and pages is not None:
+        log(f"API says TotalNumberOfItems={total}, TotalNumberOfPages={pages}")
 
-    # Sometimes "Items" itself is the list
-    if isinstance(items_container, list):
-        candidates = items_container
+    items_blob = result.get("Items")
 
-    raw_items = _ensure_list(candidates)
+    # Case 1: Items is already a list of item dicts (Postman-style repeated <Items>)
+    if isinstance(items_blob, list):
+        return [x for x in items_blob if isinstance(x, dict)]
 
-    # Filter out non-dict noise
-    return [x for x in raw_items if isinstance(x, dict)]
+    # Case 2: Items is a dict wrapper (some zeep shapes)
+    if isinstance(items_blob, dict):
+        # Try common keys
+        candidates = (
+            items_blob.get("SearchItem")
+            or items_blob.get("Item")
+            or items_blob.get("Items")
+        )
+        raw = _ensure_list(candidates)
+        return [x for x in raw if isinstance(x, dict)]
+
+    # Case 3: nothing
+    return []
 
 
 def upsert_items(conn, items: List[TraderaItem]) -> None:
@@ -320,12 +356,8 @@ def run_import() -> None:
     client = TraderaClient(app_id, app_key)
 
     yesterday_start, yesterday_end = calculate_yesterday_window(tz_name)
-    log(
-        f"Importing auctions ended between {yesterday_start.isoformat()} and {yesterday_end.isoformat()} ({tz_name})"
-    )
-    log(
-        f"CategoryId={CATEGORY_ID}, ItemsPerPage={ITEMS_PER_PAGE}, MaxPages={MAX_PAGES}, BidsMinimum={BIDS_MINIMUM}"
-    )
+    log(f"Importing auctions ended between {yesterday_start.isoformat()} and {yesterday_end.isoformat()} ({tz_name})")
+    log(f"CategoryId={CATEGORY_ID}, ItemsPerPage={ITEMS_PER_PAGE}, MaxPages={MAX_PAGES}, BidsMinimum={BIDS_MINIMUM}")
 
     pages_fetched = 0
     items_scanned = 0
@@ -339,9 +371,7 @@ def run_import() -> None:
 
             raw_items = extract_raw_items(response)
 
-            # If page 1 comes back empty, log some context so it's obvious what's happening.
             if not raw_items:
-                # Still a valid run; Tradera returned no items for this query/page.
                 log(f"No items returned on page {page_number}; stopping pagination.")
                 break
 
@@ -360,9 +390,7 @@ def run_import() -> None:
 
             page_number += 1
 
-    log(
-        f"Finished. Pages fetched: {pages_fetched}, items scanned: {items_scanned}, items imported: {items_imported}"
-    )
+    log(f"Finished. Pages fetched: {pages_fetched}, items scanned: {items_scanned}, items imported: {items_imported}")
 
 
 def main() -> None:
