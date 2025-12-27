@@ -15,9 +15,9 @@ from datetime import datetime, timedelta
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import psycopg2
-from dateutil import parser as date_parser
 import pytz
 import requests
+from dateutil import parser as date_parser
 from psycopg2.extras import Json, execute_batch
 from zeep import Client, Settings, helpers
 from zeep.transports import Transport
@@ -73,8 +73,8 @@ class TraderaClient:
     """SOAP client wrapper around SearchService.SearchAdvanced."""
 
     def __init__(self, app_id: str, app_key: str, timeout: int = 45) -> None:
-        self.app_id = app_id
-        self.app_key = app_key
+        self.app_id = str(app_id).strip()
+        self.app_key = str(app_key).strip()
 
         session = requests.Session()
         session.headers.update({"User-Agent": "pokestats-importer/1.0"})
@@ -83,35 +83,44 @@ class TraderaClient:
 
         self.client = Client(WSDL_URL, transport=transport, settings=settings)
 
-        # Build the correct SOAP header type from the WSDL
-        self.AuthHeaderType = self.client.get_type("ns0:AuthenticationHeader")
+        # IMPORTANT: Tradera expects AuthenticationHeader with namespace http://api.tradera.com
+        # Zeep can otherwise serialize it in a way Tradera rejects -> "Invalid application id".
+        from zeep import xsd
+
+        self.auth_header_el = xsd.Element(
+            "{http://api.tradera.com}AuthenticationHeader",
+            xsd.ComplexType(
+                [
+                    xsd.Element("{http://api.tradera.com}AppId", xsd.String()),
+                    xsd.Element("{http://api.tradera.com}AppKey", xsd.String()),
+                ]
+            ),
+        )
 
     def search_page(self, page_number: int) -> dict:
-        # NOTE: Tradera WSDL requires SearchInDescription in the request schema.
-        # Also adding SearchWords="" as a safe default to avoid "missing element" errors.
+        # These fields are required by the WSDL schema (or safe defaults to avoid "Missing element" errors)
         search_request = {
-        "CategoryId": CATEGORY_ID,
-        "ItemType": "Auction",
-        "ItemStatus": "Ended",
-        "OrderBy": "EndDateDescending",
-        "BidsMinimum": 1,
-        "PageNumber": page_number,
-        "ItemsPerPage": ITEMS_PER_PAGE,
-    
-        "SearchInDescription": False,
-        "SearchWords": "",
-        "CountyId": 0,
-        "OnlyAuctionsWithBuyNow": False,
-    
-        # ✅ Required by WSDL
-        "OnlyItemsWithThumbnail": False,
-    }
+            "CategoryId": CATEGORY_ID,
+            "ItemType": "Auction",
+            "ItemStatus": "Ended",
+            "OrderBy": "EndDateDescending",
+            "BidsMinimum": 1,
+            "PageNumber": page_number,
+            "ItemsPerPage": ITEMS_PER_PAGE,
 
-        auth_header = self.AuthHeaderType(AppId=self.app_id, AppKey=self.app_key)
+            # Required / safe defaults:
+            "SearchWords": "",
+            "SearchInDescription": False,
+            "CountyId": 0,
+            "OnlyAuctionsWithBuyNow": False,
+            "OnlyItemsWithThumbnail": False,
+        }
+
+        auth_header = self.auth_header_el(AppId=self.app_id, AppKey=self.app_key)
 
         response = self.client.service.SearchAdvanced(
             search_request,
-            _soapheaders=[auth_header],  # IMPORTANT: correct header format for zeep
+            _soapheaders=[auth_header],
         )
         return helpers.serialize_object(response, target_cls=dict)
 
@@ -145,7 +154,6 @@ def parse_image_links(raw_images: Optional[dict]) -> List[str]:
 
 
 def parse_tradera_item(raw_item: dict) -> TraderaItem:
-    # Normalize to UTC in DB
     end_date = date_parser.isoparse(str(raw_item.get("EndDate"))).astimezone(pytz.UTC)
     attributes = parse_attributes(raw_item.get("Attributes"))
     image_urls = parse_image_links(raw_item.get("ImageLinks"))
@@ -213,10 +221,6 @@ def filter_items_for_yesterday(items: Iterable[TraderaItem], tz_name: str) -> Li
 
 
 def should_stop_pagination(parsed_items: List[TraderaItem], tz_name: str) -> bool:
-    """
-    Stop when the OLDEST item on this page is older than yesterday_start.
-    Because results are EndDateDescending, next pages will only be older.
-    """
     if not parsed_items:
         return True
 
@@ -274,9 +278,7 @@ def run_import() -> None:
     client = TraderaClient(app_id, app_key)
 
     yesterday_start, yesterday_end = calculate_yesterday_window(tz_name)
-    log(
-        f"Importing auctions ended between {yesterday_start.isoformat()} and {yesterday_end.isoformat()} ({tz_name})"
-    )
+    log(f"Importing auctions ended between {yesterday_start.isoformat()} and {yesterday_end.isoformat()} ({tz_name})")
     log(f"CategoryId={CATEGORY_ID}, ItemsPerPage={ITEMS_PER_PAGE}, MaxPages={MAX_API_CALLS_PER_DAY}")
 
     pages_fetched = 0
@@ -318,7 +320,7 @@ def run_import() -> None:
 def main() -> None:
     try:
         run_import()
-        sys.exit(0)  # IMPORTANT for scheduler
+        sys.exit(0)
     except Exception as exc:
         log(f"Import failed: {exc}")
         sys.exit(1)
