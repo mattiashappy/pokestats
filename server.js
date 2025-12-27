@@ -10,15 +10,17 @@ const distPath = path.join(__dirname, 'dashboard', 'dist')
 app.use(compression())
 app.use(express.json())
 
-const now = new Date()
-
 const MAX_RESULTS = Number(process.env.MAX_API_RESULTS || 250)
 const DATABASE_URL = process.env.DATABASE_URL
+const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 
+// --------------------
+// Database
+// --------------------
 const pool = DATABASE_URL
   ? new Pool({
       connectionString: DATABASE_URL,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined
+      ssl: IS_PRODUCTION ? { rejectUnauthorized: false } : undefined
     })
   : null
 
@@ -29,24 +31,25 @@ async function ensureSalesTableAvailable() {
   if (!pool) return false
   if (hasCheckedSalesTable) return salesTableAvailable
 
-  const { rows } = await pool.query("SELECT to_regclass('public.tradera_sales') AS table_name")
+  const { rows } = await pool.query(
+    "SELECT to_regclass('public.tradera_sales') AS table_name"
+  )
+
   salesTableAvailable = Boolean(rows?.[0]?.table_name)
   hasCheckedSalesTable = true
 
   if (!salesTableAvailable) {
-    console.warn(
-      'Database connection is configured but the tradera_sales table is missing. Run schema.sql to create it.'
-    )
+    console.warn('tradera_sales table does not exist')
   }
 
   return salesTableAvailable
 }
 
 async function fetchAuctionsFromDatabase() {
-  if (!pool) return null
+  if (!pool) return []
 
   const tableExists = await ensureSalesTableAvailable()
-  if (!tableExists) return null
+  if (!tableExists) return []
 
   const query = `
     SELECT
@@ -66,21 +69,8 @@ async function fetchAuctionsFromDatabase() {
     LIMIT $1
   `
 
-  try {
-    const { rows } = await pool.query(query, [MAX_RESULTS])
-    return rows.map(normalizeAuctionRow)
-  } catch (error) {
-    if (error?.code === '42P01') {
-      hasCheckedSalesTable = false
-      salesTableAvailable = false
-      console.warn(
-        'Database connection succeeded but the tradera_sales table does not exist. Falling back to mocked payload.'
-      )
-      return null
-    }
-
-    throw error
-  }
+  const { rows } = await pool.query(query, [MAX_RESULTS])
+  return rows.map(normalizeAuctionRow)
 }
 
 function normalizeAuctionRow(row) {
@@ -98,7 +88,10 @@ function normalizeAuctionRow(row) {
     title: row.title || 'Untitled listing',
     cardName: attributeValue('Card name', row.title || 'Unknown card'),
     seller: row.seller_alias || 'Unknown seller',
-    sellerType: typeof row.seller_dsr === 'number' && row.seller_dsr >= 4.7 ? 'trusted' : 'new',
+    sellerType:
+      typeof row.seller_dsr === 'number' && row.seller_dsr >= 4.7
+        ? 'trusted'
+        : 'new',
     finalPrice: row.price ?? 0,
     currency: 'SEK',
     bids: row.bid_count ?? 0,
@@ -112,184 +105,47 @@ function normalizeAuctionRow(row) {
   }
 }
 
-function daysAgo(days, hours = 18, minutes = 0) {
-  const date = new Date(now)
-  date.setDate(date.getDate() - days)
-  date.setHours(hours, minutes, 0, 0)
-  return date.toISOString()
-}
-
-const mockedSales = [
-  {
-    id: 'T-90101',
-    title: 'Scarlet & Violet booster box (sealed)',
-    cardName: 'Booster box',
-    seller: 'NordicCardLab',
-    sellerType: 'trusted',
-    finalPrice: 1850,
-    currency: 'SEK',
-    bids: 18,
-    endTime: daysAgo(1, 18, 30),
-    condition: 'Sealed',
-    category: 'Scarlet & Violet',
-    location: 'Stockholm, SE',
-    url: 'https://www.tradera.com/item/123456',
-    addedAt: daysAgo(3, 12, 0)
-  },
-  {
-    id: 'T-90102',
-    title: 'Charizard VMAX Swedish print',
-    cardName: 'Charizard VMAX',
-    seller: 'RetroPoke',
-    sellerType: 'trusted',
-    finalPrice: 720,
-    currency: 'SEK',
-    bids: 11,
-    endTime: daysAgo(2, 20, 15),
-    condition: 'Near Mint',
-    category: 'Crown Zenith',
-    location: 'Gothenburg, SE',
-    url: 'https://www.tradera.com/item/223344',
-    addedAt: daysAgo(4, 9, 30)
-  },
-  {
-    id: 'T-90103',
-    title: 'Base Set Venusaur (1999)',
-    cardName: 'Venusaur',
-    seller: 'CollectorDen',
-    sellerType: 'new',
-    finalPrice: 1210,
-    currency: 'SEK',
-    bids: 24,
-    endTime: daysAgo(3, 19, 5),
-    condition: 'Lightly Played',
-    category: 'Base Set',
-    location: 'Malmö, SE',
-    url: 'https://www.tradera.com/item/998877',
-    addedAt: daysAgo(5, 15, 45)
-  },
-  {
-    id: 'T-90104',
-    title: 'Neo Genesis Lugia auction',
-    cardName: 'Lugia',
-    seller: 'MoonlightGames',
-    sellerType: 'trusted',
-    finalPrice: 940,
-    currency: 'SEK',
-    bids: 16,
-    endTime: daysAgo(4, 21, 45),
-    condition: 'Played',
-    category: 'Neo Genesis',
-    location: 'Uppsala, SE',
-    url: 'https://www.tradera.com/item/556677',
-    addedAt: daysAgo(6, 20, 10)
-  },
-  {
-    id: 'T-90105',
-    title: 'Pokémon Silver Game Boy cartridge',
-    cardName: 'Pokémon Silver',
-    seller: 'RetroHandhelds',
-    sellerType: 'new',
-    finalPrice: 360,
-    currency: 'SEK',
-    bids: 7,
-    endTime: daysAgo(5, 17, 20),
-    condition: 'Used',
-    category: 'Games',
-    location: 'Stockholm, SE',
-    url: 'https://www.tradera.com/item/445566',
-    addedAt: daysAgo(7, 8, 20)
-  },
-  {
-    id: 'T-90106',
-    title: 'Eevee Heroes booster pack lot (JP)',
-    cardName: 'Eevee Heroes',
-    seller: 'TokyoPulls',
-    sellerType: 'trusted',
-    finalPrice: 410,
-    currency: 'SEK',
-    bids: 9,
-    endTime: daysAgo(6, 16, 50),
-    condition: 'Sealed',
-    category: 'Japanese',
-    location: 'Osaka, JP',
-    url: 'https://www.tradera.com/item/334455',
-    addedAt: daysAgo(8, 18, 0)
-  },
-  {
-    id: 'T-90107',
-    title: 'Jungle Snorlax holo',
-    cardName: 'Snorlax',
-    seller: 'VintageVista',
-    sellerType: 'trusted',
-    finalPrice: 186,
-    currency: 'SEK',
-    bids: 6,
-    endTime: daysAgo(7, 10, 0),
-    condition: 'Moderate Play',
-    category: 'Jungle',
-    location: 'Copenhagen, DK',
-    url: 'https://www.tradera.com/item/112233',
-    addedAt: daysAgo(9, 7, 40)
-  },
-  {
-    id: 'T-90108',
-    title: 'Illustrator Pikachu promo',
-    cardName: 'Pikachu (Illustrator)',
-    seller: 'CardForge',
-    sellerType: 'new',
-    finalPrice: 2100,
-    currency: 'SEK',
-    bids: 31,
-    endTime: daysAgo(8, 12, 0),
-    condition: 'Mint',
-    category: 'Promo',
-    location: 'Helsinki, FI',
-    url: 'https://www.tradera.com/item/778899',
-    addedAt: daysAgo(10, 10, 0)
-  }
-]
+// --------------------
+// API
+// --------------------
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true })
+  res.json({
+    ok: true,
+    env: IS_PRODUCTION ? 'production' : 'development',
+    dbConfigured: Boolean(DATABASE_URL)
+  })
 })
 
 app.get('/api/sales', async (_req, res) => {
   try {
-    const liveAuctions = await fetchAuctionsFromDatabase()
-
-    // If DB is configured + table exists, fetchAuctionsFromDatabase returns an array (possibly empty).
-    if (Array.isArray(liveAuctions)) {
-      return res.json(liveAuctions)
-    }
+    const auctions = await fetchAuctionsFromDatabase()
+    return res.json(auctions) // may be []
   } catch (error) {
-    console.error('Failed to load live auctions, falling back to mocked payload', error)
+    console.error('Failed to fetch auctions', error)
+    return res.status(500).json({ error: 'Failed to load auctions' })
   }
-
-  // Only fall back to mock if DB/table is missing or DB not configured
-  return res.json(mockedSales)
 })
 
 app.get('/api/sales/diagnostic', async (_req, res) => {
-  let source = 'mock'
-  let auctions = mockedSales
-  let errorMessage = null
-
   try {
-    const liveAuctions = await fetchAuctionsFromDatabase()
-
-    // If DB is configured + table exists, return DB payload (even if empty).
-    if (Array.isArray(liveAuctions)) {
-      source = 'database'
-      auctions = liveAuctions
-    }
+    const auctions = await fetchAuctionsFromDatabase()
+    res.json({
+      source: 'database',
+      count: auctions.length,
+      auctions
+    })
   } catch (error) {
-    console.error('Failed to load live auctions, falling back to mocked payload', error)
-    errorMessage = error?.message || 'Unknown database error'
+    res.status(500).json({
+      source: 'database',
+      error: error.message
+    })
   }
-
-  return res.json({ auctions, source, error: errorMessage })
 })
+
+// --------------------
+// Frontend
+// --------------------
 
 app.use(express.static(distPath))
 
