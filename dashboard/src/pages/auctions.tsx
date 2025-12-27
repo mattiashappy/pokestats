@@ -4,7 +4,6 @@ import { format, formatDistanceToNow, parseISO } from 'date-fns'
 import { ArrowUpDown, CalendarClock, ExternalLink, Loader2, Search, SlidersHorizontal } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
-import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
@@ -203,18 +202,28 @@ export function AuctionsPage(): JSX.Element {
         <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <Card className="border-slate-200/60 bg-white/60 shadow-sm dark:border-slate-900/60 dark:bg-slate-900/60">
             <CardContent className="p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Auctions</p>
+              <p className="mt-2 text-xl font-semibold leading-tight text-slate-900 dark:text-slate-50">
+                {auctionsCount.toLocaleString('sv-SE')}
+              </p>
+              <p className="text-xs text-slate-500">{filteredAndSorted.length.toLocaleString('sv-SE')} in view after filters</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200/60 bg-white/60 shadow-sm dark:border-slate-900/60 dark:bg-slate-900/60">
+            <CardContent className="p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total sales</p>
-              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">
+              <p className="mt-2 text-xl font-semibold leading-tight text-slate-900 dark:text-slate-50">
                 {currencyFormatter.format(stats.totalSales)}
               </p>
-              <p className="text-xs text-slate-500">Across {auctionsCount.toLocaleString('sv-SE')} auctions</p>
+              <p className="text-xs text-slate-500">Archive-wide sales volume</p>
             </CardContent>
           </Card>
 
           <Card className="border-slate-200/60 bg-white/60 shadow-sm dark:border-slate-900/60 dark:bg-slate-900/60">
             <CardContent className="p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total bids</p>
-              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">
+              <p className="mt-2 text-xl font-semibold leading-tight text-slate-900 dark:text-slate-50">
                 {stats.totalBids.toLocaleString('sv-SE')}
               </p>
               <p className="text-xs text-slate-500">Avg. {stats.averageBids.toFixed(1)} bids per auction</p>
@@ -224,7 +233,7 @@ export function AuctionsPage(): JSX.Element {
           <Card className="border-slate-200/60 bg-white/60 shadow-sm dark:border-slate-900/60 dark:bg-slate-900/60">
             <CardContent className="p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Average sale</p>
-              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">
+              <p className="mt-2 text-xl font-semibold leading-tight text-slate-900 dark:text-slate-50">
                 {currencyFormatter.format(stats.averagePrice || 0)}
               </p>
               <p className="text-xs text-slate-500">Median-like feel for quick sizing</p>
@@ -234,7 +243,7 @@ export function AuctionsPage(): JSX.Element {
           <Card className="border-slate-200/60 bg-white/60 shadow-sm dark:border-slate-900/60 dark:bg-slate-900/60">
             <CardContent className="p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Top sale</p>
-              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">
+              <p className="mt-2 text-xl font-semibold leading-tight text-slate-900 dark:text-slate-50">
                 {currencyFormatter.format(stats.highestSale || 0)}
               </p>
               <p className="text-xs text-slate-500">Highest realized price in the archive</p>
@@ -244,18 +253,10 @@ export function AuctionsPage(): JSX.Element {
           <Card className="border-slate-200/60 bg-white/60 shadow-sm dark:border-slate-900/60 dark:bg-slate-900/60">
             <CardContent className="p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Unique sellers</p>
-              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">
+              <p className="mt-2 text-xl font-semibold leading-tight text-slate-900 dark:text-slate-50">
                 {stats.uniqueSellers.toLocaleString('sv-SE')}
               </p>
               <p className="text-xs text-slate-500">Helps spot supply concentration</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-slate-200/60 bg-white/60 shadow-sm dark:border-slate-900/60 dark:bg-slate-900/60">
-            <CardContent className="p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">In view</p>
-              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">{filteredAndSorted.length}</p>
-              <p className="text-xs text-slate-500">After applying search and filters</p>
             </CardContent>
           </Card>
         </div>
@@ -390,22 +391,12 @@ export function AuctionsPage(): JSX.Element {
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <CardTitle>Auctions ({filteredAndSorted.length})</CardTitle>
-            <CardDescription>Each row reflects a completed Tradera listing with final prices and bid counts.</CardDescription>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <span className="inline-flex items-center gap-1 rounded-full bg-slate-800/70 px-3 py-1">
-              <Badge variant="secondary" className="px-2 py-0 text-[10px] font-semibold uppercase tracking-wide">ended</Badge>
-              Archive view
-            </span>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-end text-xs text-slate-400">
             <span className="inline-flex items-center gap-1 rounded-full bg-slate-800/70 px-3 py-1">
               <ArrowUpDown className="h-4 w-4" /> {sortOptions.find((option) => option.value === sortBy)?.label}
             </span>
           </div>
-        </CardHeader>
-        <CardContent>
           {isLoading ? (
             <div className="flex items-center gap-2 text-sm text-slate-300">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading auctions…
