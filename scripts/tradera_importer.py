@@ -304,18 +304,25 @@ def normalize_card_value(value: Optional[str]) -> str:
 
 
 def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
-    def attr_value(key: str) -> Optional[str]:
-        values = row.attributes.get(key, []) if row.attributes else []
-        return values[0] if values else None
+    def attr_value(*keys: str) -> Optional[str]:
+        if not row.attributes:
+            return None
 
-    raw_name = attr_value("Card name") or row.title or "Unknown card"
-    raw_set = attr_value("Series") or attr_value("Set")
+        lower_map = {k.lower(): v for k, v in row.attributes.items()}
+        for key in keys:
+            values = lower_map.get(key.lower()) or []
+            if values:
+                return values[0]
+        return None
+
+    raw_name = attr_value("card_name", "card name") or row.title or "Unknown card"
+    raw_set = attr_value("series", "set", "pokemon_set")
 
     return {
         "name": normalize_card_value(raw_name),
-        "era": attr_value("Era") or attr_value("Generation"),
+        "era": attr_value("pokemon_era", "era", "generation"),
         "set_name": normalize_card_value(raw_set) if raw_set else "unknown",
-        "card_number": attr_value("Card number"),
+        "card_number": attr_value("card_number", "card number"),
     }
 
 
