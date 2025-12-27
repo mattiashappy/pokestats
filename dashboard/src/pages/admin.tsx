@@ -10,7 +10,7 @@ import { Input } from '../components/ui/input'
 import { Button } from '../components/ui/button'
 import { registeredUsers } from '../data/users'
 import { useAdminSettings } from '../providers/admin-settings'
-import { fetchAuctions } from '../lib/api'
+import { fetchAuctionDiagnostics, fetchAuctions } from '../lib/api'
 import type { AuctionRecord } from '../types'
 
 export function AdminPage(): JSX.Element {
@@ -25,6 +25,7 @@ export function AdminPage(): JSX.Element {
   } = useQuery<AuctionRecord[]>({ queryKey: ['auctions'], queryFn: fetchAuctions })
   const [lastManualCheckAt, setLastManualCheckAt] = useState<string | null>(null)
   const [manualCheckNote, setManualCheckNote] = useState<string | null>(null)
+  const [manualCheckPending, setManualCheckPending] = useState(false)
 
   const totals = useMemo(() => {
     return registeredUsers.reduce(
@@ -65,6 +66,22 @@ export function AdminPage(): JSX.Element {
   const handleManualImport = async (): Promise<void> => {
     setManualCheckNote(null)
     setLastManualCheckAt(null)
+    setManualCheckPending(true)
+    try {
+      const diagnostics = await fetchAuctionDiagnostics()
+      const sourceLabel = diagnostics.source === 'database' ? 'database (live)' : 'mock fallback'
+      const count = diagnostics.auctions?.length ?? 0
+      const baseMessage = `Importer responded with ${count.toLocaleString('sv-SE')} auctions from ${sourceLabel}.`
+      const note = diagnostics.error
+        ? `${baseMessage} Database error: ${diagnostics.error}`
+        : baseMessage
+      setManualCheckNote(note)
+    } catch (error) {
+      console.error('Manual import check failed', error)
+      setManualCheckNote('The importer did not respond. Please verify credentials and the database connection.')
+    } finally {
+      setLastManualCheckAt(new Date().toISOString())
+      setManualCheckPending(false)
     try {
       const result = await refetchAuctions()
       const count = result.data?.length ?? 0
@@ -180,6 +197,14 @@ export function AdminPage(): JSX.Element {
                 Decide when to sweep ended auctions and make the plan visible to every user.
               </CardDescription>
             </div>
+            <Button
+              onClick={handleManualImport}
+              disabled={isFetching || manualCheckPending}
+              variant="secondary"
+              className="gap-2"
+            >
+              <UploadCloud className="h-4 w-4" />
+              {manualCheckPending ? 'Contacting importer…' : 'Import new'}
             <Button onClick={handleManualImport} disabled={isFetching} variant="secondary" className="gap-2">
               <UploadCloud className="h-4 w-4" />
               {isFetching ? 'Contacting importer…' : 'Import new'}
