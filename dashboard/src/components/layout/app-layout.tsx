@@ -1,15 +1,13 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { CreditCard, Home, LogOut, Settings, ShoppingBag, Sparkles, Shield } from 'lucide-react'
+import { CreditCard, Filter, LogOut, Settings, Shield, Table } from 'lucide-react'
 
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
-import { Input } from '../ui/input'
 import { useAuth } from '../../providers/auth'
 import { cn } from '../../lib/utils'
 
 const navLinks = [
-  { to: '/app', label: 'Overview', icon: Home },
-  { to: '/app/sales', label: 'Sales', icon: ShoppingBag },
+  { to: '/app/auctions', label: 'Auctions', icon: Table },
   { to: '/app/settings', label: 'Settings', icon: Settings },
   { to: '/app/admin', label: 'Admin', icon: Shield },
   { to: '/billing', label: 'Billing', icon: CreditCard }
@@ -28,10 +26,10 @@ export function AppLayout(): JSX.Element {
         <div className="mb-8 flex items-center justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-sm font-semibold text-sky-300">
-              <Sparkles className="h-4 w-4" />
-              PokéStats
+              <Filter className="h-4 w-4" />
+              Tradera scout
             </div>
-            <p className="text-xs text-slate-500">Tradera auctions preloaded</p>
+            <p className="text-xs text-slate-500">Auction intelligence workspace</p>
           </div>
           <Badge
             variant={
@@ -70,8 +68,8 @@ export function AppLayout(): JSX.Element {
         </nav>
 
         <div className="mt-6 space-y-2 text-xs text-slate-500">
-          <p className="font-semibold text-slate-400">Need help?</p>
-          <p>Stripe + session validation can be wired in later via the API gateway.</p>
+          <p className="font-semibold text-slate-400">Filtering is the product.</p>
+          <p>Saved views, alerts, and bidding links live here—no SaaS KPI clutter.</p>
         </div>
       </aside>
 
@@ -79,10 +77,7 @@ export function AppLayout(): JSX.Element {
         <header className="flex flex-wrap items-center gap-4 border-b border-slate-900/80 bg-slate-950/70 px-6 py-4">
           <div className="min-w-[200px] flex-1">
             <div className="text-xs uppercase tracking-wide text-slate-500">{location.pathname}</div>
-            <h1 className="text-lg font-semibold text-slate-50">PokéStats analytics</h1>
-          </div>
-          <div className="flex flex-1 items-center gap-3 lg:max-w-xl">
-            <Input placeholder="Search cards, sellers, or tags" className="w-full" />
+            <h1 className="text-lg font-semibold text-slate-50">Tradera auctions</h1>
           </div>
           <div className="flex items-center gap-2">
             {user?.role !== 'admin' ? (

@@ -4,10 +4,9 @@ import { AppLayout } from "./components/layout/app-layout"
 import { ProtectedRoute } from "./components/protected-route"
 import { BillingPage } from "./pages/billing"
 import { AdminPage } from "./pages/admin"
-import { DashboardPage } from "./pages/dashboard"
+import { AuctionsPage } from "./pages/auctions"
 import { LandingPage } from "./pages/landing"
 import { LoginPage } from "./pages/login"
-import { SalesPage } from "./pages/sales"
 import { SettingsPage } from "./pages/settings"
 import { SignupPage } from "./pages/signup"
 
@@ -21,8 +20,8 @@ function App(): JSX.Element {
       {/* Protected app routes – require active subscription */}
       <Route element={<ProtectedRoute requireSubscription />}>
         <Route element={<AppLayout />}>
-          <Route path="/app" element={<DashboardPage />} />
-          <Route path="/app/sales" element={<SalesPage />} />
+          <Route path="/app" element={<Navigate to="/app/auctions" replace />} />
+          <Route path="/app/auctions" element={<AuctionsPage />} />
           <Route path="/app/settings" element={<SettingsPage />} />
           <Route path="/app/admin" element={<AdminPage />} />
         </Route>
