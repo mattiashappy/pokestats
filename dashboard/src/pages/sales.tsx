@@ -10,6 +10,7 @@ import { Input } from '../components/ui/input'
 import { Select } from '../components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import type { SaleRecord } from '../types'
+import { useAdminSettings } from '../providers/admin-settings'
 
 async function fetchSales(): Promise<SaleRecord[]> {
   const response = await fetch('/api/sales')
@@ -21,6 +22,7 @@ async function fetchSales(): Promise<SaleRecord[]> {
 
 export function SalesPage(): JSX.Element {
   const { data, isLoading, error } = useQuery<SaleRecord[]>({ queryKey: ['sales'], queryFn: fetchSales })
+  const { importSettings } = useAdminSettings()
   const [search, setSearch] = useState('')
   const [language, setLanguage] = useState('All')
   const [condition, setCondition] = useState('All')
@@ -72,6 +74,28 @@ export function SalesPage(): JSX.Element {
           Save view
         </Button>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle>Next import window</CardTitle>
+            <CardDescription>Admin-chosen Tradera sweep time that all users can reference.</CardDescription>
+          </div>
+          <Badge variant="secondary" className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            Scheduled
+          </Badge>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-200">
+          <div>
+            <p className="text-slate-100">{format(new Date(importSettings.nextImportAt), 'PPpp')}</p>
+            <p className="text-xs text-slate-400">{importSettings.coverageLabel}</p>
+          </div>
+          <div className="rounded-lg bg-slate-900/60 px-4 py-2 text-xs text-slate-300">
+            Imported auctions will cover the full day prior to this run.
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

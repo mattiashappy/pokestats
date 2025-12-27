@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { CreditCard, Home, LogOut, Settings, ShoppingBag, Sparkles } from 'lucide-react'
+import { CreditCard, Home, LogOut, Settings, ShoppingBag, Sparkles, Shield } from 'lucide-react'
 
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
@@ -11,6 +11,7 @@ const navLinks = [
   { to: '/app', label: 'Overview', icon: Home },
   { to: '/app/sales', label: 'Sales', icon: ShoppingBag },
   { to: '/app/settings', label: 'Settings', icon: Settings },
+  { to: '/app/admin', label: 'Admin', icon: Shield },
   { to: '/billing', label: 'Billing', icon: CreditCard }
 ]
 
@@ -18,6 +19,8 @@ export function AppLayout(): JSX.Element {
   const { user, logout } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+
+  const filteredNavLinks = user?.role === 'admin' ? navLinks.filter((item) => item.to !== '/billing') : navLinks
 
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-50">
@@ -32,19 +35,21 @@ export function AppLayout(): JSX.Element {
           </div>
           <Badge
             variant={
-              user?.subscriptionStatus === 'active'
-                ? 'success'
-                : user?.subscriptionStatus === 'trialing'
-                  ? 'secondary'
-                  : 'warning'
+              user?.role === 'admin'
+                ? 'secondary'
+                : user?.subscriptionStatus === 'active'
+                  ? 'success'
+                  : user?.subscriptionStatus === 'trialing'
+                    ? 'secondary'
+                    : 'warning'
             }
           >
-            {user?.subscriptionStatus ?? 'guest'}
+            {user?.role === 'admin' ? 'admin (comped)' : user?.subscriptionStatus ?? 'guest'}
           </Badge>
         </div>
 
         <nav className="flex flex-1 flex-col gap-2">
-          {navLinks.map((item) => {
+          {filteredNavLinks.map((item) => {
             const Icon = item.icon
             return (
               <NavLink
@@ -80,10 +85,12 @@ export function AppLayout(): JSX.Element {
             <Input placeholder="Search cards, sellers, or tags" className="w-full" />
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => navigate('/billing')}>
-              <CreditCard className="mr-2 h-4 w-4" />
-              Billing
-            </Button>
+            {user?.role !== 'admin' ? (
+              <Button variant="ghost" size="sm" onClick={() => navigate('/billing')}>
+                <CreditCard className="mr-2 h-4 w-4" />
+                Billing
+              </Button>
+            ) : null}
             <Button variant="secondary" size="sm" onClick={logout}>
               <LogOut className="mr-2 h-4 w-4" />
               Logout
