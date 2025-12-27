@@ -180,6 +180,13 @@ def parse_float(el: Optional[ET.Element]) -> Optional[float]:
         return None
 
 
+def parse_bool(el: Optional[ET.Element]) -> Optional[bool]:
+    t = get_text(el)
+    if t is None:
+        return None
+    return t.lower() in {"1", "true", "yes"}
+
+
 def parse_dt(el: Optional[ET.Element]) -> Optional[datetime]:
     t = get_text(el)
     if not t:
@@ -260,6 +267,18 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
 
     category_id = parse_int(item_el.find("t:CategoryId", NS)) or CATEGORY_ID
 
+    attributes = parse_attributes(item_el)
+    extra_attributes = {
+        "has_bids": parse_bool(item_el.find("t:HasBids", NS)),
+        "is_ended": parse_bool(item_el.find("t:IsEnded", NS)),
+        "item_type": get_text(item_el.find("t:ItemType", NS)),
+        "next_bid": parse_int(item_el.find("t:NextBid", NS)),
+        "buy_it_now_price": parse_float(item_el.find("t:BuyItNowPrice", NS)),
+    }
+    for key, value in extra_attributes.items():
+        if value is not None:
+            attributes[key] = value
+
     return Row(
         item_id=item_id,
         category_id=category_id,
@@ -274,7 +293,7 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
         item_url=get_text(item_el.find("t:ItemUrl", NS)),
         thumbnail_url=get_text(item_el.find("t:ThumbnailLink", NS)),
         image_urls=parse_image_links(item_el),
-        attributes=parse_attributes(item_el),
+        attributes=attributes,
     )
 
 
@@ -285,18 +304,25 @@ def normalize_card_value(value: Optional[str]) -> str:
 
 
 def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
-    def attr_value(key: str) -> Optional[str]:
-        values = row.attributes.get(key, []) if row.attributes else []
-        return values[0] if values else None
+    def attr_value(*keys: str) -> Optional[str]:
+        if not row.attributes:
+            return None
 
-    raw_name = attr_value("Card name") or row.title or "Unknown card"
-    raw_set = attr_value("Series") or attr_value("Set")
+        lower_map = {k.lower(): v for k, v in row.attributes.items()}
+        for key in keys:
+            values = lower_map.get(key.lower()) or []
+            if values:
+                return values[0]
+        return None
+
+    raw_name = attr_value("card_name", "card name") or row.title or "Unknown card"
+    raw_set = attr_value("series", "set", "pokemon_set")
 
     return {
         "name": normalize_card_value(raw_name),
-        "era": attr_value("Era") or attr_value("Generation"),
+        "era": attr_value("pokemon_era", "era", "generation"),
         "set_name": normalize_card_value(raw_set) if raw_set else "unknown",
-        "card_number": attr_value("Card number"),
+        "card_number": attr_value("card_number", "card number"),
     }
 
 
