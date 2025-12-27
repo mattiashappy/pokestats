@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format, formatDistanceToNow, parseISO } from 'date-fns'
-import { ArrowUpDown, CalendarClock, ExternalLink, Loader2, Search, SlidersHorizontal } from 'lucide-react'
+import { ArrowUpDown, CalendarClock, ExternalLink, Loader2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { Button } from '../components/ui/button'
@@ -13,14 +13,6 @@ import type { AuctionRecord } from '../types'
 import { fetchAuctions } from '../lib/api'
 import { useAdminSettings } from '../providers/admin-settings'
 
-const endedWithinOptions = [
-  { label: 'Any time', value: 'any' },
-  { label: 'Last 24 hours', value: '24h' },
-  { label: 'Last 7 days', value: '7d' },
-  { label: 'Last 30 days', value: '30d' },
-  { label: 'Custom range', value: 'custom' }
-]
-
 const sortOptions = [
   { label: 'Ended most recently', value: 'endDesc' },
   { label: 'Highest final price', value: 'priceDesc' },
@@ -31,25 +23,31 @@ export function AuctionsPage(): JSX.Element {
   const { data, isLoading, error } = useQuery<AuctionRecord[]>({ queryKey: ['auctions'], queryFn: fetchAuctions })
   const { importSettings } = useAdminSettings()
 
-  const [search, setSearch] = useState('')
+  const [era, setEra] = useState<string>('all')
+  const [language, setLanguage] = useState<string>('all')
+  const [gradingCompany, setGradingCompany] = useState<string>('all')
+  const [grade, setGrade] = useState<string>('all')
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
-  const [endedWithin, setEndedWithin] = useState<string>('any')
-  const [customStart, setCustomStart] = useState('')
-  const [customEnd, setCustomEnd] = useState('')
-  const [condition, setCondition] = useState<string>('all')
-  const [seller, setSeller] = useState<string>('all')
-  const [minBids, setMinBids] = useState('')
-  const [maxBids, setMaxBids] = useState('')
   const [sortBy, setSortBy] = useState<string>('endDesc')
 
-  const conditions = useMemo(() => {
-    const unique = new Set<string>(data?.map((auction) => auction.condition) ?? [])
+  const eras = useMemo(() => {
+    const unique = new Set<string>(data?.map((auction) => auction.cardEra || 'Unknown era') ?? [])
     return ['all', ...Array.from(unique)]
   }, [data])
 
-  const sellers = useMemo(() => {
-    const unique = new Set<string>(data?.map((auction) => auction.seller) ?? [])
+  const languages = useMemo(() => {
+    const unique = new Set<string>(data?.map((auction) => auction.language || 'Unknown language') ?? [])
+    return ['all', ...Array.from(unique)]
+  }, [data])
+
+  const gradingCompanies = useMemo(() => {
+    const unique = new Set<string>(data?.map((auction) => auction.gradingCompany || 'Ungraded') ?? [])
+    return ['all', ...Array.from(unique)]
+  }, [data])
+
+  const grades = useMemo(() => {
+    const unique = new Set<string>(data?.map((auction) => auction.grade || 'Not graded') ?? [])
     return ['all', ...Array.from(unique)]
   }, [data])
 
@@ -98,56 +96,22 @@ export function AuctionsPage(): JSX.Element {
   const filteredAndSorted = useMemo(() => {
     if (!data) return []
 
-    const now = new Date()
-    const customStartDate = customStart ? new Date(customStart) : null
-    const customEndDate = customEnd ? new Date(customEnd) : null
-
     const filtered = data.filter((auction) => {
-      const auctionEnd = new Date(auction.endTime)
-
-      const matchesSearch =
-        !search ||
-        auction.title.toLowerCase().includes(search.toLowerCase()) ||
-        auction.cardName.toLowerCase().includes(search.toLowerCase()) ||
-        auction.seller.toLowerCase().includes(search.toLowerCase())
-
       const matchesPriceMin = minPrice ? auction.finalPrice >= Number(minPrice) : true
       const matchesPriceMax = maxPrice ? auction.finalPrice <= Number(maxPrice) : true
-
-      const matchesEndedWindow = (() => {
-        if (endedWithin === 'custom') {
-          const afterStart = customStartDate ? auctionEnd >= customStartDate : true
-          const beforeEnd = customEndDate ? auctionEnd <= customEndDate : true
-          return afterStart && beforeEnd
-        }
-
-        const thresholds: Record<string, number> = {
-          '24h': 24 * 60 * 60 * 1000,
-          '7d': 7 * 24 * 60 * 60 * 1000,
-          '30d': 30 * 24 * 60 * 60 * 1000
-        }
-
-        if (endedWithin in thresholds) {
-          return now.getTime() - auctionEnd.getTime() <= thresholds[endedWithin]
-        }
-
-        return true
-      })()
-
-      const matchesCondition = condition === 'all' || auction.condition === condition
-      const matchesSeller = seller === 'all' || auction.seller === seller
-      const matchesMinBids = minBids ? auction.bids >= Number(minBids) : true
-      const matchesMaxBids = maxBids ? auction.bids <= Number(maxBids) : true
+      const matchesEra = era === 'all' || (auction.cardEra || 'Unknown era') === era
+      const matchesLanguage = language === 'all' || (auction.language || 'Unknown language') === language
+      const matchesGradingCompany =
+        gradingCompany === 'all' || (auction.gradingCompany || 'Ungraded') === gradingCompany
+      const matchesGrade = grade === 'all' || (auction.grade || 'Not graded') === grade
 
       return (
-        matchesSearch &&
         matchesPriceMin &&
         matchesPriceMax &&
-        matchesEndedWindow &&
-        matchesCondition &&
-        matchesSeller &&
-        matchesMinBids &&
-        matchesMaxBids
+        matchesEra &&
+        matchesLanguage &&
+        matchesGradingCompany &&
+        matchesGrade
       )
     })
 
@@ -157,17 +121,13 @@ export function AuctionsPage(): JSX.Element {
       return new Date(b.endTime).getTime() - new Date(a.endTime).getTime()
     })
   }, [
-    condition,
-    customEnd,
-    customStart,
     data,
-    endedWithin,
-    maxBids,
     maxPrice,
-    minBids,
     minPrice,
-    search,
-    seller,
+    era,
+    language,
+    gradingCompany,
+    grade,
     sortBy
   ])
 
@@ -261,124 +221,119 @@ export function AuctionsPage(): JSX.Element {
           </Card>
         </div>
       </div>
-
       <Card>
-        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <CardTitle>Filters</CardTitle>
-            <CardDescription>
-              Search by title, seller, or card name. Filter by final price, bids, and when the auction ended.
-            </CardDescription>
-            <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">All filters apply to ended auctions only.</p>
+        <CardHeader className="space-y-4 border-b border-slate-200/70 pb-4 dark:border-slate-900/70">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Auction archive</p>
+              <CardTitle className="text-2xl font-semibold text-slate-900 dark:text-slate-50">Ended auctions</CardTitle>
+              <CardDescription>Filter the archive directly from the list with lightweight chips.</CardDescription>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-slate-700 dark:text-slate-300"
+              onClick={() => {
+                setEra('all')
+                setLanguage('all')
+                setGradingCompany('all')
+                setGrade('all')
+                setMinPrice('')
+                setMaxPrice('')
+                setSortBy('endDesc')
+              }}
+            >
+              Reset
+            </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-slate-700 dark:text-slate-300"
-            onClick={() => {
-              setSearch('')
-              setMinPrice('')
-              setMaxPrice('')
-              setEndedWithin('any')
-              setCustomStart('')
-              setCustomEnd('')
-              setCondition('all')
-              setSeller('all')
-              setMinBids('')
-              setMaxBids('')
-              setSortBy('endDesc')
-            }}
-          >
-            Reset
-          </Button>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-4">
-          <label className="md:col-span-2">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Search</span>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/70 p-3 shadow-sm dark:border-slate-900/70 dark:bg-slate-950/50">
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-slate-900 dark:bg-slate-900/70 dark:text-slate-100">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Era</span>
+              <Select
+                value={era}
+                onChange={(event) => setEra(event.target.value)}
+                className="h-9 w-36 border-none bg-transparent px-2 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+              >
+                {eras.map((option) => (
+                  <option key={option} value={option}>
+                    {option === 'all' ? 'All eras' : option}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-slate-900 dark:bg-slate-900/70 dark:text-slate-100">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Language</span>
+              <Select
+                value={language}
+                onChange={(event) => setLanguage(event.target.value)}
+                className="h-9 w-40 border-none bg-transparent px-2 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+              >
+                {languages.map((option) => (
+                  <option key={option} value={option}>
+                    {option === 'all' ? 'All languages' : option}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-slate-900 dark:bg-slate-900/70 dark:text-slate-100">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Grading co.</span>
+              <Select
+                value={gradingCompany}
+                onChange={(event) => setGradingCompany(event.target.value)}
+                className="h-9 w-44 border-none bg-transparent px-2 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+              >
+                {gradingCompanies.map((option) => (
+                  <option key={option} value={option}>
+                    {option === 'all' ? 'All companies' : option}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-slate-900 dark:bg-slate-900/70 dark:text-slate-100">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Grade</span>
+              <Select
+                value={grade}
+                onChange={(event) => setGrade(event.target.value)}
+                className="h-9 w-28 border-none bg-transparent px-2 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+              >
+                {grades.map((option) => (
+                  <option key={option} value={option}>
+                    {option === 'all' ? 'All grades' : option}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-slate-900 dark:bg-slate-900/70 dark:text-slate-100">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Price</span>
               <Input
-                placeholder="Title, card, or seller"
-                className="pl-10"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                value={minPrice}
+                onChange={(event) => setMinPrice(event.target.value)}
+                placeholder="Min"
+                inputMode="numeric"
+                className="h-9 w-20 border-none bg-transparent px-2 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+              />
+              <span className="text-xs text-slate-400">–</span>
+              <Input
+                value={maxPrice}
+                onChange={(event) => setMaxPrice(event.target.value)}
+                placeholder="Max"
+                inputMode="numeric"
+                className="h-9 w-20 border-none bg-transparent px-2 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
               />
             </div>
-          </label>
 
-          <label>
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Ended within</span>
-            <Select value={endedWithin} onChange={(event) => setEndedWithin(event.target.value)}>
-              {endedWithinOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          </label>
-
-          {endedWithin === 'custom' ? (
-            <div className="grid grid-cols-2 gap-3 md:col-span-2">
-              <label>
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Start date</span>
-                <Input type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} />
-              </label>
-              <label>
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">End date</span>
-                <Input type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} />
-              </label>
-            </div>
-          ) : null}
-
-          <div className="grid grid-cols-2 gap-3 md:col-span-2">
-            <label>
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Min final price (SEK)</span>
-              <Input value={minPrice} onChange={(event) => setMinPrice(event.target.value)} placeholder="0" />
-            </label>
-            <label>
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Max final price (SEK)</span>
-              <Input value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} placeholder="5000" />
-            </label>
-          </div>
-
-          <label>
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Condition</span>
-            <Select value={condition} onChange={(event) => setCondition(event.target.value)}>
-              {conditions.map((option) => (
-                <option key={option} value={option}>
-                  {option === 'all' ? 'All' : option}
-                </option>
-              ))}
-            </Select>
-          </label>
-
-          <label>
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Seller</span>
-            <Select value={seller} onChange={(event) => setSeller(event.target.value)}>
-              {sellers.map((option) => (
-                <option key={option} value={option}>
-                  {option === 'all' ? 'All sellers' : option}
-                </option>
-              ))}
-            </Select>
-          </label>
-
-          <div className="grid grid-cols-2 gap-3 md:col-span-2">
-            <label>
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Minimum bids</span>
-              <Input value={minBids} onChange={(event) => setMinBids(event.target.value)} placeholder="0" />
-            </label>
-            <label>
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Maximum bids</span>
-              <Input value={maxBids} onChange={(event) => setMaxBids(event.target.value)} placeholder="50" />
-            </label>
-          </div>
-
-          <label>
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Sort by</span>
-            <div className="relative">
-              <SlidersHorizontal className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
-              <Select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-slate-900 dark:bg-slate-900/70 dark:text-slate-100">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Sort</span>
+              <Select
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value)}
+                className="h-9 w-44 border-none bg-transparent px-2 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+              >
                 {sortOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
@@ -386,15 +341,16 @@ export function AuctionsPage(): JSX.Element {
                 ))}
               </Select>
             </div>
-          </label>
-        </CardContent>
-      </Card>
+          </div>
+        </CardHeader>
 
-      <Card>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-end text-xs text-slate-400">
-            <span className="inline-flex items-center gap-1 rounded-full bg-slate-800/70 px-3 py-1">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-slate-700 shadow-sm dark:bg-slate-900/60 dark:text-slate-200">
               <ArrowUpDown className="h-4 w-4" /> {sortOptions.find((option) => option.value === sortBy)?.label}
+            </span>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600 shadow-sm dark:bg-slate-900/60 dark:text-slate-200">
+              {filteredAndSorted.length.toLocaleString('sv-SE')} auctions in view
             </span>
           </div>
           {isLoading ? (
