@@ -1,9 +1,10 @@
-"""Daily importer for sold Pokémon card auctions from Tradera.
+"""
+Daily importer for sold Pokémon card auctions from Tradera.
 
-This script is designed to run from Heroku Scheduler at 02:00 local time
-(Europe/Stockholm). It fetches ended auctions with at least one bid from
-Tradera's SOAP SearchService v3 and upserts them into PostgreSQL. The importer
-is intentionally idempotent so reruns for the same day are safe.
+Runs from Heroku Scheduler (UTC). Script uses LOCAL_TIMEZONE/TZ (default Europe/Stockholm)
+to compute "yesterday" window and imports ended auctions with >= 1 bid.
+
+Idempotent via ON CONFLICT (item_id) DO UPDATE.
 """
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import psycopg2
 from dateutil import parser as date_parser
@@ -23,16 +24,16 @@ from zeep.transports import Transport
 
 # --- Configuration constants ---
 WSDL_URL = "https://api.tradera.com/v3/SearchService.asmx?WSDL"
-CATEGORY_ID = 1001337  # Pokémon cards -> Singles
-ITEMS_PER_PAGE = 500
-MAX_API_CALLS_PER_DAY = 100  # upper bound enforced via pagination guard
-DEFAULT_TIMEZONE = os.getenv("LOCAL_TIMEZONE", "Europe/Stockholm")
+CATEGORY_ID = int(os.getenv("TRADERA_CATEGORY_ID", "1001337"))  # Pokémon cards -> Singles
+ITEMS_PER_PAGE = int(os.getenv("ITEMS_PER_PAGE", "500"))
+MAX_API_CALLS_PER_DAY = int(os.getenv("MAX_PAGES", "100"))  # pagination guard
+
+# Prefer TZ (standard), fallback to LOCAL_TIMEZONE (your original), then Stockholm.
+DEFAULT_TIMEZONE = os.getenv("TZ") or os.getenv("LOCAL_TIMEZONE") or "Europe/Stockholm"
 
 
 @dataclass
 class TraderaItem:
-    """Normalized representation of a Tradera auction result."""
-
     item_id: int
     category_id: int
     end_date: datetime
@@ -69,22 +70,23 @@ class TraderaItem:
 
 
 class TraderaClient:
-    """Thin SOAP client wrapper around SearchService.SearchAdvanced."""
+    """SOAP client wrapper around SearchService.SearchAdvanced."""
 
-    def __init__(self, app_id: str, app_key: str, timeout: int = 30) -> None:
+    def __init__(self, app_id: str, app_key: str, timeout: int = 45) -> None:
         self.app_id = app_id
         self.app_key = app_key
+
         session = requests.Session()
         session.headers.update({"User-Agent": "pokestats-importer/1.0"})
         transport = Transport(session=session, timeout=timeout)
-        settings = Settings(strict=False)  # Be forgiving: API sometimes omits empty fields.
+        settings = Settings(strict=False)
+
         self.client = Client(WSDL_URL, transport=transport, settings=settings)
 
-    def search_page(self, page_number: int) -> dict:
-        """Fetch one search page sorted by end date descending.
+        # Build the correct SOAP header type from the WSDL
+        self.AuthHeaderType = self.client.get_type("ns0:AuthenticationHeader")
 
-        The request mirrors the API filters described in the business rules.
-        """
+    def search_page(self, page_number: int) -> dict:
         search_request = {
             "CategoryId": CATEGORY_ID,
             "ItemType": "Auction",
@@ -95,9 +97,11 @@ class TraderaClient:
             "ItemsPerPage": ITEMS_PER_PAGE,
         }
 
-        soap_headers = {"AppId": self.app_id, "AppKey": self.app_key}
+        auth_header = self.AuthHeaderType(AppId=self.app_id, AppKey=self.app_key)
+
         response = self.client.service.SearchAdvanced(
-            search_request, _soapheaders=soap_headers
+            search_request,
+            _soapheaders=[auth_header],  # IMPORTANT: correct header format for zeep
         )
         return helpers.serialize_object(response, target_cls=dict)
 
@@ -111,10 +115,8 @@ def _ensure_list(value) -> List:
 
 
 def parse_attributes(raw_attributes: Optional[dict]) -> Dict[str, List[str]]:
-    """Convert Tradera attribute list to {name: [values]} mapping."""
     if not raw_attributes:
         return {}
-
     attributes: Dict[str, List[str]] = {}
     raw_list = raw_attributes.get("Attribute") or []
     for attribute in _ensure_list(raw_list):
@@ -126,7 +128,6 @@ def parse_attributes(raw_attributes: Optional[dict]) -> Dict[str, List[str]]:
 
 
 def parse_image_links(raw_images: Optional[dict]) -> List[str]:
-    """Extract image URLs into a plain list."""
     if not raw_images:
         return []
     urls = raw_images.get("string")
@@ -134,6 +135,7 @@ def parse_image_links(raw_images: Optional[dict]) -> List[str]:
 
 
 def parse_tradera_item(raw_item: dict) -> TraderaItem:
+    # Normalize to UTC in DB
     end_date = date_parser.isoparse(str(raw_item.get("EndDate"))).astimezone(pytz.UTC)
     attributes = parse_attributes(raw_item.get("Attributes"))
     image_urls = parse_image_links(raw_item.get("ImageLinks"))
@@ -165,13 +167,6 @@ def load_env(name: str) -> str:
 
 
 def load_tradera_credentials() -> tuple[str, str]:
-    """Load Tradera SOAP credentials from Heroku config vars.
-
-    Uses the canonical `TRADERA_APP_ID`/`TRADERA_APP_KEY` variables and also
-    accepts `HEROKU_TRADERA_APP_ID`/`HEROKU_TRADERA_APP_KEY` as fallbacks to
-    match existing Heroku config naming.
-    """
-
     app_id = os.getenv("TRADERA_APP_ID") or os.getenv("HEROKU_TRADERA_APP_ID")
     app_key = os.getenv("TRADERA_APP_KEY") or os.getenv("HEROKU_TRADERA_APP_KEY")
 
@@ -180,50 +175,46 @@ def load_tradera_credentials() -> tuple[str, str]:
         missing.append("TRADERA_APP_ID")
     if not app_key:
         missing.append("TRADERA_APP_KEY")
-
     if missing:
-        raise RuntimeError(
-            "Missing required environment variable(s): " + ", ".join(missing)
-        )
+        raise RuntimeError("Missing required environment variable(s): " + ", ".join(missing))
 
     return app_id, app_key
 
 
-def calculate_yesterday_window(tz_name: str = DEFAULT_TIMEZONE) -> tuple[datetime, datetime]:
+def calculate_yesterday_window(tz_name: str = DEFAULT_TIMEZONE) -> Tuple[datetime, datetime]:
     tz = pytz.timezone(tz_name)
     now_local = datetime.now(tz)
-    yesterday_start = (now_local - timedelta(days=1)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-    yesterday_end = yesterday_start + timedelta(days=1)
+    today_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday_start = today_start - timedelta(days=1)
+    yesterday_end = today_start
     return yesterday_start, yesterday_end
 
 
 def filter_items_for_yesterday(items: Iterable[TraderaItem], tz_name: str) -> List[TraderaItem]:
     tz = pytz.timezone(tz_name)
-    yesterday_start, yesterday_end = calculate_yesterday_window(tz_name)
+    start, end = calculate_yesterday_window(tz_name)
 
     filtered: List[TraderaItem] = []
     for item in items:
         end_local = item.end_date.astimezone(tz)
-        if end_local >= yesterday_end:
-            # Ignore auctions that ended today; they will be picked up tomorrow.
-            continue
-        if end_local < yesterday_start:
-            # Older than yesterday -> used for pagination stop elsewhere.
-            continue
-        filtered.append(item)
+        if start <= end_local < end:
+            filtered.append(item)
     return filtered
 
 
-def should_stop_pagination(items: Iterable[TraderaItem], tz_name: str) -> bool:
+def should_stop_pagination(parsed_items: List[TraderaItem], tz_name: str) -> bool:
+    """
+    Stop when the OLDEST item on this page is older than yesterday_start.
+    Because results are EndDateDescending, next pages will only be older.
+    """
+    if not parsed_items:
+        return True
+
     tz = pytz.timezone(tz_name)
     yesterday_start, _ = calculate_yesterday_window(tz_name)
-    for item in items:
-        end_local = item.end_date.astimezone(tz)
-        if end_local < yesterday_start:
-            return True
-    return False
+
+    oldest_local = min(i.end_date.astimezone(tz) for i in parsed_items)
+    return oldest_local < yesterday_start
 
 
 def upsert_items(conn, items: List[TraderaItem]) -> None:
@@ -268,31 +259,26 @@ def log(msg: str) -> None:
 def run_import() -> None:
     app_id, app_key = load_tradera_credentials()
     database_url = load_env("DATABASE_URL")
-    max_pages = int(os.getenv("MAX_PAGES", str(MAX_API_CALLS_PER_DAY)))
     tz_name = DEFAULT_TIMEZONE
 
     client = TraderaClient(app_id, app_key)
 
     yesterday_start, yesterday_end = calculate_yesterday_window(tz_name)
-    log(
-        f"Importing sold auctions between {yesterday_start.isoformat()} and {yesterday_end.isoformat()} ({tz_name})"
-    )
+    log(f"Importing auctions ended between {yesterday_start.isoformat()} and {yesterday_end.isoformat()} ({tz_name})")
+    log(f"CategoryId={CATEGORY_ID}, ItemsPerPage={ITEMS_PER_PAGE}, MaxPages={MAX_API_CALLS_PER_DAY}")
 
     pages_fetched = 0
     items_scanned = 0
     items_imported = 0
 
-    stop = False
     page_number = 1
 
     with psycopg2.connect(database_url) as conn:
-        while not stop and page_number <= max_pages:
+        while page_number <= MAX_API_CALLS_PER_DAY:
             response = client.search_page(page_number)
             pages_fetched += 1
 
-            result_items = (((response or {}).get("SearchAdvancedResult") or {}).get("Items") or {}).get(
-                "SearchItem"
-            )
+            result_items = (((response or {}).get("SearchAdvancedResult") or {}).get("Items") or {}).get("SearchItem")
             raw_items = _ensure_list(result_items)
 
             if not raw_items:
@@ -302,36 +288,28 @@ def run_import() -> None:
             parsed_items = [parse_tradera_item(item) for item in raw_items]
             items_scanned += len(parsed_items)
 
-            if should_stop_pagination(parsed_items, tz_name):
-                stop = True
-
             filtered_items = filter_items_for_yesterday(parsed_items, tz_name)
             upsert_items(conn, filtered_items)
             items_imported += len(filtered_items)
 
-            log(
-                f"Page {page_number}: scanned {len(parsed_items)} items, imported {len(filtered_items)}"
-            )
+            log(f"Page {page_number}: scanned {len(parsed_items)} items, imported {len(filtered_items)}")
 
-            if stop:
-                log(
-                    "Detected items older than yesterday's window; stopping pagination after current page."
-                )
+            if should_stop_pagination(parsed_items, tz_name):
+                log("Oldest item on page is older than yesterday window; stopping pagination.")
                 break
 
             page_number += 1
 
-    log(
-        f"Finished. Pages fetched: {pages_fetched}, items scanned: {items_scanned}, items imported: {items_imported}"
-    )
+    log(f"Finished. Pages fetched: {pages_fetched}, items scanned: {items_scanned}, items imported: {items_imported}")
 
 
 def main() -> None:
     try:
         run_import()
-    except Exception as exc:  # noqa: BLE001 - we want visible failures in scheduler logs
+        sys.exit(0)  # IMPORTANT for scheduler
+    except Exception as exc:
         log(f"Import failed: {exc}")
-        raise
+        sys.exit(1)
 
 
 if __name__ == "__main__":
