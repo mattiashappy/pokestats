@@ -68,8 +68,8 @@ export function AdminPage(): JSX.Element {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Admin</p>
-          <h1 className="text-3xl font-bold text-slate-50">Control center</h1>
-          <p className="text-sm text-slate-400">Monitor registered users and steer the Tradera import cadence.</p>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Control center</h1>
+          <p className="text-sm text-slate-600 dark:text-slate-400">Monitor registered users and steer the Tradera import cadence.</p>
         </div>
         <Badge variant="secondary" className="inline-flex items-center gap-2">
           <Shield className="h-4 w-4" />
@@ -88,19 +88,19 @@ export function AdminPage(): JSX.Element {
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl bg-slate-900/60 p-3 text-sm text-slate-300">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Active</p>
-                <p className="text-2xl font-semibold text-emerald-200">{totals.active}</p>
-              </div>
-              <div className="rounded-xl bg-slate-900/60 p-3 text-sm text-slate-300">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Trialing</p>
-                <p className="text-2xl font-semibold text-sky-200">{totals.trialing}</p>
-              </div>
-              <div className="rounded-xl bg-slate-900/60 p-3 text-sm text-slate-300">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Inactive</p>
-                <p className="text-2xl font-semibold text-amber-200">{totals.inactive}</p>
-              </div>
+            <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Active</p>
+              <p className="text-2xl font-semibold text-emerald-600 dark:text-emerald-200">{totals.active}</p>
             </div>
+            <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Trialing</p>
+              <p className="text-2xl font-semibold text-sky-600 dark:text-sky-200">{totals.trialing}</p>
+            </div>
+            <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Inactive</p>
+              <p className="text-2xl font-semibold text-amber-600 dark:text-amber-200">{totals.inactive}</p>
+            </div>
+          </div>
 
             <div className="mt-4 overflow-hidden rounded-xl border border-slate-900/80">
               <Table>
@@ -152,10 +152,10 @@ export function AdminPage(): JSX.Element {
             <CardDescription>Decide when to sweep ended auctions and make the plan visible to every user.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-lg border border-slate-900/70 bg-slate-900/50 p-3 text-sm text-slate-200">
-              <p className="font-semibold text-slate-100">Next import</p>
-              <p className="text-slate-300">{format(new Date(importSettings.nextImportAt), 'PPpp')}</p>
-              <p className="text-xs text-slate-400">{importSettings.coverageLabel}</p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-900/70 dark:bg-slate-900/50 dark:text-slate-200">
+              <p className="font-semibold text-slate-800 dark:text-slate-100">Next import</p>
+              <p className="text-slate-700 dark:text-slate-300">{format(new Date(importSettings.nextImportAt), 'PPpp')}</p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">{importSettings.coverageLabel}</p>
             </div>
 
             <form onSubmit={handleSubmit} className="grid gap-3 sm:grid-cols-[1fr_auto]">
@@ -172,7 +172,7 @@ export function AdminPage(): JSX.Element {
               </Button>
             </form>
 
-            <div className="flex items-start gap-3 rounded-lg bg-slate-900/60 p-3 text-xs text-slate-300">
+            <div className="flex items-start gap-3 rounded-lg bg-slate-100 p-3 text-xs text-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
               <Users className="mt-0.5 h-4 w-4 text-emerald-300" />
               <p>
                 Once saved, the import window is broadcast across the app so teammates know when the Tradera sweep will run and
@@ -197,26 +197,26 @@ export function AdminPage(): JSX.Element {
           </Badge>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="rounded-lg bg-slate-900/60 p-3 text-sm text-slate-200">
+          <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
             <p className="text-xs uppercase tracking-wide text-slate-500">Last import run</p>
-            <p className="text-base font-semibold text-slate-50">{formattedLastImport}</p>
+            <p className="text-base font-semibold text-slate-900 dark:text-slate-50">{formattedLastImport}</p>
           </div>
-          <div className="rounded-lg bg-slate-900/60 p-3 text-sm text-slate-200">
+          <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
             <p className="text-xs uppercase tracking-wide text-slate-500">Auctions imported</p>
-            <p className="text-base font-semibold text-slate-50">{importSummary.importedCount.toLocaleString('sv-SE')}</p>
+            <p className="text-base font-semibold text-slate-900 dark:text-slate-50">{importSummary.importedCount.toLocaleString('sv-SE')}</p>
           </div>
-          <div className="rounded-lg bg-slate-900/60 p-3 text-sm text-slate-200">
+          <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
             <p className="text-xs uppercase tracking-wide text-slate-500">Date range covered</p>
-            <p className="text-base font-semibold text-slate-50">{formattedCoverageRange}</p>
-            <p className="text-xs text-slate-400">{importSettings.coverageLabel}</p>
+            <p className="text-base font-semibold text-slate-900 dark:text-slate-50">{formattedCoverageRange}</p>
+            <p className="text-xs text-slate-600 dark:text-slate-400">{importSettings.coverageLabel}</p>
           </div>
-          <div className="rounded-lg bg-slate-900/60 p-3 text-sm text-slate-200">
+          <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
             <p className="text-xs uppercase tracking-wide text-slate-500">Oldest auction in database</p>
-            <p className="text-base font-semibold text-slate-50">{formattedOldest}</p>
+            <p className="text-base font-semibold text-slate-900 dark:text-slate-50">{formattedOldest}</p>
           </div>
-          <div className="rounded-lg bg-slate-900/60 p-3 text-sm text-slate-200">
+          <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
             <p className="text-xs uppercase tracking-wide text-slate-500">Newest auction in database</p>
-            <p className="text-base font-semibold text-slate-50">{formattedNewest}</p>
+            <p className="text-base font-semibold text-slate-900 dark:text-slate-50">{formattedNewest}</p>
           </div>
         </CardContent>
       </Card>

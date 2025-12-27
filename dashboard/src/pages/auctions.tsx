@@ -159,14 +159,14 @@ export function AuctionsPage(): JSX.Element {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Auctions</p>
-          <h1 className="text-3xl font-bold text-slate-50">Tradera ended auctions</h1>
-          <p className="max-w-2xl text-sm text-slate-400">
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Tradera ended auctions</h1>
+          <p className="max-w-2xl text-sm text-slate-600 dark:text-slate-400">
             Browse and filter ended Tradera auctions imported after completion. Live auctions are not tracked.
           </p>
         </div>
         {lastUpdatedLabel ? (
-          <div className="flex items-center gap-2 rounded-xl border border-slate-900/70 bg-slate-900/60 px-3 py-2 text-xs text-slate-300">
-            <CalendarClock className="h-4 w-4 text-sky-300" />
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-900/70 dark:bg-slate-900/60 dark:text-slate-300">
+            <CalendarClock className="h-4 w-4 text-sky-600 dark:text-sky-300" />
             <span>{lastUpdatedLabel}</span>
           </div>
         ) : null}
@@ -179,12 +179,12 @@ export function AuctionsPage(): JSX.Element {
             <CardDescription>
               Search by title, seller, or card name. Filter by final price, bids, and when the auction ended.
             </CardDescription>
-            <p className="mt-2 text-xs text-slate-400">All filters apply to ended auctions only.</p>
+            <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">All filters apply to ended auctions only.</p>
           </div>
           <Button
             variant="ghost"
             size="sm"
-            className="text-slate-300"
+            className="text-slate-700 dark:text-slate-300"
             onClick={() => {
               setSearch('')
               setMinPrice('')
@@ -206,9 +206,9 @@ export function AuctionsPage(): JSX.Element {
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-4">
           <label className="md:col-span-2">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Search</span>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Search</span>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
               <Input
                 placeholder="Title, card, or seller"
                 className="pl-10"
@@ -219,7 +219,7 @@ export function AuctionsPage(): JSX.Element {
           </label>
 
           <label>
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Ended within</span>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Ended within</span>
             <Select value={endedWithin} onChange={(event) => setEndedWithin(event.target.value)}>
               {endedWithinOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -232,11 +232,11 @@ export function AuctionsPage(): JSX.Element {
           {endedWithin === 'custom' ? (
             <div className="grid grid-cols-2 gap-3 md:col-span-2">
               <label>
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Start date</span>
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Start date</span>
                 <Input type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} />
               </label>
               <label>
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">End date</span>
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">End date</span>
                 <Input type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} />
               </label>
             </div>
@@ -244,17 +244,17 @@ export function AuctionsPage(): JSX.Element {
 
           <div className="grid grid-cols-2 gap-3 md:col-span-2">
             <label>
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Min final price (SEK)</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Min final price (SEK)</span>
               <Input value={minPrice} onChange={(event) => setMinPrice(event.target.value)} placeholder="0" />
             </label>
             <label>
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Max final price (SEK)</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Max final price (SEK)</span>
               <Input value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} placeholder="5000" />
             </label>
           </div>
 
           <label>
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Condition</span>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Condition</span>
             <Select value={condition} onChange={(event) => setCondition(event.target.value)}>
               {conditions.map((option) => (
                 <option key={option} value={option}>
@@ -265,7 +265,7 @@ export function AuctionsPage(): JSX.Element {
           </label>
 
           <label>
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Seller</span>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Seller</span>
             <Select value={seller} onChange={(event) => setSeller(event.target.value)}>
               {sellers.map((option) => (
                 <option key={option} value={option}>
@@ -276,7 +276,7 @@ export function AuctionsPage(): JSX.Element {
           </label>
 
           <label>
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Category / set</span>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Category / set</span>
             <Select value={category} onChange={(event) => setCategory(event.target.value)}>
               {categories.map((option) => (
                 <option key={option} value={option}>
@@ -287,7 +287,7 @@ export function AuctionsPage(): JSX.Element {
           </label>
 
           <label>
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Location</span>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Location</span>
             <Select value={location} onChange={(event) => setLocation(event.target.value)}>
               {locations.map((option) => (
                 <option key={option} value={option}>
@@ -299,19 +299,19 @@ export function AuctionsPage(): JSX.Element {
 
           <div className="grid grid-cols-2 gap-3 md:col-span-2">
             <label>
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Minimum bids</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Minimum bids</span>
               <Input value={minBids} onChange={(event) => setMinBids(event.target.value)} placeholder="0" />
             </label>
             <label>
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Maximum bids</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Maximum bids</span>
               <Input value={maxBids} onChange={(event) => setMaxBids(event.target.value)} placeholder="50" />
             </label>
           </div>
 
           <label>
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Sort by</span>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Sort by</span>
             <div className="relative">
-              <SlidersHorizontal className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <SlidersHorizontal className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
               <Select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
                 {sortOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -367,34 +367,34 @@ export function AuctionsPage(): JSX.Element {
                 <TableBody>
                   {filteredAndSorted.map((auction) => (
                     <TableRow key={auction.id}>
-                      <TableCell className="font-semibold text-slate-100">
+                      <TableCell className="font-semibold text-slate-900 dark:text-slate-100">
                         <div className="flex items-center gap-2">
                           <span>{auction.title}</span>
                           <Badge
                             variant="outline"
-                            className="border-emerald-500/60 bg-emerald-500/10 text-[10px] font-semibold uppercase tracking-wide text-emerald-200"
+                            className="border-emerald-200 bg-emerald-50 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/60 dark:bg-emerald-500/10 dark:text-emerald-200"
                           >
                             Ended
                           </Badge>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="text-slate-100">{auction.cardName}</div>
-                        <div className="text-xs text-slate-400">{auction.category}</div>
+                        <div className="text-slate-900 dark:text-slate-100">{auction.cardName}</div>
+                        <div className="text-xs text-slate-600 dark:text-slate-400">{auction.category}</div>
                       </TableCell>
                       <TableCell>
-                        <div className="text-slate-100">{auction.seller}</div>
+                        <div className="text-slate-900 dark:text-slate-100">{auction.seller}</div>
                         <Badge variant={auction.sellerType === 'trusted' ? 'success' : 'secondary'} className="mt-1 capitalize">
                           {auction.sellerType}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right text-slate-100">
+                      <TableCell className="text-right text-slate-900 dark:text-slate-100">
                         {new Intl.NumberFormat('sv-SE', { style: 'currency', currency: auction.currency }).format(auction.finalPrice)}
                       </TableCell>
                       <TableCell className="text-center">{auction.bids}</TableCell>
                       <TableCell>
-                        <div className="text-slate-100">{new Date(auction.endTime).toLocaleString()}</div>
-                        <div className="text-xs text-slate-400">{formatDistanceToNow(parseISO(auction.endTime), { addSuffix: true })}</div>
+                        <div className="text-slate-900 dark:text-slate-100">{new Date(auction.endTime).toLocaleString()}</div>
+                        <div className="text-xs text-slate-600 dark:text-slate-400">{formatDistanceToNow(parseISO(auction.endTime), { addSuffix: true })}</div>
                       </TableCell>
                       <TableCell>{auction.condition}</TableCell>
                       <TableCell>{auction.category}</TableCell>

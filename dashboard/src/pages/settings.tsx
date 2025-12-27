@@ -36,11 +36,11 @@ export function SettingsPage(): JSX.Element {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Settings</p>
-          <h1 className="text-3xl font-bold text-slate-50">Profile</h1>
-          <p className="text-sm text-slate-400">Update mock user info and preview subscription toggles.</p>
-        </div>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Settings</p>
+        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Profile</h1>
+        <p className="text-sm text-slate-600 dark:text-slate-400">Update mock user info and preview subscription toggles.</p>
+      </div>
         <Badge
           variant={
             user?.subscriptionStatus === 'active'

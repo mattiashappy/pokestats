@@ -6,7 +6,7 @@ function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>): JS
   return (
     <div
       className={cn(
-        'rounded-lg border border-slate-800 bg-slate-900/60 text-slate-100 shadow-card backdrop-blur-sm',
+        'rounded-lg border border-slate-200 bg-white text-slate-900 shadow-card backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100',
         className
       )}
       {...props}
@@ -15,7 +15,12 @@ function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>): JS
 }
 
 function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>): JSX.Element {
-  return <div className={cn('flex flex-col gap-1.5 border-b border-slate-800 p-4', className)} {...props} />
+  return (
+    <div
+      className={cn('flex flex-col gap-1.5 border-b border-slate-200 p-4 dark:border-slate-800', className)}
+      {...props}
+    />
+  )
 }
 
 function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>): JSX.Element {
@@ -23,7 +28,7 @@ function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElem
 }
 
 function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>): JSX.Element {
-  return <p className={cn('text-sm text-slate-400', className)} {...props} />
+  return <p className={cn('text-sm text-slate-600 dark:text-slate-400', className)} {...props} />
 }
 
 function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>): JSX.Element {
@@ -31,7 +36,7 @@ function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
 }
 
 function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>): JSX.Element {
-  return <div className={cn('border-t border-slate-800 p-4', className)} {...props} />
+  return <div className={cn('border-t border-slate-200 p-4 dark:border-slate-800', className)} {...props} />
 }
 
 export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
