@@ -77,6 +77,7 @@ export function AdminPage(): JSX.Element {
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Billing status</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Seats</TableHead>
                     <TableHead>Role</TableHead>
                   </TableRow>
@@ -97,6 +98,7 @@ export function AdminPage(): JSX.Element {
                           }
                         >
                           {user.billingPlan === 'comped' ? 'comped (admin)' : user.subscription}
+                          {user.subscription}
                         </Badge>
                       </TableCell>
                       <TableCell>{user.seats}</TableCell>
