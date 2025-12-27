@@ -449,53 +449,59 @@ export function AuctionsPage(): JSX.Element {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredAndSorted.map((auction) => (
-                    <TableRow key={auction.id}>
-                      <TableCell className="w-24">
-                        <Link to={`/cards/${auction.cardId}`} className="block overflow-hidden rounded-md border border-slate-200 dark:border-slate-800">
-                          {auction.thumbnail ? (
-                            <img src={auction.thumbnail} alt={auction.cardName} className="h-16 w-full object-cover" />
-                          ) : (
-                            <div className="flex h-16 w-full items-center justify-center bg-slate-100 text-xs text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
-                              No image
+                  {filteredAndSorted.map((auction) => {
+                    const hasKnownSetName = auction.cardSetName && auction.cardSetName.toLowerCase() !== 'unknown'
+
+                    return (
+                      <TableRow key={auction.id}>
+                        <TableCell className="w-24">
+                          <Link to={`/cards/${auction.cardId}`} className="block overflow-hidden rounded-md border border-slate-200 dark:border-slate-800">
+                            {auction.thumbnail ? (
+                              <img src={auction.thumbnail} alt={auction.cardName} className="h-16 w-full object-cover" />
+                            ) : (
+                              <div className="flex h-16 w-full items-center justify-center bg-slate-100 text-xs text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
+                                No image
+                              </div>
+                            )}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="font-semibold text-slate-900 dark:text-slate-100">
+                          <div className="flex items-center gap-2">
+                            <div>
+                              <Link to={`/cards/${auction.cardId}`} className="text-slate-900 hover:text-sky-600 dark:text-slate-100 dark:hover:text-sky-300">
+                                {auction.cardName}
+                              </Link>
+                              {auction.cardName !== auction.title ? (
+                                <div className="text-xs font-normal text-slate-600 dark:text-slate-400">{auction.title}</div>
+                              ) : null}
+                              {hasKnownSetName ? (
+                                <div className="text-xs text-slate-500 dark:text-slate-400">Set: {auction.cardSetName}</div>
+                              ) : null}
                             </div>
-                          )}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="font-semibold text-slate-900 dark:text-slate-100">
-                        <div className="flex items-center gap-2">
-                          <div>
-                            <Link to={`/cards/${auction.cardId}`} className="text-slate-900 hover:text-sky-600 dark:text-slate-100 dark:hover:text-sky-300">
-                              {auction.cardName}
-                            </Link>
-                            {auction.cardName !== auction.title ? (
-                              <div className="text-xs font-normal text-slate-600 dark:text-slate-400">{auction.title}</div>
-                            ) : null}
-                            <div className="text-xs text-slate-500 dark:text-slate-400">Set: {auction.cardSetName}</div>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>{auction.cardEra || 'Unknown era'}</TableCell>
-                      <TableCell className="text-right text-slate-900 dark:text-slate-100">
-                        {currencyFormatter.format(auction.finalPrice)}
-                      </TableCell>
-                      <TableCell className="text-center">{auction.bids}</TableCell>
-                      <TableCell>
-                        <div className="text-slate-900 dark:text-slate-100">{new Date(auction.endTime).toLocaleString()}</div>
-                        <div className="text-xs text-slate-600 dark:text-slate-400">{formatDistanceToNow(parseISO(auction.endTime), { addSuffix: true })}</div>
-                      </TableCell>
-                      <TableCell>
-                        <a
-                          href={auction.url}
-                          className="inline-flex items-center gap-1 text-sky-300 hover:text-sky-200"
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          View <ExternalLink className="h-3 w-3" />
-                        </a>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                        <TableCell>{auction.cardEra || 'Unknown era'}</TableCell>
+                        <TableCell className="text-right text-slate-900 dark:text-slate-100">
+                          {currencyFormatter.format(auction.finalPrice)}
+                        </TableCell>
+                        <TableCell className="text-center">{auction.bids}</TableCell>
+                        <TableCell>
+                          <div className="text-slate-900 dark:text-slate-100">{new Date(auction.endTime).toLocaleString()}</div>
+                          <div className="text-xs text-slate-600 dark:text-slate-400">{formatDistanceToNow(parseISO(auction.endTime), { addSuffix: true })}</div>
+                        </TableCell>
+                        <TableCell>
+                          <a
+                            href={auction.url}
+                            className="inline-flex items-center gap-1 text-sky-300 hover:text-sky-200"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            View <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>
