@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { CreditCard, Home, LogOut, Settings, ShoppingBag, Sparkles } from 'lucide-react'
+import { CreditCard, Home, LogOut, Settings, ShoppingBag, Sparkles, Shield } from 'lucide-react'
 
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
@@ -11,6 +11,7 @@ const navLinks = [
   { to: '/app', label: 'Overview', icon: Home },
   { to: '/app/sales', label: 'Sales', icon: ShoppingBag },
   { to: '/app/settings', label: 'Settings', icon: Settings },
+  { to: '/app/admin', label: 'Admin', icon: Shield },
   { to: '/billing', label: 'Billing', icon: CreditCard }
 ]
 
