@@ -104,7 +104,7 @@ class TraderaClient:
             "ItemType": "Auction",
             "ItemStatus": "Ended",
             "OrderBy": "EndDateDescending",
-            "BidsMinimum": 1,
+            "BidsMinimum": 0,
             "PageNumber": page_number,
             "ItemsPerPage": ITEMS_PER_PAGE,
 
