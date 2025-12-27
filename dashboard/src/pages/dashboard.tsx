@@ -24,8 +24,8 @@ export function DashboardPage(): JSX.Element {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dashboard</p>
-          <h1 className="text-3xl font-bold text-slate-50">PokéStats overview</h1>
-          <p className="max-w-2xl text-sm text-slate-400">
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">PokéStats overview</h1>
+          <p className="max-w-2xl text-sm text-slate-600 dark:text-slate-400">
             SaaS skeleton with metrics, charts, and nav backed by pre-imported Tradera auctions so stakeholders see live-looking
             data on day one.
           </p>
@@ -51,7 +51,7 @@ export function DashboardPage(): JSX.Element {
             </div>
             <Badge variant="success">+12% vs last week</Badge>
           </CardHeader>
-          <CardContent className="text-sm text-slate-300">Stripe hooks can replace this placeholder callout.</CardContent>
+          <CardContent className="text-sm text-slate-600 dark:text-slate-300">Stripe hooks can replace this placeholder callout.</CardContent>
         </Card>
 
         <Card>
@@ -62,7 +62,7 @@ export function DashboardPage(): JSX.Element {
             </div>
             <Badge variant="secondary">3 teams</Badge>
           </CardHeader>
-          <CardContent className="text-sm text-slate-300">User records will live in Postgres once the real auth layer lands.</CardContent>
+          <CardContent className="text-sm text-slate-600 dark:text-slate-300">User records will live in Postgres once the real auth layer lands.</CardContent>
         </Card>
 
         <Card>
@@ -73,7 +73,7 @@ export function DashboardPage(): JSX.Element {
             </div>
             <ShieldCheck className="h-5 w-5 text-emerald-300" />
           </CardHeader>
-          <CardContent className="text-sm text-slate-300">Health endpoint exposed at /api/health for readiness checks.</CardContent>
+          <CardContent className="text-sm text-slate-600 dark:text-slate-300">Health endpoint exposed at /api/health for readiness checks.</CardContent>
         </Card>
       </div>
 
@@ -85,12 +85,12 @@ export function DashboardPage(): JSX.Element {
           </div>
           <Badge variant="secondary">Yesterday&apos;s auctions</Badge>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-200">
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-700 dark:text-slate-200">
           <div>
-            <p className="text-lg font-semibold text-slate-50">{new Date(importSettings.nextImportAt).toLocaleString()}</p>
-            <p className="text-xs text-slate-400">{importSettings.coverageLabel}</p>
+            <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">{new Date(importSettings.nextImportAt).toLocaleString()}</p>
+            <p className="text-xs text-slate-600 dark:text-slate-400">{importSettings.coverageLabel}</p>
           </div>
-          <div className="rounded-lg bg-slate-900/60 px-4 py-2 text-xs text-slate-300">
+          <div className="rounded-lg bg-slate-100 px-4 py-2 text-xs text-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
             Admins can change the run time to resync ended auctions for the previous day.
           </div>
         </CardContent>

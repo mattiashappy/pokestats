@@ -6,15 +6,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 
 export function LandingPage(): JSX.Element {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-50">
+    <div className="min-h-screen bg-white text-slate-900 dark:bg-gradient-to-b dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 dark:text-slate-50">
       <div className="mx-auto flex max-w-5xl flex-col gap-10 px-6 py-16">
         <header className="space-y-6 text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-200">
+          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-700 dark:border-slate-800 dark:bg-slate-900 dark:text-sky-200">
             <Sparkles className="h-4 w-4" />
             PokéStats · Tradera feed live
           </div>
           <h1 className="text-4xl font-bold leading-tight md:text-5xl">See Pokémon auctions without any setup.</h1>
-          <p className="mx-auto max-w-2xl text-lg text-slate-300">
+          <p className="mx-auto max-w-2xl text-lg text-slate-600 dark:text-slate-300">
             Data from Tradera is already imported so prospects land on real listings. Start with a 14-day trial that rolls into
             $7/mo once you keep access.
           </p>
@@ -32,36 +32,36 @@ export function LandingPage(): JSX.Element {
         </header>
 
         <div className="grid gap-4 md:grid-cols-3">
-          <Card className="bg-slate-900/70">
+          <Card>
             <CardHeader>
               <CardTitle>App shell</CardTitle>
               <CardDescription>Sidebar navigation, protected routes, and SPA routing ready for Heroku.</CardDescription>
             </CardHeader>
-            <CardContent className="text-sm text-slate-300">Shadcn/ui styling with Tailwind tokens for a SaaS look.</CardContent>
+            <CardContent className="text-sm text-slate-600 dark:text-slate-300">Shadcn/ui styling with Tailwind tokens for a SaaS look.</CardContent>
           </Card>
-          <Card className="bg-slate-900/70">
+          <Card>
             <CardHeader>
               <CardTitle>Trial + billing</CardTitle>
               <CardDescription>Stripe-ready code paths with card capture and a 14-day trial.</CardDescription>
             </CardHeader>
-            <CardContent className="text-sm text-slate-300">
+            <CardContent className="text-sm text-slate-600 dark:text-slate-300">
               Start with a free trial, then roll into $7/mo unless you cancel.
             </CardContent>
           </Card>
-          <Card className="bg-slate-900/70">
+          <Card>
             <CardHeader>
               <CardTitle>Future-proof</CardTitle>
               <CardDescription>API is already seeded with Tradera auctions.</CardDescription>
             </CardHeader>
-            <CardContent className="text-sm text-slate-300">React Query wired to /api/sales with real auctions baked in.</CardContent>
+            <CardContent className="text-sm text-slate-600 dark:text-slate-300">React Query wired to /api/sales with real auctions baked in.</CardContent>
           </Card>
         </div>
 
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-6 text-center">
+        <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center dark:border-slate-800 dark:bg-slate-900/70">
           <div className="flex flex-col items-center gap-3">
-            <ShieldCheck className="h-10 w-10 text-emerald-400" />
-            <p className="text-lg font-semibold text-slate-100">SPA routing resilient to Heroku refreshes.</p>
-            <p className="max-w-3xl text-slate-400">
+            <ShieldCheck className="h-10 w-10 text-emerald-500 dark:text-emerald-400" />
+            <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">SPA routing resilient to Heroku refreshes.</p>
+            <p className="max-w-3xl text-slate-600 dark:text-slate-400">
               Express serves the Vite build with a catch-all fallback, plus a health endpoint for uptime checks.
             </p>
           </div>

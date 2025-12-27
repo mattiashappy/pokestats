@@ -39,11 +39,11 @@ export function LoginPage(): JSX.Element {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 px-4 py-12">
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12 dark:bg-gradient-to-b dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
       <div className="w-full max-w-md">
-        <Card className="border-slate-800 bg-slate-900/80">
+        <Card>
           <CardHeader className="space-y-2 text-center">
-            <div className="mx-auto inline-flex items-center gap-2 rounded-full bg-slate-800/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-200">
+            <div className="mx-auto inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-700 dark:bg-slate-800/60 dark:text-sky-200">
               <LockKeyhole className="h-4 w-4" />
               Login required
             </div>
@@ -62,16 +62,16 @@ export function LoginPage(): JSX.Element {
                 <Input id="password" type="password" autoComplete="current-password" {...register('password')} />
                 {errors.password ? <p className="text-xs text-rose-400">{errors.password.message}</p> : null}
               </div>
-              <p className="text-xs text-slate-400">Demo auth stores a session locally. Replace with OAuth/Clerk later.</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Demo auth stores a session locally. Replace with OAuth/Clerk later.</p>
             </CardContent>
             <CardFooter className="flex flex-col gap-3">
               <Button type="submit" className="w-full" disabled={isSubmitting}>
                 {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Log in
               </Button>
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-slate-600 dark:text-slate-400">
                 Need an account?{' '}
-                <Link to="/signup" className="font-semibold text-sky-300">
+                <Link to="/signup" className="font-semibold text-sky-700 dark:text-sky-300">
                   Sign up
                 </Link>
               </p>

@@ -25,8 +25,8 @@ export function BillingPage(): JSX.Element {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Billing</p>
-            <h1 className="text-3xl font-bold text-slate-50">Admin billing overview</h1>
-            <p className="text-sm text-slate-400">
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Admin billing overview</h1>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
               Admin accounts are comped and do not require payment. Use this view to keep tabs on everyone else&apos;s billing status.
             </p>
           </div>
@@ -72,8 +72,8 @@ export function BillingPage(): JSX.Element {
               <TableBody>
                 {registeredUsers.map((account) => (
                   <TableRow key={account.email}>
-                    <TableCell className="font-semibold text-slate-100">{account.name}</TableCell>
-                    <TableCell className="text-slate-300">{account.email}</TableCell>
+                    <TableCell className="font-semibold text-slate-900 dark:text-slate-100">{account.name}</TableCell>
+                    <TableCell className="text-slate-600 dark:text-slate-300">{account.email}</TableCell>
                     <TableCell>
                       <Badge
                         variant={
@@ -151,8 +151,8 @@ export function BillingPage(): JSX.Element {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Billing</p>
-          <h1 className="text-3xl font-bold text-slate-50">Subscription</h1>
-          <p className="text-sm text-slate-400">Cards are required to unlock the 14-day trial. $7/mo afterward.</p>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Subscription</h1>
+          <p className="text-sm text-slate-600 dark:text-slate-400">Cards are required to unlock the 14-day trial. $7/mo afterward.</p>
         </div>
         <Badge
           variant={
@@ -168,7 +168,7 @@ export function BillingPage(): JSX.Element {
         </Badge>
       </div>
 
-      <Card className="bg-slate-900/70">
+      <Card>
         <CardHeader className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <CardTitle className="flex items-center gap-2">
