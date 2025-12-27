@@ -28,6 +28,7 @@ let hasCheckedSalesTable = false
 let salesTableAvailable = false
 let hasCheckedCardsTable = false
 let cardsTableAvailable = false
+let hasBackfilledSalesCards = false
 
 async function ensureSalesTableAvailable() {
   if (!pool) return false
@@ -63,12 +64,101 @@ async function ensureCardsTableAvailable() {
   return cardsTableAvailable
 }
 
+function normalizeCardValue(value) {
+  if (!value) return 'unknown'
+  return value
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .join(' ') || 'unknown'
+}
+
+function extractCardPayload(row) {
+  const attributes = row.attributes || {}
+  const attributeValue = (key) => {
+    const value = attributes?.[key]
+    if (!value) return null
+    if (Array.isArray(value)) return value[0]
+    return value
+  }
+
+  const rawName = attributeValue('Card name') || row.title || 'Unknown card'
+  const rawSet = attributeValue('Series') || attributeValue('Set')
+
+  return {
+    name: normalizeCardValue(rawName),
+    era: attributeValue('Era') || attributeValue('Generation'),
+    set_name: rawSet ? normalizeCardValue(rawSet) : 'unknown',
+    card_number: attributeValue('Card number')
+  }
+}
+
+async function ensureMissingSalesAreLinkedToCards() {
+  if (!pool || hasBackfilledSalesCards) return
+
+  const tableExists = await ensureSalesTableAvailable()
+  const cardsExist = await ensureCardsTableAvailable()
+  if (!tableExists || !cardsExist) return
+
+  const { rows: missingRows } = await pool.query(
+    `SELECT item_id, title, attributes FROM tradera_sales WHERE card_id IS NULL LIMIT 5000`
+  )
+
+  if (missingRows.length === 0) {
+    hasBackfilledSalesCards = true
+    return
+  }
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const cardCache = new Map()
+
+    for (const row of missingRows) {
+      const payload = extractCardPayload(row)
+      const cacheKey = `${payload.name}::${payload.set_name}`
+
+      if (!cardCache.has(cacheKey)) {
+        const cardResult = await client.query(
+          `
+            INSERT INTO cards (name, era, set_name, card_number)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (name, set_name) DO UPDATE SET
+              era = COALESCE(cards.era, EXCLUDED.era),
+              card_number = COALESCE(cards.card_number, EXCLUDED.card_number)
+            RETURNING id
+          `,
+          [payload.name, payload.era, payload.set_name, payload.card_number]
+        )
+
+        cardCache.set(cacheKey, cardResult.rows[0].id)
+      }
+
+      const cardId = cardCache.get(cacheKey)
+      await client.query('UPDATE tradera_sales SET card_id = $1 WHERE item_id = $2', [
+        cardId,
+        row.item_id
+      ])
+    }
+
+    await client.query('COMMIT')
+  } catch (error) {
+    await client.query('ROLLBACK')
+    console.error('Failed to backfill card links', error)
+  } finally {
+    client.release()
+  }
+}
+
 async function fetchAuctionsFromDatabase() {
   if (!pool) return []
 
   const tableExists = await ensureSalesTableAvailable()
   const cardsExist = await ensureCardsTableAvailable()
   if (!tableExists || !cardsExist) return []
+
+  await ensureMissingSalesAreLinkedToCards()
 
   const query = `
     SELECT
