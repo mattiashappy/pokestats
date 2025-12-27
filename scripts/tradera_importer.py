@@ -1,35 +1,7 @@
 """
 Tradera importer (RAW SOAP) -> PostgreSQL
 
-Uses the same working SOAP envelope as Postman (requests.post + SOAPAction),
-then parses <Items> blocks and upserts into tradera_sales.
-
-Modes:
-- FULL (default): import ALL pages (or until MAX_PAGES)
-- YESTERDAY: import only auctions ended "yesterday" in Europe/Stockholm (optional)
-
-Config vars (Heroku):
-Required:
-- DATABASE_URL
-- TRADERA_APP_ID
-- TRADERA_APP_KEY
-
-Optional:
-- TRADERA_CATEGORY_ID (default 1001337)
-- ITEMS_PER_PAGE (default 500)
-- MAX_PAGES (default 10000 safety cap)
-- SLEEP_MS (default 150)
-- ITEM_STATUS (default Ended)   # set "" to omit element
-- ITEM_TYPE (default Auction)   # set "" to omit element
-- BIDS_MINIMUM (default 1)      # set 0 for no sold-filter
-- ORDER_BY (default EndDateDescending)
-- MODE (default FULL)           # FULL or YESTERDAY
-- TZ (default Europe/Stockholm)
-
-Table expected:
-tradera_sales(item_id primary key, category_id, end_date, price, bid_count, seller_id,
-             seller_alias, seller_dsr, title, description, item_url, thumbnail_url,
-             image_urls jsonb, attributes jsonb)
+Network-robust: timeouts + retries with backoff.
 """
 
 from __future__ import annotations
@@ -46,6 +18,8 @@ import pytz
 import requests
 import xml.etree.ElementTree as ET
 from psycopg2.extras import Json, execute_batch
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 API_URL = "https://api.tradera.com/v3/SearchService.asmx"
@@ -53,16 +27,22 @@ SOAP_ACTION = "http://api.tradera.com/SearchAdvanced"
 
 CATEGORY_ID = int(os.getenv("TRADERA_CATEGORY_ID", "1001337"))
 ITEMS_PER_PAGE = int(os.getenv("ITEMS_PER_PAGE", "500"))
-MAX_PAGES = int(os.getenv("MAX_PAGES", "10000"))  # safety ceiling
+MAX_PAGES = int(os.getenv("MAX_PAGES", "10000"))
 SLEEP_MS = int(os.getenv("SLEEP_MS", "150"))
 
-ITEM_STATUS = os.getenv("ITEM_STATUS", "Ended")  # "" to omit
-ITEM_TYPE = os.getenv("ITEM_TYPE", "Auction")    # "" to omit
-BIDS_MINIMUM = os.getenv("BIDS_MINIMUM", "1")    # "0" to not filter sold-only
+ITEM_STATUS = os.getenv("ITEM_STATUS", "Ended")
+ITEM_TYPE = os.getenv("ITEM_TYPE", "Auction")
+BIDS_MINIMUM = os.getenv("BIDS_MINIMUM", "1")
 ORDER_BY = os.getenv("ORDER_BY", "EndDateDescending")
 
-MODE = (os.getenv("MODE", "FULL") or "FULL").upper()  # FULL | YESTERDAY
+MODE = (os.getenv("MODE", "FULL") or "FULL").upper()
 TZ_NAME = os.getenv("TZ") or os.getenv("LOCAL_TIMEZONE") or "Europe/Stockholm"
+
+# Network tuning (Heroku-friendly)
+CONNECT_TIMEOUT = float(os.getenv("TRADERA_CONNECT_TIMEOUT", "10"))
+READ_TIMEOUT = float(os.getenv("TRADERA_READ_TIMEOUT", "60"))
+TOTAL_RETRIES = int(os.getenv("TRADERA_RETRIES", "6"))
+BACKOFF = float(os.getenv("TRADERA_BACKOFF", "0.8"))
 
 NS = {
     "soap": "http://schemas.xmlsoap.org/soap/envelope/",
@@ -93,8 +73,6 @@ def calc_yesterday_window(tz_name: str) -> Tuple[datetime, datetime]:
 def build_envelope(app_id: str, app_key: str, page_number: int) -> str:
     item_status_xml = f"<ItemStatus>{ITEM_STATUS}</ItemStatus>" if ITEM_STATUS else ""
     item_type_xml = f"<ItemType>{ITEM_TYPE}</ItemType>" if ITEM_TYPE else ""
-
-    # Always include BidsMinimum element (Postman does); set "0" to disable filtering.
     bids_min_xml = f"<BidsMinimum>{BIDS_MINIMUM}</BidsMinimum>"
 
     return f"""<?xml version="1.0" encoding="utf-8"?>
@@ -124,14 +102,44 @@ def build_envelope(app_id: str, app_key: str, page_number: int) -> str:
 </soap:Envelope>"""
 
 
-def post_soap(xml_body: str) -> str:
+def make_session() -> requests.Session:
+    s = requests.Session()
+
+    retry = Retry(
+        total=TOTAL_RETRIES,
+        connect=TOTAL_RETRIES,
+        read=TOTAL_RETRIES,
+        status=TOTAL_RETRIES,
+        backoff_factor=BACKOFF,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=("POST",),
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=10)
+    s.mount("https://", adapter)
+    s.mount("http://", adapter)
+
+    s.headers.update({"User-Agent": "pokestats-importer-raw/1.0"})
+    return s
+
+
+def post_soap(session: requests.Session, xml_body: str) -> str:
     headers = {
         "Content-Type": "text/xml; charset=utf-8",
         "SOAPAction": SOAP_ACTION,
-        "User-Agent": "pokestats-importer-raw/1.0",
     }
-    r = requests.post(API_URL, data=xml_body.encode("utf-8"), headers=headers, timeout=60)
-    r.raise_for_status()
+    r = session.post(
+        API_URL,
+        data=xml_body.encode("utf-8"),
+        headers=headers,
+        timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
+    )
+
+    # If Retry handled status codes, we still need to fail on final bad status
+    if r.status_code >= 400:
+        snippet = (r.text or "")[:500].replace("\n", " ")
+        raise RuntimeError(f"HTTP {r.status_code} from Tradera. Body: {snippet}")
+
     return r.text
 
 
@@ -144,20 +152,17 @@ def parse_response(xml_text: str) -> Tuple[int, int, List[ET.Element]]:
     total_items = int(total_items_el.text) if total_items_el is not None and total_items_el.text else 0
     total_pages = int(total_pages_el.text) if total_pages_el is not None and total_pages_el.text else 0
 
-    # <Items> repeats
     items = root.findall(".//t:Items", NS)
     return total_items, total_pages, items
 
 
 def get_text(el: Optional[ET.Element]) -> Optional[str]:
-    if el is None:
-        return None
-    return el.text
+    return el.text.strip() if el is not None and el.text else None
 
 
 def parse_int(el: Optional[ET.Element]) -> Optional[int]:
     t = get_text(el)
-    if t is None or t == "":
+    if not t:
         return None
     try:
         return int(float(t))
@@ -167,7 +172,7 @@ def parse_int(el: Optional[ET.Element]) -> Optional[int]:
 
 def parse_float(el: Optional[ET.Element]) -> Optional[float]:
     t = get_text(el)
-    if t is None or t == "":
+    if not t:
         return None
     try:
         return float(t)
@@ -179,9 +184,7 @@ def parse_dt(el: Optional[ET.Element]) -> Optional[datetime]:
     t = get_text(el)
     if not t:
         return None
-    # Tradera returns ISO with offset +01:00 etc.
     dt = datetime.fromisoformat(t.replace("Z", "+00:00"))
-    # store in UTC
     return dt.astimezone(pytz.UTC)
 
 
@@ -249,10 +252,11 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
     if item_id is None:
         return None
 
-    category_id = parse_int(item_el.find("t:CategoryId", NS)) or CATEGORY_ID
     end_date = parse_dt(item_el.find("t:EndDate", NS))
     if end_date is None:
         return None
+
+    category_id = parse_int(item_el.find("t:CategoryId", NS)) or CATEGORY_ID
 
     return Row(
         item_id=item_id,
@@ -312,24 +316,28 @@ def main() -> None:
 
     log(
         f"IMPORT mode={MODE}, category={CATEGORY_ID}, items_per_page={ITEMS_PER_PAGE}, "
-        f"bids_min={BIDS_MINIMUM}, item_type={ITEM_TYPE!r}, item_status={ITEM_STATUS!r}, tz={TZ_NAME}"
+        f"max_pages={MAX_PAGES}, bids_min={BIDS_MINIMUM}, status={ITEM_STATUS!r}, type={ITEM_TYPE!r}, "
+        f"timeouts=({CONNECT_TIMEOUT},{READ_TIMEOUT}), retries={TOTAL_RETRIES}"
     )
+
+    session = make_session()
 
     if MODE == "YESTERDAY":
         y_start, y_end = calc_yesterday_window(TZ_NAME)
         log(f"Yesterday window: {y_start.isoformat()} -> {y_end.isoformat()} ({TZ_NAME})")
 
-    pages_fetched = 0
     total_pages = None
     total_items = None
     imported_total = 0
+    pages_fetched = 0
 
     with psycopg2.connect(db_url) as conn:
         page = 1
         while page <= MAX_PAGES:
+            log(f"Fetching page {page}...")
             envelope = build_envelope(app_id, app_key, page)
-            xml_resp = post_soap(envelope)
 
+            xml_resp = post_soap(session, envelope)
             t_items, t_pages, item_elements = parse_response(xml_resp)
 
             if total_pages is None and t_pages:
@@ -355,9 +363,8 @@ def main() -> None:
             imported_total += len(rows)
             pages_fetched += 1
 
-            log(f"Page {page}/{total_pages or '?'}: items_received={len(item_elements)}, imported={len(rows)}, total_imported={imported_total}")
+            log(f"Page {page}/{total_pages or '?'}: received={len(item_elements)}, imported={len(rows)}, total_imported={imported_total}")
 
-            # stop conditions
             if total_pages and page >= total_pages:
                 log("Reached last page.")
                 break
@@ -369,7 +376,7 @@ def main() -> None:
             if SLEEP_MS > 0:
                 time.sleep(SLEEP_MS / 1000.0)
 
-    log(f"Done. pages_fetched={pages_fetched}, total_imported={imported_total}")
+    log(f"DONE: pages_fetched={pages_fetched}, total_imported={imported_total}")
     sys.exit(0)
 
 
