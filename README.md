@@ -23,8 +23,6 @@ The importer is configured through environment variables:
 - `MAX_PAGES` – Optional safety cap for pagination; defaults to `100` to respect
   the daily API call limit.
 
-## Scheduling on Heroku
-
 - Add a Heroku Scheduler job to run `python scripts/tradera_importer.py` daily
   at 02:00 (local time Sweden).
 - Ensure `DATABASE_URL`, `TRADERA_APP_ID`, and `TRADERA_APP_KEY` are configured
