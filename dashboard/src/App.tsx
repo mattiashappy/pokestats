@@ -1,14 +1,14 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from "react-router-dom"
 
-import { AppLayout } from './components/layout/app-layout'
-import { ProtectedRoute } from './components/protected-route'
-import { BillingPage } from './pages/billing'
-import { DashboardPage } from './pages/dashboard'
-import { LandingPage } from './pages/landing'
-import { LoginPage } from './pages/login'
-import { SalesPage } from './pages/sales'
-import { SettingsPage } from './pages/settings'
-import { SignupPage } from './pages/signup'
+import { AppLayout } from "./components/layout/app-layout"
+import { ProtectedRoute } from "./components/protected-route"
+import { BillingPage } from "./pages/billing"
+import { DashboardPage } from "./pages/dashboard"
+import { LandingPage } from "./pages/landing"
+import { LoginPage } from "./pages/login"
+import { SalesPage } from "./pages/sales"
+import { SettingsPage } from "./pages/settings"
+import { SignupPage } from "./pages/signup"
 
 function App(): JSX.Element {
   return (
@@ -17,6 +17,7 @@ function App(): JSX.Element {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
 
+      {/* Protected app routes – require active subscription */}
       <Route element={<ProtectedRoute requireSubscription />}>
         <Route element={<AppLayout />}>
           <Route path="/app" element={<DashboardPage />} />
@@ -25,6 +26,7 @@ function App(): JSX.Element {
         </Route>
       </Route>
 
+      {/* Billing – login required, subscription NOT required */}
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route path="/billing" element={<BillingPage />} />
