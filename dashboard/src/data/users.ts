@@ -15,6 +15,7 @@ export const registeredUsers: RegisteredUser[] = [
     seats: 1,
     role: 'admin',
     billingPlan: 'comped'
+  }
   },
   {
     name: 'Misty K.',
