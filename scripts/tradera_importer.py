@@ -164,6 +164,31 @@ def load_env(name: str) -> str:
     return value
 
 
+def load_tradera_credentials() -> tuple[str, str]:
+    """Load Tradera SOAP credentials from Heroku config vars.
+
+    Uses the canonical `TRADERA_APP_ID`/`TRADERA_APP_KEY` variables and also
+    accepts `HEROKU_TRADERA_APP_ID`/`HEROKU_TRADERA_APP_KEY` as fallbacks to
+    match existing Heroku config naming.
+    """
+
+    app_id = os.getenv("TRADERA_APP_ID") or os.getenv("HEROKU_TRADERA_APP_ID")
+    app_key = os.getenv("TRADERA_APP_KEY") or os.getenv("HEROKU_TRADERA_APP_KEY")
+
+    missing = []
+    if not app_id:
+        missing.append("TRADERA_APP_ID")
+    if not app_key:
+        missing.append("TRADERA_APP_KEY")
+
+    if missing:
+        raise RuntimeError(
+            "Missing required environment variable(s): " + ", ".join(missing)
+        )
+
+    return app_id, app_key
+
+
 def calculate_yesterday_window(tz_name: str = DEFAULT_TIMEZONE) -> tuple[datetime, datetime]:
     tz = pytz.timezone(tz_name)
     now_local = datetime.now(tz)
@@ -241,8 +266,7 @@ def log(msg: str) -> None:
 
 
 def run_import() -> None:
-    app_id = load_env("TRADERA_APP_ID")
-    app_key = load_env("TRADERA_APP_KEY")
+    app_id, app_key = load_tradera_credentials()
     database_url = load_env("DATABASE_URL")
     max_pages = int(os.getenv("MAX_PAGES", str(MAX_API_CALLS_PER_DAY)))
     tz_name = DEFAULT_TIMEZONE
