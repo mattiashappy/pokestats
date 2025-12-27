@@ -276,27 +276,29 @@ export function AuctionsPage(): JSX.Element {
               ) : null}
             </div>
           </CardHeader>
-          <CardContent className="pb-0">
-            <ChartContainer config={eraChartConfig} className="mx-auto aspect-square max-h-[320px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <RadarChart
-                  data={eraRadarData}
-                  margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
-                  outerRadius="80%"
-                >
-                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-                  <PolarAngleAxis dataKey="era" tick={{ fontSize: 10 }} />
-                  <PolarGrid />
-                  <Radar
-                    dataKey="averageSale"
-                    fill="var(--color-averageSale)"
-                    fillOpacity={0.65}
-                    stroke="var(--color-averageSale)"
-                    strokeWidth={2}
-                  />
-                </RadarChart>
-              </ResponsiveContainer>
-            </ChartContainer>
+          <CardContent className="pb-6">
+            <div className="mx-auto max-w-3xl">
+              <ChartContainer config={eraChartConfig} className="mx-auto aspect-square max-h-[360px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart
+                    data={eraRadarData}
+                    margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
+                    outerRadius="80%"
+                  >
+                    <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                    <PolarAngleAxis dataKey="era" tick={{ fontSize: 10 }} />
+                    <PolarGrid />
+                    <Radar
+                      dataKey="averageSale"
+                      fill="var(--color-averageSale)"
+                      fillOpacity={0.65}
+                      stroke="var(--color-averageSale)"
+                      strokeWidth={2}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-2 text-sm text-slate-600 dark:text-slate-400">
             <div className="flex items-center gap-2 font-medium text-slate-900 dark:text-slate-50">
@@ -311,7 +313,7 @@ export function AuctionsPage(): JSX.Element {
         <CardHeader className="space-y-4 border-b border-slate-200/70 pb-4 dark:border-slate-900/70">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Auction archive</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pokémon</p>
               <CardTitle className="text-2xl font-semibold text-slate-900 dark:text-slate-50">Ended auctions</CardTitle>
               <CardDescription>Search the archive and refine by language, grading, era, and price.</CardDescription>
             </div>
