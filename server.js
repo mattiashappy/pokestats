@@ -260,12 +260,21 @@ function normalizeAuctionRow(row) {
     return value
   }
 
+  const language =
+    attributeValue('Language') ||
+    attributeValue('Språk') ||
+    attributeValue('Sprak') ||
+    null
+
+  const gradingCompany = attributeValue('Graded by') || attributeValue('Grading company') || null
+  const grade = attributeValue('Grade') || attributeValue('Condition grade') || null
+
   return {
     id: `T-${row.item_id}`,
     cardId: row.card_id,
     title: row.title || 'Untitled listing',
     cardName: row.card_name || attributeValue('Card name', row.title || 'Unknown card'),
-    cardEra: row.card_era || 'Unknown era',
+    cardEra: row.card_era || attributeValue('Era', 'Unknown era'),
     cardSetName: row.card_set_name || attributeValue('Series', 'Unknown set'),
     cardNumber: row.card_number || attributeValue('Card number', null),
     seller: row.seller_alias || 'Unknown seller',
@@ -282,7 +291,10 @@ function normalizeAuctionRow(row) {
     location: attributeValue('Location', 'Tradera'),
     url: row.item_url || '',
     addedAt: row.fetched_at || row.end_date,
-    thumbnail: row.thumbnail_url || null
+    thumbnail: row.thumbnail_url || null,
+    language: language || 'Unknown language',
+    gradingCompany: gradingCompany || 'Ungraded',
+    grade: gradingCompany ? grade || 'Not graded' : 'Not graded'
   }
 }
 
