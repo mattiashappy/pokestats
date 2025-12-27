@@ -19,6 +19,7 @@ export function AdminPage(): JSX.Element {
   const [time, setTime] = useState(() => format(new Date(importSettings.nextImportAt), 'HH:mm'))
   const {
     data: auctions,
+    refetch: refetchAuctions,
     isFetching,
     error: auctionsError
   } = useQuery<AuctionRecord[]>({ queryKey: ['auctions'], queryFn: fetchAuctions })
@@ -81,6 +82,19 @@ export function AdminPage(): JSX.Element {
     } finally {
       setLastManualCheckAt(new Date().toISOString())
       setManualCheckPending(false)
+    try {
+      const result = await refetchAuctions()
+      const count = result.data?.length ?? 0
+      setManualCheckNote(
+        result.error
+          ? 'The importer did not respond. Please verify credentials and the database connection.'
+          : `Latest fetch returned ${count.toLocaleString('sv-SE')} auctions.`
+      )
+      setLastManualCheckAt(new Date().toISOString())
+    } catch (error) {
+      console.error('Manual import check failed', error)
+      setManualCheckNote('The importer did not respond. Please verify credentials and the database connection.')
+      setLastManualCheckAt(new Date().toISOString())
     }
   }
 
@@ -191,6 +205,9 @@ export function AdminPage(): JSX.Element {
             >
               <UploadCloud className="h-4 w-4" />
               {manualCheckPending ? 'Contacting importer…' : 'Import new'}
+            <Button onClick={handleManualImport} disabled={isFetching} variant="secondary" className="gap-2">
+              <UploadCloud className="h-4 w-4" />
+              {isFetching ? 'Contacting importer…' : 'Import new'}
             </Button>
           </CardHeader>
           <CardContent className="space-y-4">
