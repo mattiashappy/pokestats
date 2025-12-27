@@ -112,6 +112,16 @@ async function ensureCardInfrastructure() {
 
   const cardColumnAvailable = await ensureSalesCardColumnAvailable()
   return cardColumnAvailable
+  const { rows } = await pool.query("SELECT to_regclass('public.cards') AS table_name")
+
+  cardsTableAvailable = Boolean(rows?.[0]?.table_name)
+  hasCheckedCardsTable = true
+
+  if (!cardsTableAvailable) {
+    console.warn('cards table does not exist')
+  }
+
+  return cardsTableAvailable
 }
 
 function normalizeCardValue(value) {
@@ -148,6 +158,9 @@ async function ensureMissingSalesAreLinkedToCards() {
 
   const infrastructureReady = await ensureCardInfrastructure()
   if (!infrastructureReady) return
+  const tableExists = await ensureSalesTableAvailable()
+  const cardsExist = await ensureCardsTableAvailable()
+  if (!tableExists || !cardsExist) return
 
   const { rows: missingRows } = await pool.query(
     `SELECT item_id, title, attributes FROM tradera_sales WHERE card_id IS NULL LIMIT 5000`
@@ -205,6 +218,9 @@ async function fetchAuctionsFromDatabase() {
 
   const infrastructureReady = await ensureCardInfrastructure()
   if (!infrastructureReady) return []
+  const tableExists = await ensureSalesTableAvailable()
+  const cardsExist = await ensureCardsTableAvailable()
+  if (!tableExists || !cardsExist) return []
 
   await ensureMissingSalesAreLinkedToCards()
 
@@ -277,6 +293,9 @@ async function fetchCardWithAuctions(cardId) {
 
   const infrastructureReady = await ensureCardInfrastructure()
   if (!infrastructureReady) return null
+  const tableExists = await ensureSalesTableAvailable()
+  const cardsExist = await ensureCardsTableAvailable()
+  if (!tableExists || !cardsExist) return null
 
   const cardQuery = `
     SELECT id, name, era, set_name AS set_name, card_number, created_at
