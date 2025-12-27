@@ -1,14 +1,16 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format, formatDistanceToNow, parseISO } from 'date-fns'
-import { ArrowUpDown, CalendarClock, ExternalLink, Loader2 } from 'lucide-react'
+import { ArrowUpDown, CalendarClock, ExternalLink, Loader2, TrendingUp } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer } from 'recharts'
 
 import { Button } from '../components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
 import { Select } from '../components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../components/ui/chart'
 import type { AuctionRecord } from '../types'
 import { fetchAuctions } from '../lib/api'
 import { useAdminSettings } from '../providers/admin-settings'
@@ -87,6 +89,40 @@ export function AuctionsPage(): JSX.Element {
     }
   }, [data])
 
+  const eraRadarData = useMemo(() => {
+    if (!data?.length) return []
+
+    const eraTotals = data.reduce((acc, auction) => {
+      const key = auction.cardEra || 'Unknown era'
+      const current = acc.get(key) ?? { total: 0, count: 0 }
+
+      current.total += auction.finalPrice
+      current.count += 1
+
+      acc.set(key, current)
+      return acc
+    }, new Map<string, { total: number; count: number }>())
+
+    return Array.from(eraTotals.entries())
+      .map(([era, values]) => ({
+        era,
+        averageSale: values.total / values.count,
+        auctionCount: values.count
+      }))
+      .sort((a, b) => b.averageSale - a.averageSale)
+      .slice(0, 8)
+  }, [data])
+
+  const eraChartConfig = useMemo<ChartConfig>(
+    () => ({
+      averageSale: {
+        label: 'Avg. final price',
+        color: 'hsl(var(--chart-1))'
+      }
+    }),
+    []
+  )
+
   const filteredAndSorted = useMemo(() => {
     if (!data) return []
 
@@ -133,6 +169,7 @@ export function AuctionsPage(): JSX.Element {
   }, [importSettings])
 
   const auctionsCount = data?.length ?? 0
+  const topEra = eraRadarData[0]
 
   return (
     <div className="space-y-6">
@@ -206,6 +243,59 @@ export function AuctionsPage(): JSX.Element {
 
         </div>
       </div>
+      {eraRadarData.length ? (
+        <Card>
+          <CardHeader className="space-y-4 border-b border-slate-200/70 pb-4 dark:border-slate-900/70">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Attributes</p>
+                <CardTitle className="text-2xl font-semibold text-slate-900 dark:text-slate-50">Era averages</CardTitle>
+                <CardDescription>
+                  Average final price by era for the loaded auctions (top 8 eras shown).
+                </CardDescription>
+              </div>
+              {topEra ? (
+                <div className="rounded-xl border border-slate-200 bg-white/70 px-4 py-3 text-right shadow-sm dark:border-slate-900/70 dark:bg-slate-900/60">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Top era</p>
+                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">{topEra.era}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {currencyFormatter.format(topEra.averageSale)} avg sale
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </CardHeader>
+          <CardContent className="pb-0">
+            <ChartContainer config={eraChartConfig} className="mx-auto aspect-square max-h-[320px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <RadarChart
+                  data={eraRadarData}
+                  margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
+                  outerRadius="80%"
+                >
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                  <PolarAngleAxis dataKey="era" tick={{ fontSize: 10 }} />
+                  <PolarGrid />
+                  <Radar
+                    dataKey="averageSale"
+                    fill="var(--color-averageSale)"
+                    fillOpacity={0.65}
+                    stroke="var(--color-averageSale)"
+                    strokeWidth={2}
+                  />
+                </RadarChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          </CardContent>
+          <CardFooter className="flex flex-col gap-2 text-sm text-slate-600 dark:text-slate-400">
+            <div className="flex items-center gap-2 font-medium text-slate-900 dark:text-slate-50">
+              <TrendingUp className="h-4 w-4 text-sky-500" />
+              Snapshot of average final prices by era ({eraRadarData.length} eras shown)
+            </div>
+            <div className="text-xs">Hover each spoke to explore exact values and compare eras.</div>
+          </CardFooter>
+        </Card>
+      ) : null}
       <Card>
         <CardHeader className="space-y-4 border-b border-slate-200/70 pb-4 dark:border-slate-900/70">
           <div className="flex flex-wrap items-start justify-between gap-3">
