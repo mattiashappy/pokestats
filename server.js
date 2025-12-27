@@ -1,6 +1,7 @@
 const express = require('express')
 const compression = require('compression')
 const path = require('path')
+const { Pool } = require('pg')
 
 const app = express()
 const PORT = process.env.PORT || 8000
@@ -10,6 +11,70 @@ app.use(compression())
 app.use(express.json())
 
 const now = new Date()
+
+const MAX_RESULTS = Number(process.env.MAX_API_RESULTS || 250)
+const DATABASE_URL = process.env.DATABASE_URL
+
+const pool = DATABASE_URL
+  ? new Pool({
+      connectionString: DATABASE_URL,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined
+    })
+  : null
+
+async function fetchAuctionsFromDatabase() {
+  if (!pool) return null
+
+  const query = `
+    SELECT
+      item_id,
+      title,
+      price,
+      bid_count,
+      end_date,
+      seller_alias,
+      seller_dsr,
+      item_url,
+      thumbnail_url,
+      attributes,
+      fetched_at
+    FROM tradera_sales
+    ORDER BY end_date DESC
+    LIMIT $1
+  `
+
+  const { rows } = await pool.query(query, [MAX_RESULTS])
+  return rows.map(normalizeAuctionRow)
+}
+
+function normalizeAuctionRow(row) {
+  const attributes = row.attributes || {}
+
+  const attributeValue = (key, fallback) => {
+    const value = attributes?.[key]
+    if (!value) return fallback
+    if (Array.isArray(value)) return value[0]
+    return value
+  }
+
+  return {
+    id: `T-${row.item_id}`,
+    title: row.title || 'Untitled listing',
+    cardName: attributeValue('Card name', row.title || 'Unknown card'),
+    seller: row.seller_alias || 'Unknown seller',
+    sellerType: typeof row.seller_dsr === 'number' && row.seller_dsr >= 4.7 ? 'trusted' : 'new',
+    finalPrice: row.price ?? 0,
+    currency: 'SEK',
+    bids: row.bid_count ?? 0,
+    endTime: row.end_date,
+    condition: attributeValue('Condition', 'Unknown'),
+    category: attributeValue('Series', 'Pokémon cards'),
+    location: attributeValue('Location', 'Tradera'),
+    url: row.item_url || '',
+    addedAt: row.fetched_at || row.end_date,
+    thumbnail: row.thumbnail_url || null
+  }
+}
 
 function daysAgo(days, hours = 18, minutes = 0) {
   const date = new Date(now)
@@ -153,7 +218,16 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true })
 })
 
-app.get('/api/sales', (_req, res) => {
+app.get('/api/sales', async (_req, res) => {
+  try {
+    const liveAuctions = await fetchAuctionsFromDatabase()
+    if (liveAuctions && liveAuctions.length > 0) {
+      return res.json(liveAuctions)
+    }
+  } catch (error) {
+    console.error('Failed to load live auctions, falling back to mocked payload', error)
+  }
+
   res.json(mockedSales)
 })
 
