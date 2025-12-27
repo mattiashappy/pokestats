@@ -28,9 +28,17 @@ export function AppLayout(): JSX.Element {
               <Sparkles className="h-4 w-4" />
               PokéStats
             </div>
-            <p className="text-xs text-slate-500">Importer-ready SaaS shell</p>
+            <p className="text-xs text-slate-500">Tradera auctions preloaded</p>
           </div>
-          <Badge variant={user?.subscriptionStatus === 'active' ? 'success' : 'warning'}>
+          <Badge
+            variant={
+              user?.subscriptionStatus === 'active'
+                ? 'success'
+                : user?.subscriptionStatus === 'trialing'
+                  ? 'secondary'
+                  : 'warning'
+            }
+          >
             {user?.subscriptionStatus ?? 'guest'}
           </Badge>
         </div>
@@ -42,7 +50,7 @@ export function AppLayout(): JSX.Element {
               <NavLink
                 key={item.to}
                 to={item.to}
-                className={({ isActive }) =>
+                className={({ isActive }: { isActive: boolean }) =>
                   cn(
                     'flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-900',
                     isActive && 'bg-slate-900 text-slate-100 shadow-inner shadow-slate-900/70'
