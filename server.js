@@ -22,8 +22,31 @@ const pool = DATABASE_URL
     })
   : null
 
+let hasCheckedSalesTable = false
+let salesTableAvailable = false
+
+async function ensureSalesTableAvailable() {
+  if (!pool) return false
+  if (hasCheckedSalesTable) return salesTableAvailable
+
+  const { rows } = await pool.query("SELECT to_regclass('public.tradera_sales') AS table_name")
+  salesTableAvailable = Boolean(rows?.[0]?.table_name)
+  hasCheckedSalesTable = true
+
+  if (!salesTableAvailable) {
+    console.warn(
+      'Database connection is configured but the tradera_sales table is missing. Run schema.sql to create it.'
+    )
+  }
+
+  return salesTableAvailable
+}
+
 async function fetchAuctionsFromDatabase() {
   if (!pool) return null
+
+  const tableExists = await ensureSalesTableAvailable()
+  if (!tableExists) return null
 
   const query = `
     SELECT
@@ -43,8 +66,21 @@ async function fetchAuctionsFromDatabase() {
     LIMIT $1
   `
 
-  const { rows } = await pool.query(query, [MAX_RESULTS])
-  return rows.map(normalizeAuctionRow)
+  try {
+    const { rows } = await pool.query(query, [MAX_RESULTS])
+    return rows.map(normalizeAuctionRow)
+  } catch (error) {
+    if (error?.code === '42P01') {
+      hasCheckedSalesTable = false
+      salesTableAvailable = false
+      console.warn(
+        'Database connection succeeded but the tradera_sales table does not exist. Falling back to mocked payload.'
+      )
+      return null
+    }
+
+    throw error
+  }
 }
 
 function normalizeAuctionRow(row) {
