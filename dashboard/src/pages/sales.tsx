@@ -20,13 +20,28 @@ async function fetchSales(): Promise<SaleRecord[]> {
 }
 
 export function SalesPage(): JSX.Element {
-  const { data, isLoading, error } = useQuery({ queryKey: ['sales'], queryFn: fetchSales })
+  const { data, isLoading, error } = useQuery<SaleRecord[]>({ queryKey: ['sales'], queryFn: fetchSales })
   const [search, setSearch] = useState('')
   const [language, setLanguage] = useState('All')
   const [condition, setCondition] = useState('All')
   const [era, setEra] = useState('All')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+
+  const languageOptions = useMemo<string[]>(() => {
+    const unique = new Set<string>(data?.map((sale) => sale.language) ?? ['Swedish', 'English', 'Japanese'])
+    return ['All', ...Array.from(unique)]
+  }, [data])
+
+  const conditionOptions = useMemo<string[]>(() => {
+    const unique = new Set<string>(data?.map((sale) => sale.condition) ?? ['Sealed', 'Near Mint', 'Lightly Played'])
+    return ['All', ...Array.from(unique)]
+  }, [data])
+
+  const eraOptions = useMemo<string[]>(() => {
+    const unique = new Set<string>(data?.map((sale) => sale.era) ?? ['Modern', 'Vintage', 'Neo'])
+    return ['All', ...Array.from(unique)]
+  }, [data])
 
   const filteredSales = useMemo(() => {
     if (!data) return []
@@ -48,9 +63,9 @@ export function SalesPage(): JSX.Element {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sales</p>
-          <h1 className="text-2xl font-bold text-slate-50">Sales table</h1>
-          <p className="text-sm text-slate-400">React Query fetches mocked /api/sales data. Filters are client-side only.</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Auctions</p>
+          <h1 className="text-2xl font-bold text-slate-50">Tradera auction feed</h1>
+          <p className="text-sm text-slate-400">React Query loads pre-imported Tradera auction results so users always start with data.</p>
         </div>
         <Button variant="secondary" size="sm">
           <Filter className="mr-2 h-4 w-4" />
@@ -61,7 +76,7 @@ export function SalesPage(): JSX.Element {
       <Card>
         <CardHeader>
           <CardTitle>Filters</CardTitle>
-          <CardDescription>Search and refine sales by language, condition, and era. Date range is a placeholder.</CardDescription>
+          <CardDescription>Search and refine auctions by language, condition, and era. Date range is a placeholder.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-5">
           <label className="md:col-span-2">
@@ -79,7 +94,7 @@ export function SalesPage(): JSX.Element {
           <label>
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Language</span>
             <Select value={language} onChange={(event) => setLanguage(event.target.value)}>
-              {['All', 'English', 'Swedish', 'Japanese'].map((option) => (
+              {languageOptions.map((option) => (
                 <option key={option}>{option}</option>
               ))}
             </Select>
@@ -87,7 +102,7 @@ export function SalesPage(): JSX.Element {
           <label>
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Condition</span>
             <Select value={condition} onChange={(event) => setCondition(event.target.value)}>
-              {['All', 'Mint', 'Near Mint', 'Lightly Played'].map((option) => (
+              {conditionOptions.map((option) => (
                 <option key={option}>{option}</option>
               ))}
             </Select>
@@ -95,7 +110,7 @@ export function SalesPage(): JSX.Element {
           <label>
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Era</span>
             <Select value={era} onChange={(event) => setEra(event.target.value)}>
-              {['All', 'Base', 'Neo', 'EX', 'Modern'].map((option) => (
+              {eraOptions.map((option) => (
                 <option key={option}>{option}</option>
               ))}
             </Select>
@@ -117,7 +132,7 @@ export function SalesPage(): JSX.Element {
         <CardHeader className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <CardTitle>Sales ({filteredSales.length})</CardTitle>
-            <CardDescription>Rows represent mocked importer output.</CardDescription>
+            <CardDescription>Rows are seeded from recent Tradera auction exports.</CardDescription>
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <span className="inline-flex items-center gap-1 rounded-full bg-slate-800/70 px-3 py-1">
@@ -138,7 +153,7 @@ export function SalesPage(): JSX.Element {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Card</TableHead>
+                  <TableHead>Listing</TableHead>
                   <TableHead>Language</TableHead>
                   <TableHead>Condition</TableHead>
                   <TableHead>Era</TableHead>
@@ -155,10 +170,17 @@ export function SalesPage(): JSX.Element {
                     </TableCell>
                     <TableCell>{sale.language}</TableCell>
                     <TableCell>
-                      <Badge variant={sale.condition === 'Mint' ? 'success' : 'secondary'}>{sale.condition}</Badge>
+                      <Badge variant={['Sealed', 'Near Mint'].includes(sale.condition) ? 'success' : 'secondary'}>
+                        {sale.condition}
+                      </Badge>
                     </TableCell>
                     <TableCell>{sale.era}</TableCell>
-                    <TableCell>€{sale.price.toLocaleString()}</TableCell>
+                    <TableCell>
+                      {new Intl.NumberFormat('sv-SE', {
+                        style: 'currency',
+                        currency: 'SEK'
+                      }).format(sale.price)}
+                    </TableCell>
                     <TableCell className="text-slate-300">{format(new Date(sale.soldAt), 'PPP')}</TableCell>
                   </TableRow>
                 ))}

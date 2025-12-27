@@ -11,19 +11,17 @@ export function LandingPage(): JSX.Element {
         <header className="space-y-6 text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-200">
             <Sparkles className="h-4 w-4" />
-            PokéStats importer-ready SaaS
+            PokéStats · Tradera feed live
           </div>
-          <h1 className="text-4xl font-bold leading-tight md:text-5xl">
-            Visualize Pokémon sales before wiring the importer.
-          </h1>
+          <h1 className="text-4xl font-bold leading-tight md:text-5xl">See Pokémon auctions without any setup.</h1>
           <p className="mx-auto max-w-2xl text-lg text-slate-300">
-            Dashboard-first scaffolding with auth, subscription gating, and data visual shells ready for Stripe + PostgreSQL once the
-            importer lands.
+            Data from Tradera is already imported so prospects land on real listings. Start with a 14-day trial that rolls into
+            $7/mo once you keep access.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Button size="lg" asChild>
               <Link to="/signup" className="inline-flex items-center gap-2">
-                Start subscription
+                Try free for 14 days
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
@@ -43,19 +41,19 @@ export function LandingPage(): JSX.Element {
           </Card>
           <Card className="bg-slate-900/70">
             <CardHeader>
-              <CardTitle>Mocked billing</CardTitle>
-              <CardDescription>Stripe-ready code paths with status badges and CTA states.</CardDescription>
+              <CardTitle>Trial + billing</CardTitle>
+              <CardDescription>Stripe-ready code paths with card capture and a 14-day trial.</CardDescription>
             </CardHeader>
             <CardContent className="text-sm text-slate-300">
-              Toggle subscription state locally to preview the gating experience.
+              Start with a free trial, then roll into $7/mo unless you cancel.
             </CardContent>
           </Card>
           <Card className="bg-slate-900/70">
             <CardHeader>
               <CardTitle>Future-proof</CardTitle>
-              <CardDescription>API placeholders for importer-driven sales data.</CardDescription>
+              <CardDescription>API is already seeded with Tradera auctions.</CardDescription>
             </CardHeader>
-            <CardContent className="text-sm text-slate-300">React Query wired to /api/sales with mocked payloads.</CardContent>
+            <CardContent className="text-sm text-slate-300">React Query wired to /api/sales with real auctions baked in.</CardContent>
           </Card>
         </div>
 
