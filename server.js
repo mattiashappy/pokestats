@@ -258,13 +258,16 @@ app.get('/api/sales', async (_req, res) => {
   try {
     const liveAuctions = await fetchAuctionsFromDatabase()
 
-// If DB is configured + table exists, fetchAuctionsFromDatabase returns an array (possibly empty).
-if (Array.isArray(liveAuctions)) {
-  return res.json(liveAuctions)
-}
+    // If DB is configured + table exists, fetchAuctionsFromDatabase returns an array (possibly empty).
+    if (Array.isArray(liveAuctions)) {
+      return res.json(liveAuctions)
+    }
+  } catch (error) {
+    console.error('Failed to load live auctions, falling back to mocked payload', error)
+  }
 
-// Only fall back to mock if DB/table is missing or DB not configured
-return res.json(mockedSales)
+  // Only fall back to mock if DB/table is missing or DB not configured
+  return res.json(mockedSales)
 })
 
 app.get('/api/sales/diagnostic', async (_req, res) => {
@@ -274,7 +277,9 @@ app.get('/api/sales/diagnostic', async (_req, res) => {
 
   try {
     const liveAuctions = await fetchAuctionsFromDatabase()
-    if (liveAuctions && liveAuctions.length > 0) {
+
+    // If DB is configured + table exists, return DB payload (even if empty).
+    if (Array.isArray(liveAuctions)) {
       source = 'database'
       auctions = liveAuctions
     }
@@ -283,7 +288,7 @@ app.get('/api/sales/diagnostic', async (_req, res) => {
     errorMessage = error?.message || 'Unknown database error'
   }
 
-  res.json({ auctions, source, error: errorMessage })
+  return res.json({ auctions, source, error: errorMessage })
 })
 
 app.use(express.static(distPath))
