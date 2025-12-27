@@ -1,10 +1,23 @@
 """
-Daily importer for sold Pokémon card auctions from Tradera.
+Daily importer for ended Pokémon card auctions from Tradera (SOAP SearchAdvanced).
 
-Runs from Heroku Scheduler (UTC). Script uses LOCAL_TIMEZONE/TZ (default Europe/Stockholm)
-to compute "yesterday" window and imports ended auctions with >= 1 bid.
+✅ Designed for Heroku Scheduler (UTC).
+✅ Uses TZ/LOCAL_TIMEZONE (default Europe/Stockholm) to compute "yesterday" window.
+✅ Fetches Ended auctions, then filters locally to yesterday and upserts into PostgreSQL.
+✅ Idempotent via ON CONFLICT (item_id) DO UPDATE.
+✅ Robust to Tradera SOAP response shape differences (Items/SearchItem vs other keys).
+✅ Includes required WSDL request fields + correct AuthenticationHeader namespace.
 
-Idempotent via ON CONFLICT (item_id) DO UPDATE.
+Heroku config vars needed:
+- DATABASE_URL
+- TRADERA_APP_ID
+- TRADERA_APP_KEY
+Optional:
+- TRADERA_CATEGORY_ID (default 1001337)
+- ITEMS_PER_PAGE (default 500)
+- MAX_PAGES (default 100)
+- TZ or LOCAL_TIMEZONE (default Europe/Stockholm)
+- BIDS_MINIMUM (default 1) -> set to 0 if you want all ended, not only sold (>=1 bid)
 """
 from __future__ import annotations
 
@@ -24,11 +37,14 @@ from zeep.transports import Transport
 
 # --- Configuration constants ---
 WSDL_URL = "https://api.tradera.com/v3/SearchService.asmx?WSDL"
-CATEGORY_ID = int(os.getenv("TRADERA_CATEGORY_ID", "1001337"))  # Pokémon cards -> Singles
-ITEMS_PER_PAGE = int(os.getenv("ITEMS_PER_PAGE", "500"))
-MAX_API_CALLS_PER_DAY = int(os.getenv("MAX_PAGES", "100"))  # pagination guard
 
-# Prefer TZ (standard), fallback to LOCAL_TIMEZONE (your original), then Stockholm.
+CATEGORY_ID = int(os.getenv("TRADERA_CATEGORY_ID", "1001337"))
+ITEMS_PER_PAGE = int(os.getenv("ITEMS_PER_PAGE", "500"))
+MAX_PAGES = int(os.getenv("MAX_PAGES", "100"))
+
+# If you want to include ended auctions with zero bids, set BIDS_MINIMUM=0 on Heroku.
+BIDS_MINIMUM = int(os.getenv("BIDS_MINIMUM", "1"))
+
 DEFAULT_TIMEZONE = os.getenv("TZ") or os.getenv("LOCAL_TIMEZONE") or "Europe/Stockholm"
 
 
@@ -83,8 +99,7 @@ class TraderaClient:
 
         self.client = Client(WSDL_URL, transport=transport, settings=settings)
 
-        # IMPORTANT: Tradera expects AuthenticationHeader with namespace http://api.tradera.com
-        # Zeep can otherwise serialize it in a way Tradera rejects -> "Invalid application id".
+        # Force correct header element name + namespace (Tradera expects this exact wrapper)
         from zeep import xsd
 
         self.auth_header_el = xsd.Element(
@@ -98,17 +113,15 @@ class TraderaClient:
         )
 
     def search_page(self, page_number: int) -> dict:
-        # These fields are required by the WSDL schema (or safe defaults to avoid "Missing element" errors)
+        # These are required by the WSDL schema (or safe defaults to avoid "Missing element" errors).
         search_request = {
             "CategoryId": CATEGORY_ID,
             "ItemType": "Auction",
             "ItemStatus": "Ended",
             "OrderBy": "EndDateDescending",
-            "BidsMinimum": 0,
+            "BidsMinimum": BIDS_MINIMUM,
             "PageNumber": page_number,
             "ItemsPerPage": ITEMS_PER_PAGE,
-
-            # Required / safe defaults:
             "SearchWords": "",
             "SearchInDescription": False,
             "CountyId": 0,
@@ -123,6 +136,33 @@ class TraderaClient:
             _soapheaders=[auth_header],
         )
         return helpers.serialize_object(response, target_cls=dict)
+
+
+def log(msg: str) -> None:
+    sys.stdout.write(msg + "\n")
+    sys.stdout.flush()
+
+
+def load_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"Missing required environment variable {name}")
+    return value
+
+
+def load_tradera_credentials() -> tuple[str, str]:
+    app_id = os.getenv("TRADERA_APP_ID") or os.getenv("HEROKU_TRADERA_APP_ID")
+    app_key = os.getenv("TRADERA_APP_KEY") or os.getenv("HEROKU_TRADERA_APP_KEY")
+
+    missing = []
+    if not app_id:
+        missing.append("TRADERA_APP_ID")
+    if not app_key:
+        missing.append("TRADERA_APP_KEY")
+    if missing:
+        raise RuntimeError("Missing required environment variable(s): " + ", ".join(missing))
+
+    return app_id.strip(), app_key.strip()
 
 
 def _ensure_list(value) -> List:
@@ -155,6 +195,7 @@ def parse_image_links(raw_images: Optional[dict]) -> List[str]:
 
 def parse_tradera_item(raw_item: dict) -> TraderaItem:
     end_date = date_parser.isoparse(str(raw_item.get("EndDate"))).astimezone(pytz.UTC)
+
     attributes = parse_attributes(raw_item.get("Attributes"))
     image_urls = parse_image_links(raw_item.get("ImageLinks"))
 
@@ -175,28 +216,6 @@ def parse_tradera_item(raw_item: dict) -> TraderaItem:
         image_urls=image_urls,
         attributes=attributes,
     )
-
-
-def load_env(name: str) -> str:
-    value = os.getenv(name)
-    if not value:
-        raise RuntimeError(f"Missing required environment variable {name}")
-    return value
-
-
-def load_tradera_credentials() -> tuple[str, str]:
-    app_id = os.getenv("TRADERA_APP_ID") or os.getenv("HEROKU_TRADERA_APP_ID")
-    app_key = os.getenv("TRADERA_APP_KEY") or os.getenv("HEROKU_TRADERA_APP_KEY")
-
-    missing = []
-    if not app_id:
-        missing.append("TRADERA_APP_ID")
-    if not app_key:
-        missing.append("TRADERA_APP_KEY")
-    if missing:
-        raise RuntimeError("Missing required environment variable(s): " + ", ".join(missing))
-
-    return app_id, app_key
 
 
 def calculate_yesterday_window(tz_name: str = DEFAULT_TIMEZONE) -> Tuple[datetime, datetime]:
@@ -221,14 +240,42 @@ def filter_items_for_yesterday(items: Iterable[TraderaItem], tz_name: str) -> Li
 
 
 def should_stop_pagination(parsed_items: List[TraderaItem], tz_name: str) -> bool:
+    """
+    Stop when the OLDEST item on this page is older than yesterday_start,
+    since results are EndDateDescending -> subsequent pages are even older.
+    """
     if not parsed_items:
-        return True
+        return False  # don't stop just because parsing gave nothing; let caller decide
 
     tz = pytz.timezone(tz_name)
     yesterday_start, _ = calculate_yesterday_window(tz_name)
-
     oldest_local = min(i.end_date.astimezone(tz) for i in parsed_items)
     return oldest_local < yesterday_start
+
+
+def extract_raw_items(response: dict) -> List[dict]:
+    """
+    Robust extraction of items from Tradera response,
+    handling slightly different shapes across SOAP serializers.
+    """
+    result = (response or {}).get("SearchAdvancedResult") or {}
+
+    items_container = result.get("Items") or {}
+    candidates = (
+        items_container.get("SearchItem")
+        or items_container.get("Item")
+        or items_container.get("Items")
+        or items_container.get("item")
+    )
+
+    # Sometimes "Items" itself is the list
+    if isinstance(items_container, list):
+        candidates = items_container
+
+    raw_items = _ensure_list(candidates)
+
+    # Filter out non-dict noise
+    return [x for x in raw_items if isinstance(x, dict)]
 
 
 def upsert_items(conn, items: List[TraderaItem]) -> None:
@@ -265,11 +312,6 @@ def upsert_items(conn, items: List[TraderaItem]) -> None:
     conn.commit()
 
 
-def log(msg: str) -> None:
-    sys.stdout.write(msg + "\n")
-    sys.stdout.flush()
-
-
 def run_import() -> None:
     app_id, app_key = load_tradera_credentials()
     database_url = load_env("DATABASE_URL")
@@ -278,24 +320,28 @@ def run_import() -> None:
     client = TraderaClient(app_id, app_key)
 
     yesterday_start, yesterday_end = calculate_yesterday_window(tz_name)
-    log(f"Importing auctions ended between {yesterday_start.isoformat()} and {yesterday_end.isoformat()} ({tz_name})")
-    log(f"CategoryId={CATEGORY_ID}, ItemsPerPage={ITEMS_PER_PAGE}, MaxPages={MAX_API_CALLS_PER_DAY}")
+    log(
+        f"Importing auctions ended between {yesterday_start.isoformat()} and {yesterday_end.isoformat()} ({tz_name})"
+    )
+    log(
+        f"CategoryId={CATEGORY_ID}, ItemsPerPage={ITEMS_PER_PAGE}, MaxPages={MAX_PAGES}, BidsMinimum={BIDS_MINIMUM}"
+    )
 
     pages_fetched = 0
     items_scanned = 0
     items_imported = 0
-
     page_number = 1
 
     with psycopg2.connect(database_url) as conn:
-        while page_number <= MAX_API_CALLS_PER_DAY:
+        while page_number <= MAX_PAGES:
             response = client.search_page(page_number)
             pages_fetched += 1
 
-            result_items = (((response or {}).get("SearchAdvancedResult") or {}).get("Items") or {}).get("SearchItem")
-            raw_items = _ensure_list(result_items)
+            raw_items = extract_raw_items(response)
 
+            # If page 1 comes back empty, log some context so it's obvious what's happening.
             if not raw_items:
+                # Still a valid run; Tradera returned no items for this query/page.
                 log(f"No items returned on page {page_number}; stopping pagination.")
                 break
 
@@ -314,7 +360,9 @@ def run_import() -> None:
 
             page_number += 1
 
-    log(f"Finished. Pages fetched: {pages_fetched}, items scanned: {items_scanned}, items imported: {items_imported}")
+    log(
+        f"Finished. Pages fetched: {pages_fetched}, items scanned: {items_scanned}, items imported: {items_imported}"
+    )
 
 
 def main() -> None:
