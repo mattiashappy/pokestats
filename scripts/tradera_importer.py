@@ -246,6 +246,8 @@ def parse_image_links(item_el: ET.Element) -> List[str]:
 
 
 def parse_attributes(item_el: ET.Element) -> Dict[str, List[str]]:
+    """Return Tradera term attributes as name -> list of string values."""
+
     out: Dict[str, List[str]] = {}
     for tav in item_el.findall(".//t:AttributeValues/t:TermAttributeValues/t:TermAttributeValue", NS):
         name = get_text(tav.find("t:Name", NS))
@@ -257,6 +259,27 @@ def parse_attributes(item_el: ET.Element) -> Dict[str, List[str]]:
                 values.append(s.text.strip())
         out[name] = values
     return out
+
+
+def build_attributes_payload(item_el: ET.Element) -> Dict[str, Any]:
+    """Compose JSON payload with term attributes plus a _meta bucket for scalars."""
+
+    attributes: Dict[str, Any] = parse_attributes(item_el)
+
+    meta = {
+        "has_bids": parse_bool(item_el.find("t:HasBids", NS)),
+        "is_ended": parse_bool(item_el.find("t:IsEnded", NS)),
+        "item_type": get_text(item_el.find("t:ItemType", NS)),
+        "next_bid": parse_int(item_el.find("t:NextBid", NS)),
+        "buy_it_now_price": parse_float(item_el.find("t:BuyItNowPrice", NS)),
+    }
+    meta = {k: v for k, v in meta.items() if v is not None}
+
+    # Keep the top-level mapping as name -> List[str]; tuck other fields into _meta.
+    if meta:
+        attributes["_meta"] = meta
+
+    return attributes
 
 
 @dataclass
@@ -308,19 +331,6 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
 
     category_id = parse_int(item_el.find("t:CategoryId", NS)) or CATEGORY_ID
 
-    attributes: Dict[str, Any] = parse_attributes(item_el)
-
-    meta = {
-        "has_bids": parse_bool(item_el.find("t:HasBids", NS)),
-        "is_ended": parse_bool(item_el.find("t:IsEnded", NS)),
-        "item_type": get_text(item_el.find("t:ItemType", NS)),
-        "next_bid": parse_int(item_el.find("t:NextBid", NS)),
-        "buy_it_now_price": parse_float(item_el.find("t:BuyItNowPrice", NS)),
-    }
-    meta = {k: v for k, v in meta.items() if v is not None}
-    if meta:
-        attributes["_meta"] = meta
-
     return Row(
         item_id=item_id,
         category_id=category_id,
@@ -335,7 +345,7 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
         item_url=get_text(item_el.find("t:ItemUrl", NS)),
         thumbnail_url=get_text(item_el.find("t:ThumbnailLink", NS)),
         image_urls=parse_image_links(item_el),
-        attributes=attributes,
+        attributes=build_attributes_payload(item_el),
     )
 
 
