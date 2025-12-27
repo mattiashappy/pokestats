@@ -1,1 +1,6 @@
 **/.DS_Store
+dashboard/node_modules
+dashboard/dist
+dashboard/.vite
+**/.env.local
+**/npm-debug.log*
