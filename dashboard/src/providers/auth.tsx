@@ -8,6 +8,7 @@ export type AuthUser = {
   subscriptionStatus: SubscriptionStatus
   trialEndsAt?: string
   cardLast4?: string
+  role: 'admin' | 'member'
 }
 
 export type AuthContextValue = {
@@ -32,17 +33,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
     if (stored) {
       try {
         const parsed: AuthUser = JSON.parse(stored)
+        const parsedWithRole: AuthUser = { ...parsed, role: parsed.role ?? 'member' }
 
         if (parsed.subscriptionStatus === 'trialing' && parsed.trialEndsAt) {
           const trialEnd = new Date(parsed.trialEndsAt)
           const now = new Date()
           if (now >= trialEnd) {
-            setUser({ ...parsed, subscriptionStatus: 'active', trialEndsAt: undefined })
+            setUser({ ...parsedWithRole, subscriptionStatus: 'active', trialEndsAt: undefined })
             return
           }
         }
 
-        setUser(parsed)
+        setUser(parsedWithRole)
       } catch (error) {
         console.error('Failed to parse auth state', error)
         localStorage.removeItem(STORAGE_KEY)
@@ -63,19 +65,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
   const login = async (email: string, _password: string): Promise<void> => {
     const baseName = email.split('@')[0]
     const name = baseName ? `${baseName.charAt(0).toUpperCase()}${baseName.slice(1)}` : 'Trainer'
+    const role = email.toLowerCase() === 'ash@pokestats.app' ? 'admin' : 'member'
     const nextUser: AuthUser = {
       name,
       email,
-      subscriptionStatus: 'inactive'
+      subscriptionStatus: role === 'admin' ? 'active' : 'inactive',
+      role
     }
     persistUser(nextUser)
   }
 
   const signup = async (name: string, email: string, _password: string): Promise<void> => {
+    const role = email.toLowerCase() === 'ash@pokestats.app' ? 'admin' : 'member'
     const nextUser: AuthUser = {
       name: name.trim() || 'New Trainer',
       email,
-      subscriptionStatus: 'inactive'
+      subscriptionStatus: role === 'admin' ? 'active' : 'inactive',
+      role
     }
     persistUser(nextUser)
   }
@@ -86,6 +92,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
 
   const updateSubscription = (status: SubscriptionStatus): void => {
     if (!user) return
+    if (user.role === 'admin') return
+
     const nextUser: AuthUser = {
       ...user,
       subscriptionStatus: status,
@@ -95,7 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
   }
 
   const startTrial = (cardLast4: string): void => {
-    if (!user) return
+    if (!user || user.role === 'admin') return
 
     const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
     const nextUser: AuthUser = {
