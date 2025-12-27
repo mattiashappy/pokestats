@@ -28,6 +28,8 @@ let hasCheckedSalesTable = false
 let salesTableAvailable = false
 let hasCheckedCardsTable = false
 let cardsTableAvailable = false
+let hasCheckedSalesCardColumn = false
+let salesCardColumnAvailable = false
 let hasBackfilledSalesCards = false
 
 async function ensureSalesTableAvailable() {
@@ -52,6 +54,64 @@ async function ensureCardsTableAvailable() {
   if (!pool) return false
   if (hasCheckedCardsTable) return cardsTableAvailable
 
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS cards (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        era TEXT,
+        set_name TEXT NOT NULL,
+        card_number TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT cards_unique_name_set UNIQUE (name, set_name)
+      )
+    `)
+
+    cardsTableAvailable = true
+  } catch (error) {
+    console.error('Failed to ensure cards table exists', error)
+    cardsTableAvailable = false
+  }
+
+  hasCheckedCardsTable = true
+  return cardsTableAvailable
+}
+
+async function ensureSalesCardColumnAvailable() {
+  if (!pool) return false
+  if (hasCheckedSalesCardColumn) return salesCardColumnAvailable
+
+  if (!salesTableAvailable) return false
+
+  const { rows } = await pool.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'tradera_sales' AND column_name = 'card_id'`
+  )
+
+  if (rows.length > 0) {
+    salesCardColumnAvailable = true
+    hasCheckedSalesCardColumn = true
+    return true
+  }
+
+  try {
+    await pool.query('ALTER TABLE tradera_sales ADD COLUMN card_id INTEGER REFERENCES cards(id)')
+    salesCardColumnAvailable = true
+  } catch (error) {
+    console.error('Failed to add card_id column to tradera_sales', error)
+    salesCardColumnAvailable = false
+  }
+
+  hasCheckedSalesCardColumn = true
+  return salesCardColumnAvailable
+}
+
+async function ensureCardInfrastructure() {
+  const salesAvailable = await ensureSalesTableAvailable()
+  const cardsAvailable = await ensureCardsTableAvailable()
+  if (!salesAvailable || !cardsAvailable) return false
+
+  const cardColumnAvailable = await ensureSalesCardColumnAvailable()
+  return cardColumnAvailable
   const { rows } = await pool.query("SELECT to_regclass('public.cards') AS table_name")
 
   cardsTableAvailable = Boolean(rows?.[0]?.table_name)
@@ -96,6 +156,8 @@ function extractCardPayload(row) {
 async function ensureMissingSalesAreLinkedToCards() {
   if (!pool || hasBackfilledSalesCards) return
 
+  const infrastructureReady = await ensureCardInfrastructure()
+  if (!infrastructureReady) return
   const tableExists = await ensureSalesTableAvailable()
   const cardsExist = await ensureCardsTableAvailable()
   if (!tableExists || !cardsExist) return
@@ -154,6 +216,8 @@ async function ensureMissingSalesAreLinkedToCards() {
 async function fetchAuctionsFromDatabase() {
   if (!pool) return []
 
+  const infrastructureReady = await ensureCardInfrastructure()
+  if (!infrastructureReady) return []
   const tableExists = await ensureSalesTableAvailable()
   const cardsExist = await ensureCardsTableAvailable()
   if (!tableExists || !cardsExist) return []
@@ -227,6 +291,8 @@ function normalizeAuctionRow(row) {
 async function fetchCardWithAuctions(cardId) {
   if (!pool) return null
 
+  const infrastructureReady = await ensureCardInfrastructure()
+  if (!infrastructureReady) return null
   const tableExists = await ensureSalesTableAvailable()
   const cardsExist = await ensureCardsTableAvailable()
   if (!tableExists || !cardsExist) return null
