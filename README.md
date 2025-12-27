@@ -38,3 +38,15 @@ Local execution is not required, but you can verify connectivity with:
 
 Console output includes pages fetched, items scanned, and the number of rows
 imported for the target day.
+
+## Dashboard (React + Tailwind)
+
+A React + TypeScript dashboard scaffold lives in `/dashboard`, built with Vite,
+Tailwind CSS, and shadcn/ui-inspired primitives. To run it locally:
+
+1. `cd dashboard`
+2. `npm install`
+3. `npm run dev`
+
+The dashboard renders sample sales data and filtering controls so you can
+quickly explore a data-dense admin view while the backend importer evolves.
