@@ -1,10 +1,17 @@
-export type SaleRecord = {
+export type AuctionRecord = {
   id: string
-  name: string
-  price: number
-  language: string
+  title: string
+  cardName: string
+  seller: string
+  sellerType: 'trusted' | 'new'
+  currentPrice: number
+  currency: string
+  bids: number
+  endTime: string
+  status: 'active' | 'ended'
   condition: string
-  era: string
-  soldAt: string
-  tags: string[]
+  category: string
+  location: string
+  url: string
+  addedAt: string
 }
