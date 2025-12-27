@@ -39,8 +39,6 @@ export function AuctionsPage(): JSX.Element {
   const [customEnd, setCustomEnd] = useState('')
   const [condition, setCondition] = useState<string>('all')
   const [seller, setSeller] = useState<string>('all')
-  const [category, setCategory] = useState<string>('all')
-  const [location, setLocation] = useState<string>('all')
   const [minBids, setMinBids] = useState('')
   const [maxBids, setMaxBids] = useState('')
   const [sortBy, setSortBy] = useState<string>('endDesc')
@@ -50,18 +48,8 @@ export function AuctionsPage(): JSX.Element {
     return ['all', ...Array.from(unique)]
   }, [data])
 
-  const categories = useMemo(() => {
-    const unique = new Set<string>(data?.map((auction) => auction.category) ?? [])
-    return ['all', ...Array.from(unique)]
-  }, [data])
-
   const sellers = useMemo(() => {
     const unique = new Set<string>(data?.map((auction) => auction.seller) ?? [])
-    return ['all', ...Array.from(unique)]
-  }, [data])
-
-  const locations = useMemo(() => {
-    const unique = new Set<string>(data?.map((auction) => auction.location) ?? [])
     return ['all', ...Array.from(unique)]
   }, [data])
 
@@ -106,8 +94,6 @@ export function AuctionsPage(): JSX.Element {
 
       const matchesCondition = condition === 'all' || auction.condition === condition
       const matchesSeller = seller === 'all' || auction.seller === seller
-      const matchesCategory = category === 'all' || auction.category === category
-      const matchesLocation = location === 'all' || auction.location === location
       const matchesMinBids = minBids ? auction.bids >= Number(minBids) : true
       const matchesMaxBids = maxBids ? auction.bids <= Number(maxBids) : true
 
@@ -118,8 +104,6 @@ export function AuctionsPage(): JSX.Element {
         matchesEndedWindow &&
         matchesCondition &&
         matchesSeller &&
-        matchesCategory &&
-        matchesLocation &&
         matchesMinBids &&
         matchesMaxBids
       )
@@ -131,13 +115,11 @@ export function AuctionsPage(): JSX.Element {
       return new Date(b.endTime).getTime() - new Date(a.endTime).getTime()
     })
   }, [
-    category,
     condition,
     customEnd,
     customStart,
     data,
     endedWithin,
-    location,
     maxBids,
     maxPrice,
     minBids,
@@ -194,8 +176,6 @@ export function AuctionsPage(): JSX.Element {
               setCustomEnd('')
               setCondition('all')
               setSeller('all')
-              setCategory('all')
-              setLocation('all')
               setMinBids('')
               setMaxBids('')
               setSortBy('endDesc')
@@ -275,28 +255,6 @@ export function AuctionsPage(): JSX.Element {
             </Select>
           </label>
 
-          <label>
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Category / set</span>
-            <Select value={category} onChange={(event) => setCategory(event.target.value)}>
-              {categories.map((option) => (
-                <option key={option} value={option}>
-                  {option === 'all' ? 'All categories' : option}
-                </option>
-              ))}
-            </Select>
-          </label>
-
-          <label>
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Location</span>
-            <Select value={location} onChange={(event) => setLocation(event.target.value)}>
-              {locations.map((option) => (
-                <option key={option} value={option}>
-                  {option === 'all' ? 'All locations' : option}
-                </option>
-              ))}
-            </Select>
-          </label>
-
           <div className="grid grid-cols-2 gap-3 md:col-span-2">
             <label>
               <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Minimum bids</span>
@@ -352,15 +310,12 @@ export function AuctionsPage(): JSX.Element {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Card / item</TableHead>
+                    <TableHead>Listing</TableHead>
                     <TableHead>Seller</TableHead>
                     <TableHead className="text-right">Final price</TableHead>
                     <TableHead className="text-center">Bids</TableHead>
                     <TableHead>Ended at</TableHead>
                     <TableHead>Condition</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Location</TableHead>
                     <TableHead>Link</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -369,7 +324,12 @@ export function AuctionsPage(): JSX.Element {
                     <TableRow key={auction.id}>
                       <TableCell className="font-semibold text-slate-900 dark:text-slate-100">
                         <div className="flex items-center gap-2">
-                          <span>{auction.title}</span>
+                          <div>
+                            <div className="text-slate-900 dark:text-slate-100">{auction.cardName}</div>
+                            {auction.cardName !== auction.title ? (
+                              <div className="text-xs font-normal text-slate-600 dark:text-slate-400">{auction.title}</div>
+                            ) : null}
+                          </div>
                           <Badge
                             variant="outline"
                             className="border-emerald-200 bg-emerald-50 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/60 dark:bg-emerald-500/10 dark:text-emerald-200"
@@ -377,10 +337,6 @@ export function AuctionsPage(): JSX.Element {
                             Ended
                           </Badge>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-slate-900 dark:text-slate-100">{auction.cardName}</div>
-                        <div className="text-xs text-slate-600 dark:text-slate-400">{auction.category}</div>
                       </TableCell>
                       <TableCell>
                         <div className="text-slate-900 dark:text-slate-100">{auction.seller}</div>
@@ -397,8 +353,6 @@ export function AuctionsPage(): JSX.Element {
                         <div className="text-xs text-slate-600 dark:text-slate-400">{formatDistanceToNow(parseISO(auction.endTime), { addSuffix: true })}</div>
                       </TableCell>
                       <TableCell>{auction.condition}</TableCell>
-                      <TableCell>{auction.category}</TableCell>
-                      <TableCell>{auction.location}</TableCell>
                       <TableCell>
                         <a
                           href={auction.url}
