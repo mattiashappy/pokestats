@@ -212,7 +212,7 @@ async function ensureMissingSalesAreLinkedToCards() {
   }
 }
 
-async function fetchAuctionsFromDatabase() {
+async function fetchAuctionsFromDatabase(filters = {}) {
   if (!pool) return []
 
   const infrastructureReady = await ensureCardInfrastructure()
@@ -223,58 +223,113 @@ async function fetchAuctionsFromDatabase() {
 
   await ensureMissingSalesAreLinkedToCards()
 
+  const {
+    era = null,
+    language = null,
+    gradingIssuer = null,
+    grade = null,
+    minPrice = null,
+    maxPrice = null,
+    limit = 250,
+    offset = 0
+  } = filters
+
   const query = `
     SELECT
-      item_id,
-      title,
-      price,
-      bid_count,
-      end_date,
-      seller_alias,
-      seller_dsr,
-      item_url,
-      thumbnail_url,
-      attributes,
-      fetched_at,
-      card_id,
+      ts.item_id,
+      ts.title,
+      ts.price,
+      ts.bid_count,
+      ts.end_date,
+      ts.seller_alias,
+      ts.seller_dsr,
+      ts.item_url,
+      ts.thumbnail_url,
+      ts.attributes,
+      ts.fetched_at,
+      ts.card_id,
       c.name AS card_name,
       c.era AS card_era,
       c.set_name AS card_set_name,
-      c.card_number AS card_number
+      c.card_number AS card_number,
+      ts.attributes->'pokemon_era'->>0 AS pokemon_era,
+      ts.attributes->'pokemon_language'->>0 AS pokemon_language,
+      ts.attributes->'pokemon_grading_issuer'->>0 AS grading_issuer,
+      ts.attributes->'pokemon_grade'->>0 AS grading_grade
     FROM tradera_sales ts
     JOIN cards c ON c.id = ts.card_id
+    WHERE
+      ($1::text IS NULL OR ts.attributes->'pokemon_era' ? $1)
+      AND ($2::text IS NULL OR ts.attributes->'pokemon_language' ? $2)
+      AND ($3::text IS NULL OR ts.attributes->'pokemon_grading_issuer' ? $3)
+      AND ($4::text IS NULL OR ts.attributes->'pokemon_grade' ? $4)
+      AND ($5::int IS NULL OR ts.price >= $5)
+      AND ($6::int IS NULL OR ts.price <= $6)
     ORDER BY ts.end_date DESC
+    LIMIT $7 OFFSET $8
   `
 
-  const { rows } = await pool.query(query)
+  const params = [
+    era,
+    language,
+    gradingIssuer,
+    grade,
+    minPrice,
+    maxPrice,
+    limit,
+    offset
+  ]
+
+  const { rows } = await pool.query(query, params)
   return rows.map(normalizeAuctionRow)
 }
 
 function normalizeAuctionRow(row) {
   const attributes = row.attributes || {}
 
+  const normalizedAttributes = Object.fromEntries(
+    Object.entries(attributes).map(([key, value]) => [String(key).toLowerCase(), value])
+  )
+
   const attributeValue = (key, fallback) => {
-    const value = attributes?.[key]
+    const value = attributes?.[key] ?? normalizedAttributes[key?.toLowerCase?.()]
     if (!value) return fallback
     if (Array.isArray(value)) return value[0]
     return value
   }
 
   const language =
+    row.pokemon_language ||
+    attributeValue('pokemon_language') ||
     attributeValue('Language') ||
     attributeValue('Språk') ||
     attributeValue('Sprak') ||
     null
 
-  const gradingCompany = attributeValue('Graded by') || attributeValue('Grading company') || null
-  const grade = attributeValue('Grade') || attributeValue('Condition grade') || null
+  const gradingCompany =
+    row.grading_issuer ||
+    attributeValue('pokemon_grading_issuer') ||
+    attributeValue('Graded by') ||
+    attributeValue('Grading company') ||
+    null
+
+  const grade =
+    row.grading_grade ||
+    attributeValue('pokemon_grade') ||
+    attributeValue('Grade') ||
+    attributeValue('Condition grade') ||
+    null
 
   return {
     id: `T-${row.item_id}`,
     cardId: row.card_id,
     title: row.title || 'Untitled listing',
     cardName: row.card_name || attributeValue('Card name', row.title || 'Unknown card'),
-    cardEra: row.card_era || attributeValue('Era', 'Unknown era'),
+    cardEra:
+      row.card_era ||
+      row.pokemon_era ||
+      attributeValue('pokemon_era') ||
+      attributeValue('Era', 'Unknown era'),
     cardSetName: row.card_set_name || attributeValue('Series', 'Unknown set'),
     cardNumber: row.card_number || attributeValue('Card number', null),
     seller: row.seller_alias || 'Unknown seller',
@@ -363,9 +418,21 @@ app.get('/api/health', (_req, res) => {
   })
 })
 
-app.get('/api/sales', async (_req, res) => {
+app.get('/api/sales', async (req, res) => {
   try {
-    const auctions = await fetchAuctionsFromDatabase()
+    const limit = Math.min(Number(req.query.limit) || 250, 500)
+    const offset = Number(req.query.offset) || 0
+
+    const auctions = await fetchAuctionsFromDatabase({
+      era: req.query.era || null,
+      language: req.query.language || null,
+      gradingIssuer: req.query.gradingIssuer || null,
+      grade: req.query.grade || null,
+      minPrice: req.query.minPrice ? Number(req.query.minPrice) : null,
+      maxPrice: req.query.maxPrice ? Number(req.query.maxPrice) : null,
+      limit,
+      offset
+    })
     return res.json(auctions) // may be []
   } catch (error) {
     console.error('Failed to fetch auctions', error)
