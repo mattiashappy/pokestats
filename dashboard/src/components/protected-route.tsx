@@ -18,7 +18,8 @@ export function ProtectedRoute({ requireSubscription = false }: { requireSubscri
     return <Navigate to="/login" replace state={{ from: location }} />
   }
 
-  const hasAccess = user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trialing'
+  const hasAccess =
+    user.role === 'admin' || user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trialing'
 
   if (requireSubscription && !hasAccess) {
     return <Navigate to="/billing" replace />
