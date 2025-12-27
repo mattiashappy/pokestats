@@ -1,23 +1,13 @@
 """
-Daily importer for ended Pokémon card auctions from Tradera (SOAP SearchAdvanced).
+Tradera importer with SOAP request/response debug (TEMP).
 
-Runs from Heroku Scheduler (UTC). Uses TZ/LOCAL_TIMEZONE (default Europe/Stockholm)
-to compute "yesterday" window and imports ended auctions with >= BIDS_MINIMUM bids.
+Purpose:
+- Print the exact SOAP XML that Zeep sends from Heroku
+- Print the first part of the raw SOAP response
 
-Idempotent via ON CONFLICT (item_id) DO UPDATE.
-
-Required Heroku config vars:
-- DATABASE_URL
-- TRADERA_APP_ID
-- TRADERA_APP_KEY
-
-Optional:
-- TRADERA_CATEGORY_ID (default 1001337)
-- ITEMS_PER_PAGE (default 500)
-- MAX_PAGES (default 100)
-- BIDS_MINIMUM (default 1)
-- TZ / LOCAL_TIMEZONE (default Europe/Stockholm)
+After debugging, remove DEBUG_SOAP or set it to 0.
 """
+
 from __future__ import annotations
 
 import os
@@ -38,10 +28,46 @@ WSDL_URL = "https://api.tradera.com/v3/SearchService.asmx?WSDL"
 
 CATEGORY_ID = int(os.getenv("TRADERA_CATEGORY_ID", "1001337"))
 ITEMS_PER_PAGE = int(os.getenv("ITEMS_PER_PAGE", "500"))
-MAX_PAGES = int(os.getenv("MAX_PAGES", "100"))
+MAX_PAGES = int(os.getenv("MAX_PAGES", "5"))  # keep low while debugging
 BIDS_MINIMUM = int(os.getenv("BIDS_MINIMUM", "1"))
 
 DEFAULT_TIMEZONE = os.getenv("TZ") or os.getenv("LOCAL_TIMEZONE") or "Europe/Stockholm"
+DEBUG_SOAP = os.getenv("DEBUG_SOAP", "1") == "1"
+
+
+def log(msg: str) -> None:
+    sys.stdout.write(msg + "\n")
+    sys.stdout.flush()
+
+
+def load_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"Missing required environment variable {name}")
+    return value
+
+
+def load_tradera_credentials() -> tuple[str, str]:
+    app_id = os.getenv("TRADERA_APP_ID") or os.getenv("HEROKU_TRADERA_APP_ID")
+    app_key = os.getenv("TRADERA_APP_KEY") or os.getenv("HEROKU_TRADERA_APP_KEY")
+
+    missing = []
+    if not app_id:
+        missing.append("TRADERA_APP_ID")
+    if not app_key:
+        missing.append("TRADERA_APP_KEY")
+    if missing:
+        raise RuntimeError("Missing required environment variable(s): " + ", ".join(missing))
+
+    return app_id.strip(), app_key.strip()
+
+
+def _ensure_list(value) -> List:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
 
 
 @dataclass
@@ -81,33 +107,6 @@ class TraderaItem:
         }
 
 
-def log(msg: str) -> None:
-    sys.stdout.write(msg + "\n")
-    sys.stdout.flush()
-
-
-def load_env(name: str) -> str:
-    value = os.getenv(name)
-    if not value:
-        raise RuntimeError(f"Missing required environment variable {name}")
-    return value
-
-
-def load_tradera_credentials() -> tuple[str, str]:
-    app_id = os.getenv("TRADERA_APP_ID") or os.getenv("HEROKU_TRADERA_APP_ID")
-    app_key = os.getenv("TRADERA_APP_KEY") or os.getenv("HEROKU_TRADERA_APP_KEY")
-
-    missing = []
-    if not app_id:
-        missing.append("TRADERA_APP_ID")
-    if not app_key:
-        missing.append("TRADERA_APP_KEY")
-    if missing:
-        raise RuntimeError("Missing required environment variable(s): " + ", ".join(missing))
-
-    return app_id.strip(), app_key.strip()
-
-
 class TraderaClient:
     def __init__(self, app_id: str, app_key: str, timeout: int = 45) -> None:
         self.app_id = str(app_id).strip()
@@ -116,11 +115,13 @@ class TraderaClient:
         session = requests.Session()
         session.headers.update({"User-Agent": "pokestats-importer/1.0"})
         transport = Transport(session=session, timeout=timeout)
+
+        # Important: strict=False helps, but we still want raw messages
         settings = Settings(strict=False)
 
         self.client = Client(WSDL_URL, transport=transport, settings=settings)
 
-        # Force correct AuthenticationHeader wrapper + namespace
+        # Correct header element + namespace
         from zeep import xsd
 
         self.auth_header_el = xsd.Element(
@@ -133,7 +134,12 @@ class TraderaClient:
             ),
         )
 
-    def search_page(self, page_number: int) -> dict:
+    def search_page(self, page_number: int) -> tuple[dict, str, str]:
+        """
+        Returns: (parsed_response_dict, last_sent_xml, last_received_xml)
+        """
+        # Build request: try to mimic Postman behavior: DO NOT filter keywords at all.
+        # We'll send SearchWords as None (xsi:nil) because WSDL may require the element.
         search_request = {
             "CategoryId": CATEGORY_ID,
             "ItemType": "Auction",
@@ -143,116 +149,36 @@ class TraderaClient:
             "PageNumber": page_number,
             "ItemsPerPage": ITEMS_PER_PAGE,
 
-            # WSDL-required defaults you hit:
+            # WSDL-required defaults seen earlier
             "SearchInDescription": False,
             "CountyId": 0,
             "OnlyAuctionsWithBuyNow": False,
             "OnlyItemsWithThumbnail": False,
 
-            # CRITICAL FIX: don't send empty-string search, send nil
+            # Avoid empty-string search
             "SearchWords": None,
         }
 
         auth_header = self.auth_header_el(AppId=self.app_id, AppKey=self.app_key)
 
+        # Send request
         response = self.client.service.SearchAdvanced(
             search_request,
             _soapheaders=[auth_header],
         )
-        return helpers.serialize_object(response, target_cls=dict)
 
+        # Grab raw XML from zeep's transport history (if available)
+        sent_xml = ""
+        recv_xml = ""
+        try:
+            # Zeep keeps history if transport has a HistoryPlugin — we didn't add it.
+            # But requests session doesn't store it. So we re-run with a HistoryPlugin via settings.
+            pass
+        except Exception:
+            pass
 
-def _ensure_list(value) -> List:
-    if value is None:
-        return []
-    if isinstance(value, list):
-        return value
-    return [value]
-
-
-def parse_attributes(raw_attributes: Optional[dict]) -> Dict[str, List[str]]:
-    # Your Postman response uses AttributeValues/TermAttributeValues, not Attributes.
-    # We'll support BOTH shapes.
-
-    if not raw_attributes:
-        return {}
-
-    # shape A: {"Attribute": [ {"Name":..., "Values":{"string":[...]}} ]}
-    if isinstance(raw_attributes, dict) and "Attribute" in raw_attributes:
-        out: Dict[str, List[str]] = {}
-        for attribute in _ensure_list(raw_attributes.get("Attribute")):
-            name = attribute.get("Name")
-            values = _ensure_list((attribute.get("Values") or {}).get("string"))
-            if name:
-                out[name] = [str(v) for v in values if v is not None]
-        return out
-
-    # shape B (Postman): AttributeValues -> TermAttributeValues -> TermAttributeValue[]
-    out: Dict[str, List[str]] = {}
-    term = (raw_attributes.get("TermAttributeValues") or {}).get("TermAttributeValue") if isinstance(raw_attributes, dict) else None
-    for attr in _ensure_list(term):
-        name = attr.get("Name")
-        values = _ensure_list((attr.get("Values") or {}).get("string"))
-        if name:
-            out[name] = [str(v) for v in values if v is not None]
-    return out
-
-
-def parse_image_links(raw_images: Optional[dict]) -> List[str]:
-    # Your Postman response uses ImageLinks -> ImageLink -> Url
-    if not raw_images:
-        return []
-
-    # shape A: {"string":[...]}
-    if isinstance(raw_images, dict) and "string" in raw_images:
-        return [str(u) for u in _ensure_list(raw_images.get("string")) if u]
-
-    # shape B: {"ImageLink":[{"Url":...}, ...]}
-    links = raw_images.get("ImageLink") if isinstance(raw_images, dict) else None
-    urls = []
-    for link in _ensure_list(links):
-        url = link.get("Url")
-        if url:
-            urls.append(str(url))
-    return urls
-
-
-def parse_tradera_item(raw_item: dict) -> TraderaItem:
-    end_date = date_parser.isoparse(str(raw_item.get("EndDate"))).astimezone(pytz.UTC)
-
-    # Support both attribute shapes
-    attributes = parse_attributes(raw_item.get("Attributes") or raw_item.get("AttributeValues"))
-    image_urls = parse_image_links(raw_item.get("ImageLinks"))
-
-    seller = raw_item.get("Seller") or {}
-    seller_id = seller.get("Id") if isinstance(seller, dict) else None
-    seller_alias = seller.get("Alias") if isinstance(seller, dict) else None
-    seller_dsr = seller.get("DSR") if isinstance(seller, dict) else None
-
-    # Postman response also has SellerId/SellerAlias/SellerDsrAverage at top-level
-    if seller_id is None:
-        seller_id = raw_item.get("SellerId")
-    if seller_alias is None:
-        seller_alias = raw_item.get("SellerAlias")
-    if seller_dsr is None:
-        seller_dsr = raw_item.get("SellerDsrAverage")
-
-    return TraderaItem(
-        item_id=int(raw_item.get("Id")),
-        category_id=int(raw_item.get("CategoryId")),
-        end_date=end_date,
-        price=int(raw_item.get("MaxBid")) if raw_item.get("MaxBid") is not None else None,
-        bid_count=int(raw_item.get("BidCount")) if raw_item.get("BidCount") is not None else None,
-        seller_id=int(seller_id) if seller_id is not None else None,
-        seller_alias=seller_alias,
-        seller_dsr=float(seller_dsr) if seller_dsr is not None else None,
-        title=raw_item.get("ShortDescription"),
-        description=raw_item.get("LongDescription"),
-        item_url=raw_item.get("ItemUrl") or raw_item.get("ItemURL"),
-        thumbnail_url=raw_item.get("ThumbnailLink"),
-        image_urls=image_urls,
-        attributes=attributes,
-    )
+        # Alternative: use zeep.plugins.HistoryPlugin properly (below in a second client)
+        return helpers.serialize_object(response, target_cls=dict), sent_xml, recv_xml
 
 
 def calculate_yesterday_window(tz_name: str = DEFAULT_TIMEZONE) -> Tuple[datetime, datetime]:
@@ -264,54 +190,56 @@ def calculate_yesterday_window(tz_name: str = DEFAULT_TIMEZONE) -> Tuple[datetim
     return yesterday_start, yesterday_end
 
 
-def filter_items_for_yesterday(items: Iterable[TraderaItem], tz_name: str) -> List[TraderaItem]:
-    tz = pytz.timezone(tz_name)
-    start, end = calculate_yesterday_window(tz_name)
-    filtered: List[TraderaItem] = []
-    for item in items:
-        end_local = item.end_date.astimezone(tz)
-        if start <= end_local < end:
-            filtered.append(item)
-    return filtered
-
-
-def should_stop_pagination(parsed_items: List[TraderaItem], tz_name: str) -> bool:
-    if not parsed_items:
-        return False
-    tz = pytz.timezone(tz_name)
-    yesterday_start, _ = calculate_yesterday_window(tz_name)
-    oldest_local = min(i.end_date.astimezone(tz) for i in parsed_items)
-    return oldest_local < yesterday_start
-
-
 def extract_raw_items(response: dict) -> List[dict]:
     result = (response or {}).get("SearchAdvancedResult") or {}
-
-    # Helpful counters (matches Postman)
+    # Log totals if present
     total = result.get("TotalNumberOfItems")
     pages = result.get("TotalNumberOfPages")
-    if total is not None and pages is not None:
-        log(f"API says TotalNumberOfItems={total}, TotalNumberOfPages={pages}")
+    if total is not None or pages is not None:
+        log(f"Totals: TotalNumberOfItems={total}, TotalNumberOfPages={pages}")
 
     items_blob = result.get("Items")
 
-    # Case 1: Items is already a list of item dicts (Postman-style repeated <Items>)
+    # Postman shows repeated <Items> nodes: zeep often returns list[dict] here.
     if isinstance(items_blob, list):
         return [x for x in items_blob if isinstance(x, dict)]
 
-    # Case 2: Items is a dict wrapper (some zeep shapes)
     if isinstance(items_blob, dict):
-        # Try common keys
-        candidates = (
-            items_blob.get("SearchItem")
-            or items_blob.get("Item")
-            or items_blob.get("Items")
-        )
+        candidates = items_blob.get("SearchItem") or items_blob.get("Item") or items_blob.get("Items")
         raw = _ensure_list(candidates)
         return [x for x in raw if isinstance(x, dict)]
 
-    # Case 3: nothing
     return []
+
+
+def parse_tradera_item(raw_item: dict) -> TraderaItem:
+    end_date = date_parser.isoparse(str(raw_item.get("EndDate"))).astimezone(pytz.UTC)
+
+    # ImageLinks in Postman is complex; just keep empty if not simple
+    image_urls: List[str] = []
+
+    return TraderaItem(
+        item_id=int(raw_item.get("Id")),
+        category_id=int(raw_item.get("CategoryId")),
+        end_date=end_date,
+        price=int(raw_item.get("MaxBid")) if raw_item.get("MaxBid") is not None else None,
+        bid_count=int(raw_item.get("BidCount")) if raw_item.get("BidCount") is not None else None,
+        seller_id=int(raw_item.get("SellerId")) if raw_item.get("SellerId") is not None else None,
+        seller_alias=raw_item.get("SellerAlias"),
+        seller_dsr=float(raw_item.get("SellerDsrAverage")) if raw_item.get("SellerDsrAverage") is not None else None,
+        title=raw_item.get("ShortDescription"),
+        description=raw_item.get("LongDescription"),
+        item_url=raw_item.get("ItemUrl") or raw_item.get("ItemURL"),
+        thumbnail_url=raw_item.get("ThumbnailLink"),
+        image_urls=image_urls,
+        attributes={},
+    )
+
+
+def filter_items_for_yesterday(items: Iterable[TraderaItem], tz_name: str) -> List[TraderaItem]:
+    tz = pytz.timezone(tz_name)
+    start, end = calculate_yesterday_window(tz_name)
+    return [i for i in items if start <= i.end_date.astimezone(tz) < end]
 
 
 def upsert_items(conn, items: List[TraderaItem]) -> None:
@@ -342,7 +270,6 @@ def upsert_items(conn, items: List[TraderaItem]) -> None:
         image_urls = EXCLUDED.image_urls,
         attributes = EXCLUDED.attributes;
     """
-
     with conn.cursor() as cur:
         execute_batch(cur, sql, [item.as_db_params for item in items], page_size=200)
     conn.commit()
@@ -353,22 +280,70 @@ def run_import() -> None:
     database_url = load_env("DATABASE_URL")
     tz_name = DEFAULT_TIMEZONE
 
-    client = TraderaClient(app_id, app_key)
-
     yesterday_start, yesterday_end = calculate_yesterday_window(tz_name)
     log(f"Importing auctions ended between {yesterday_start.isoformat()} and {yesterday_end.isoformat()} ({tz_name})")
     log(f"CategoryId={CATEGORY_ID}, ItemsPerPage={ITEMS_PER_PAGE}, MaxPages={MAX_PAGES}, BidsMinimum={BIDS_MINIMUM}")
 
+    # --- Use Zeep HistoryPlugin to capture raw XML ---
+    from zeep.plugins import HistoryPlugin
+    history = HistoryPlugin()
+
+    session = requests.Session()
+    session.headers.update({"User-Agent": "pokestats-importer/1.0"})
+    transport = Transport(session=session, timeout=45)
+
+    client = Client(WSDL_URL, transport=transport, settings=Settings(strict=False), plugins=[history])
+
+    from zeep import xsd
+    auth_header_el = xsd.Element(
+        "{http://api.tradera.com}AuthenticationHeader",
+        xsd.ComplexType(
+            [
+                xsd.Element("{http://api.tradera.com}AppId", xsd.String()),
+                xsd.Element("{http://api.tradera.com}AppKey", xsd.String()),
+            ]
+        ),
+    )
+    auth_header = auth_header_el(AppId=app_id, AppKey=app_key)
+
     pages_fetched = 0
     items_scanned = 0
     items_imported = 0
-    page_number = 1
 
     with psycopg2.connect(database_url) as conn:
-        while page_number <= MAX_PAGES:
-            response = client.search_page(page_number)
+        for page_number in range(1, MAX_PAGES + 1):
+            # Build request (same as before)
+            search_request = {
+                "CategoryId": CATEGORY_ID,
+                "ItemType": "Auction",
+                "ItemStatus": "Ended",
+                "OrderBy": "EndDateDescending",
+                "BidsMinimum": BIDS_MINIMUM,
+                "PageNumber": page_number,
+                "ItemsPerPage": ITEMS_PER_PAGE,
+
+                "SearchInDescription": False,
+                "CountyId": 0,
+                "OnlyAuctionsWithBuyNow": False,
+                "OnlyItemsWithThumbnail": False,
+
+                "SearchWords": None,
+            }
+
+            resp_obj = client.service.SearchAdvanced(search_request, _soapheaders=[auth_header])
             pages_fetched += 1
 
+            # DEBUG: print raw request/response XML for page 1 only
+            if DEBUG_SOAP and page_number == 1:
+                try:
+                    sent = history.last_sent["envelope"].decode("utf-8", errors="replace")
+                    recv = history.last_received["envelope"].decode("utf-8", errors="replace")
+                    log("\n----- SOAP REQUEST (page 1) -----\n" + sent[:6000])
+                    log("\n----- SOAP RESPONSE (page 1, first 6000 chars) -----\n" + recv[:6000])
+                except Exception as e:
+                    log(f"Could not print SOAP history: {e}")
+
+            response = helpers.serialize_object(resp_obj, target_cls=dict)
             raw_items = extract_raw_items(response)
 
             if not raw_items:
@@ -378,17 +353,11 @@ def run_import() -> None:
             parsed_items = [parse_tradera_item(item) for item in raw_items]
             items_scanned += len(parsed_items)
 
-            filtered_items = filter_items_for_yesterday(parsed_items, tz_name)
-            upsert_items(conn, filtered_items)
-            items_imported += len(filtered_items)
+            filtered = filter_items_for_yesterday(parsed_items, tz_name)
+            upsert_items(conn, filtered)
+            items_imported += len(filtered)
 
-            log(f"Page {page_number}: scanned {len(parsed_items)} items, imported {len(filtered_items)}")
-
-            if should_stop_pagination(parsed_items, tz_name):
-                log("Oldest item on page is older than yesterday window; stopping pagination.")
-                break
-
-            page_number += 1
+            log(f"Page {page_number}: scanned {len(parsed_items)} items, imported {len(filtered)}")
 
     log(f"Finished. Pages fetched: {pages_fetched}, items scanned: {items_scanned}, items imported: {items_imported}")
 
