@@ -6,15 +6,100 @@ import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { useAuth } from '../providers/auth'
+import { registeredUsers } from '../data/users'
 
 export function BillingPage(): JSX.Element {
   const { user, updateSubscription, startTrial } = useAuth()
+  const isAdmin = user?.role === 'admin'
   const [cardNumber, setCardNumber] = useState('4242 4242 4242 4242')
   const [expiry, setExpiry] = useState('12/28')
   const [cvc, setCvc] = useState('123')
   const [error, setError] = useState('')
   const [statusMessage, setStatusMessage] = useState('')
+
+  if (isAdmin) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Billing</p>
+            <h1 className="text-3xl font-bold text-slate-50">Admin billing overview</h1>
+            <p className="text-sm text-slate-400">
+              Admin accounts are comped and do not require payment. Use this view to keep tabs on everyone else&apos;s billing status.
+            </p>
+          </div>
+          <Badge variant="secondary" className="uppercase">Comped admin</Badge>
+        </div>
+
+        <Card className="bg-slate-900/70">
+          <CardHeader>
+            <CardTitle>Personal billing disabled</CardTitle>
+            <CardDescription>Because this admin seat is free, the subscription controls are hidden.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-slate-300">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 h-4 w-4 text-emerald-300" />
+              <p>Access to the dashboard and admin area stays unlocked with no renewal required.</p>
+            </div>
+            <div className="flex items-start gap-3">
+              <Sparkles className="mt-0.5 h-4 w-4 text-amber-300" />
+              <p>Use the Admin section to reschedule imports and manage platform-wide settings.</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle>Tenant billing roster</CardTitle>
+              <CardDescription>Everyone using PokéStats and their current billing arrangement.</CardDescription>
+            </div>
+            <Badge variant="secondary">{registeredUsers.length} accounts</Badge>
+          </CardHeader>
+          <CardContent className="overflow-hidden rounded-xl border border-slate-900/80 p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Seats</TableHead>
+                  <TableHead>Plan</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {registeredUsers.map((account) => (
+                  <TableRow key={account.email}>
+                    <TableCell className="font-semibold text-slate-100">{account.name}</TableCell>
+                    <TableCell className="text-slate-300">{account.email}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          account.subscription === 'active'
+                            ? 'success'
+                            : account.subscription === 'trialing'
+                              ? 'secondary'
+                              : 'warning'
+                        }
+                      >
+                        {account.subscription}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{account.seats}</TableCell>
+                    <TableCell className="capitalize">
+                      {account.billingPlan === 'comped' ? 'Comped (admin)' : 'Standard paid'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   const daysLeftInTrial = useMemo(() => {
     if (!user?.trialEndsAt) return null
