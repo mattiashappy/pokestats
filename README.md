@@ -1,67 +1,63 @@
-# PokeStats – Tradera Pokémon card importer
+# PokéStats – Frontend-first SaaS shell
 
-Backend-only MVP that ingests sold Pokémon card auctions from Tradera and stores
-immutable market-price records in PostgreSQL.
+A shadcn/ui + Tailwind SaaS dashboard scaffold for PokéStats. It ships a marketing landing page, mock auth + subscription gating, and protected dashboard routes ready for Stripe and importer-backed data once they are wired in. The Express server serves the Vite build and exposes mocked API routes so the app runs end-to-end on Heroku.
 
-## Components
+## Project structure
 
-- `schema.sql` – table definition and supporting indexes for `tradera_sales`.
-- `scripts/tradera_importer.py` – daily importer that calls Tradera's SOAP v3
-  SearchService, applies the date-based pagination rules, and upserts auction
-  rows into PostgreSQL.
-- `requirements.txt` – Python dependencies for the importer.
+- `dashboard/` – Vite + React + TypeScript frontend with shadcn/ui primitives, React Router, React Query, and form scaffolding.
+- `server.js` – Express server that serves `dashboard/dist`, provides SPA fallback, and exposes `/api/health` + `/api/sales` mocks.
+- `Procfile` – Runs the Node server on Heroku. (Legacy Python importer files remain but are not part of this UI deploy.)
 
-## Configuration
+## Features
 
-The importer is configured through environment variables (Heroku config vars):
+- Landing page with CTA links to log in or start a subscription.
+- Fake auth layer using `localStorage` with login/signup/logout flows.
+- Subscription gating: inactive users are redirected to `/billing`; toggle status from settings or billing.
+- Dashboard pages: overview, sales table with filters, settings, and billing.
+- Mocked `/api/sales` + `/api/health` endpoints served by Express; React Query consumes the sales data.
+- SPA-safe routing so refreshing protected routes on Heroku continues to work.
 
-- `TRADERA_APP_ID` – Tradera API app id (SOAP header).
-- `TRADERA_APP_KEY` – Tradera API app key (SOAP header).
-- `DATABASE_URL` – PostgreSQL connection string.
-- `LOCAL_TIMEZONE` – Optional timezone for "yesterday" calculations; defaults to
-  `Europe/Stockholm`.
-- `MAX_PAGES` – Optional safety cap for pagination; defaults to `100` to respect
-  the daily API call limit.
+## Local development
 
-Aliases: if you already set `HEROKU_TRADERA_APP_ID` and `HEROKU_TRADERA_APP_KEY`
-as config vars, the importer will pick those up as fallbacks so you don't need
-to rename them.
+```bash
+# Install root server deps and frontend deps
+npm install
 
-- Add a Heroku Scheduler job to run `python scripts/tradera_importer.py` daily
-  at 02:00 (local time Sweden).
-- Ensure `DATABASE_URL`, `TRADERA_APP_ID`, and `TRADERA_APP_KEY` are configured
-  as Heroku config vars.
+# Start the Vite dev server (frontend only)
+npm run dev --prefix dashboard
 
-## Optional local run
+# Type-check the frontend
+npm run check --prefix dashboard
+```
 
-Local execution is not required, but you can verify connectivity with:
+## Build & run the production bundle locally
 
-1. Install Python dependencies: `pip install -r requirements.txt`.
-2. Create the table: `psql "$DATABASE_URL" -f schema.sql`.
-3. Run the importer: `python scripts/tradera_importer.py`.
+```bash
+npm run build        # builds the Vite app into dashboard/dist
+npm start            # starts Express on http://localhost:8000 serving the built SPA
+```
 
-Console output includes pages fetched, items scanned, and the number of rows
-imported for the target day.
+## Heroku deployment
 
-## Heroku web dyno (health endpoint)
+1. Create the app and set the Node version (Heroku picks up `engines` from `package.json`):
+   ```bash
+   heroku create pokestats-demo
+   heroku config:set NODE_ENV=production
+   ```
+2. Deploy from this repository root:
+   ```bash
+   git push heroku main
+   ```
+3. After deploy, verify the health endpoint and SPA routing:
+   ```bash
+   heroku open                      # loads the landing page
+   heroku run curl https://$HEROKU_APP_NAME.herokuapp.com/api/health
+   ```
+4. Log in or sign up in the hosted app. Inactive accounts are sent to `/billing`; toggle the mock subscription to unlock `/app/*` routes.
 
-Heroku apps need an always-on web dyno to avoid router errors such as
-`H14: No web processes running`. A tiny HTTP server in `server.py` listens on
-`$PORT` and responds with a JSON health payload so the app can satisfy Heroku's
-router checks even though the importer itself is triggered by Scheduler.
+## API mocks
 
-- `Procfile` defines the web process: `python server.py`.
-- You can test locally with `python server.py` and visiting
-  `http://localhost:8000/`.
+- `GET /api/health` → `{ ok: true }`
+- `GET /api/sales` → Sample sales rows consumed by the `/app/sales` table via React Query.
 
-## Dashboard (React + Tailwind)
-
-A React + TypeScript dashboard scaffold lives in `/dashboard`, built with Vite,
-Tailwind CSS, and shadcn/ui-inspired primitives. To run it locally:
-
-1. `cd dashboard`
-2. `npm install`
-3. `npm run dev`
-
-The dashboard renders sample sales data and filtering controls so you can
-quickly explore a data-dense admin view while the backend importer evolves.
+Replace these with importer-backed endpoints once the backend is ready and wire Stripe webhooks to update `subscriptionStatus` server-side.
