@@ -39,9 +39,13 @@ npm start            # starts Express on http://localhost:8000 serving the built
 
 ## Heroku deployment
 
-1. Create the app and set the Node version (Heroku picks up `engines` from `package.json`):
+> **Important:** Because this repo also contains legacy Python files, explicitly pin the Node buildpack so Heroku does not try to boot a Python dyno (which would fail with `node: command not found`). The included `app.json` does this for new pipelines, but it’s safest to set it manually on existing apps.
+
+1. Create the app and set the Node buildpack + environment:
    ```bash
    heroku create pokestats-demo
+   heroku buildpacks:clear
+   heroku buildpacks:add heroku/nodejs
    heroku config:set NODE_ENV=production
    ```
 2. Deploy from this repository root:
