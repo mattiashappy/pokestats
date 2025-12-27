@@ -7,6 +7,7 @@ export type RegisteredUser = {
   billingPlan: 'comped' | 'standard'
 }
 
+// Seed with only the comped admin account for now; real users will be added later.
 export const registeredUsers: RegisteredUser[] = [
   {
     name: 'Ash Ketchum',
