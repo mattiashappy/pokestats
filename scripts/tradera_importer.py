@@ -87,6 +87,8 @@ class TraderaClient:
         self.AuthHeaderType = self.client.get_type("ns0:AuthenticationHeader")
 
     def search_page(self, page_number: int) -> dict:
+        # NOTE: Tradera WSDL requires SearchInDescription in the request schema.
+        # Also adding SearchWords="" as a safe default to avoid "missing element" errors.
         search_request = {
             "CategoryId": CATEGORY_ID,
             "ItemType": "Auction",
@@ -95,6 +97,12 @@ class TraderaClient:
             "BidsMinimum": 1,
             "PageNumber": page_number,
             "ItemsPerPage": ITEMS_PER_PAGE,
+
+            # ✅ Required by WSDL:
+            "SearchInDescription": False,
+
+            # ✅ Safe default (often required in SOAP schemas):
+            "SearchWords": "",
         }
 
         auth_header = self.AuthHeaderType(AppId=self.app_id, AppKey=self.app_key)
@@ -264,7 +272,9 @@ def run_import() -> None:
     client = TraderaClient(app_id, app_key)
 
     yesterday_start, yesterday_end = calculate_yesterday_window(tz_name)
-    log(f"Importing auctions ended between {yesterday_start.isoformat()} and {yesterday_end.isoformat()} ({tz_name})")
+    log(
+        f"Importing auctions ended between {yesterday_start.isoformat()} and {yesterday_end.isoformat()} ({tz_name})"
+    )
     log(f"CategoryId={CATEGORY_ID}, ItemsPerPage={ITEMS_PER_PAGE}, MaxPages={MAX_API_CALLS_PER_DAY}")
 
     pages_fetched = 0
