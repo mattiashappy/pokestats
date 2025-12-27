@@ -13,7 +13,7 @@ immutable market-price records in PostgreSQL.
 
 ## Configuration
 
-The importer is configured through environment variables:
+The importer is configured through environment variables (Heroku config vars):
 
 - `TRADERA_APP_ID` – Tradera API app id (SOAP header).
 - `TRADERA_APP_KEY` – Tradera API app key (SOAP header).
@@ -22,6 +22,10 @@ The importer is configured through environment variables:
   `Europe/Stockholm`.
 - `MAX_PAGES` – Optional safety cap for pagination; defaults to `100` to respect
   the daily API call limit.
+
+Aliases: if you already set `HEROKU_TRADERA_APP_ID` and `HEROKU_TRADERA_APP_KEY`
+as config vars, the importer will pick those up as fallbacks so you don't need
+to rename them.
 
 - Add a Heroku Scheduler job to run `python scripts/tradera_importer.py` daily
   at 02:00 (local time Sweden).
