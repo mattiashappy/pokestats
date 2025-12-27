@@ -122,7 +122,7 @@ class TraderaClient:
             "BidsMinimum": BIDS_MINIMUM,
             "PageNumber": page_number,
             "ItemsPerPage": ITEMS_PER_PAGE,
-            "SearchWords": "",
+            "SearchWords": None,  # sends xsi:nil
             "SearchInDescription": False,
             "CountyId": 0,
             "OnlyAuctionsWithBuyNow": False,
