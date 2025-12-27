@@ -3,3 +3,4 @@ python-dateutil==2.9.0.post0
 pytz==2024.1
 requests==2.31.0
 zeep==4.2.1
+urllib3>=2.0.0
