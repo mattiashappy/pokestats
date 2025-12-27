@@ -43,6 +43,17 @@ Local execution is not required, but you can verify connectivity with:
 Console output includes pages fetched, items scanned, and the number of rows
 imported for the target day.
 
+## Heroku web dyno (health endpoint)
+
+Heroku apps need an always-on web dyno to avoid router errors such as
+`H14: No web processes running`. A tiny HTTP server in `server.py` listens on
+`$PORT` and responds with a JSON health payload so the app can satisfy Heroku's
+router checks even though the importer itself is triggered by Scheduler.
+
+- `Procfile` defines the web process: `python server.py`.
+- You can test locally with `python server.py` and visiting
+  `http://localhost:8000/`.
+
 ## Dashboard (React + Tailwind)
 
 A React + TypeScript dashboard scaffold lives in `/dashboard`, built with Vite,
