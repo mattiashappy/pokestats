@@ -227,6 +227,7 @@ class Row:
     thumbnail_url: Optional[str]
     image_urls: List[str]
     attributes: Dict[str, List[str]]
+    card_id: Optional[int] = None
 
     def as_params(self) -> Dict[str, object]:
         return {
@@ -244,6 +245,7 @@ class Row:
             "thumbnail_url": self.thumbnail_url,
             "image_urls": Json(self.image_urls),
             "attributes": Json(self.attributes),
+            "card_id": self.card_id,
         }
 
 
@@ -276,18 +278,65 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
     )
 
 
+def normalize_card_value(value: Optional[str]) -> str:
+    if not value:
+        return "unknown"
+    return " ".join(value.strip().lower().split()) or "unknown"
+
+
+def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
+    def attr_value(key: str) -> Optional[str]:
+        values = row.attributes.get(key, []) if row.attributes else []
+        return values[0] if values else None
+
+    raw_name = attr_value("Card name") or row.title or "Unknown card"
+    raw_set = attr_value("Series") or attr_value("Set")
+
+    return {
+        "name": normalize_card_value(raw_name),
+        "era": attr_value("Era") or attr_value("Generation"),
+        "set_name": normalize_card_value(raw_set) if raw_set else "unknown",
+        "card_number": attr_value("Card number"),
+    }
+
+
+def ensure_card(conn, payload: Dict[str, Optional[str]]) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO cards (name, era, set_name, card_number)
+            VALUES (%(name)s, %(era)s, %(set_name)s, %(card_number)s)
+            ON CONFLICT (name, set_name) DO UPDATE SET
+                era = COALESCE(cards.era, EXCLUDED.era),
+                card_number = COALESCE(cards.card_number, EXCLUDED.card_number)
+            RETURNING id;
+            """,
+            payload,
+        )
+        row = cur.fetchone()
+    return int(row[0])
+
+
 def upsert(conn, rows: List[Row]) -> None:
     if not rows:
         return
 
+    card_cache: Dict[Tuple[str, str], int] = {}
+    for row in rows:
+        payload = extract_card_payload(row)
+        cache_key = (payload["name"], payload["set_name"])
+        if cache_key not in card_cache:
+            card_cache[cache_key] = ensure_card(conn, payload)
+        row.card_id = card_cache[cache_key]
+
     sql = """
     INSERT INTO tradera_sales (
         item_id, category_id, end_date, price, bid_count, seller_id, seller_alias,
-        seller_dsr, title, description, item_url, thumbnail_url, image_urls, attributes
+        seller_dsr, title, description, item_url, thumbnail_url, image_urls, attributes, card_id
     ) VALUES (
         %(item_id)s, %(category_id)s, %(end_date)s, %(price)s, %(bid_count)s,
         %(seller_id)s, %(seller_alias)s, %(seller_dsr)s, %(title)s, %(description)s,
-        %(item_url)s, %(thumbnail_url)s, %(image_urls)s, %(attributes)s
+        %(item_url)s, %(thumbnail_url)s, %(image_urls)s, %(attributes)s, %(card_id)s
     )
     ON CONFLICT (item_id) DO UPDATE SET
         category_id = EXCLUDED.category_id,
@@ -302,7 +351,8 @@ def upsert(conn, rows: List[Row]) -> None:
         item_url = EXCLUDED.item_url,
         thumbnail_url = EXCLUDED.thumbnail_url,
         image_urls = EXCLUDED.image_urls,
-        attributes = EXCLUDED.attributes;
+        attributes = EXCLUDED.attributes,
+        card_id = EXCLUDED.card_id;
     """
     with conn.cursor() as cur:
         execute_batch(cur, sql, [r.as_params() for r in rows], page_size=200)

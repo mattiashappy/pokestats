@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format, formatDistanceToNow, parseISO } from 'date-fns'
 import { ArrowUpDown, CalendarClock, ExternalLink, Loader2, Search, SlidersHorizontal } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
@@ -310,40 +311,43 @@ export function AuctionsPage(): JSX.Element {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Listing</TableHead>
-                    <TableHead>Seller</TableHead>
+                    <TableHead>Picture</TableHead>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Era</TableHead>
                     <TableHead className="text-right">Final price</TableHead>
                     <TableHead className="text-center">Bids</TableHead>
                     <TableHead>Ended at</TableHead>
-                    <TableHead>Condition</TableHead>
                     <TableHead>Link</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredAndSorted.map((auction) => (
                     <TableRow key={auction.id}>
+                      <TableCell className="w-24">
+                        <Link to={`/cards/${auction.cardId}`} className="block overflow-hidden rounded-md border border-slate-200 dark:border-slate-800">
+                          {auction.thumbnail ? (
+                            <img src={auction.thumbnail} alt={auction.cardName} className="h-16 w-full object-cover" />
+                          ) : (
+                            <div className="flex h-16 w-full items-center justify-center bg-slate-100 text-xs text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
+                              No image
+                            </div>
+                          )}
+                        </Link>
+                      </TableCell>
                       <TableCell className="font-semibold text-slate-900 dark:text-slate-100">
                         <div className="flex items-center gap-2">
                           <div>
-                            <div className="text-slate-900 dark:text-slate-100">{auction.cardName}</div>
+                            <Link to={`/cards/${auction.cardId}`} className="text-slate-900 hover:text-sky-600 dark:text-slate-100 dark:hover:text-sky-300">
+                              {auction.cardName}
+                            </Link>
                             {auction.cardName !== auction.title ? (
                               <div className="text-xs font-normal text-slate-600 dark:text-slate-400">{auction.title}</div>
                             ) : null}
+                            <div className="text-xs text-slate-500 dark:text-slate-400">Set: {auction.cardSetName}</div>
                           </div>
-                          <Badge
-                            variant="outline"
-                            className="border-emerald-200 bg-emerald-50 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/60 dark:bg-emerald-500/10 dark:text-emerald-200"
-                          >
-                            Ended
-                          </Badge>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="text-slate-900 dark:text-slate-100">{auction.seller}</div>
-                        <Badge variant={auction.sellerType === 'trusted' ? 'success' : 'secondary'} className="mt-1 capitalize">
-                          {auction.sellerType}
-                        </Badge>
-                      </TableCell>
+                      <TableCell>{auction.cardEra}</TableCell>
                       <TableCell className="text-right text-slate-900 dark:text-slate-100">
                         {new Intl.NumberFormat('sv-SE', { style: 'currency', currency: auction.currency }).format(auction.finalPrice)}
                       </TableCell>
@@ -352,7 +356,6 @@ export function AuctionsPage(): JSX.Element {
                         <div className="text-slate-900 dark:text-slate-100">{new Date(auction.endTime).toLocaleString()}</div>
                         <div className="text-xs text-slate-600 dark:text-slate-400">{formatDistanceToNow(parseISO(auction.endTime), { addSuffix: true })}</div>
                       </TableCell>
-                      <TableCell>{auction.condition}</TableCell>
                       <TableCell>
                         <a
                           href={auction.url}
