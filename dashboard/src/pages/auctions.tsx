@@ -347,7 +347,7 @@ export function AuctionsPage(): JSX.Element {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>{auction.cardEra}</TableCell>
+                      <TableCell>{auction.cardEra || 'Unknown era'}</TableCell>
                       <TableCell className="text-right text-slate-900 dark:text-slate-100">
                         {new Intl.NumberFormat('sv-SE', { style: 'currency', currency: auction.currency }).format(auction.finalPrice)}
                       </TableCell>
