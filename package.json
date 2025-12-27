@@ -1,0 +1,17 @@
+{
+  "name": "pokestats",
+  "private": true,
+  "scripts": {
+    "postinstall": "npm install --prefix dashboard",
+    "build": "npm run build --prefix dashboard",
+    "start": "node server.js",
+    "dev": "npm run dev --prefix dashboard"
+  },
+  "dependencies": {
+    "compression": "^1.7.4",
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
