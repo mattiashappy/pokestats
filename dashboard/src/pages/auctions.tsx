@@ -54,6 +54,48 @@ export function AuctionsPage(): JSX.Element {
     return ['all', ...Array.from(unique)]
   }, [data])
 
+  const currencyFormatter = useMemo(
+    () => new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK' }),
+    []
+  )
+
+  const stats = useMemo(() => {
+    if (!data || data.length === 0) {
+      return {
+        totalSales: 0,
+        totalBids: 0,
+        averagePrice: 0,
+        averageBids: 0,
+        highestSale: 0,
+        uniqueSellers: 0
+      }
+    }
+
+    const sellersSet = new Set<string>()
+
+    const aggregates = data.reduce(
+      (acc, auction) => {
+        sellersSet.add(auction.seller)
+
+        return {
+          totalSales: acc.totalSales + auction.finalPrice,
+          totalBids: acc.totalBids + auction.bids,
+          highestSale: Math.max(acc.highestSale, auction.finalPrice)
+        }
+      },
+      { totalSales: 0, totalBids: 0, highestSale: 0 }
+    )
+
+    return {
+      totalSales: aggregates.totalSales,
+      totalBids: aggregates.totalBids,
+      averagePrice: aggregates.totalSales / data.length,
+      averageBids: aggregates.totalBids / data.length,
+      highestSale: aggregates.highestSale,
+      uniqueSellers: sellersSet.size
+    }
+  }, [data])
+
   const filteredAndSorted = useMemo(() => {
     if (!data) return []
 
@@ -137,22 +179,86 @@ export function AuctionsPage(): JSX.Element {
     return `Data last updated: ${lastRun} (ended auctions from ${coverage})`
   }, [importSettings])
 
+  const auctionsCount = data?.length ?? 0
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Auctions</p>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Tradera ended auctions</h1>
-          <p className="max-w-2xl text-sm text-slate-600 dark:text-slate-400">
-            Browse and filter ended Tradera auctions imported after completion. Live auctions are not tracked.
-          </p>
-        </div>
-        {lastUpdatedLabel ? (
-          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-900/70 dark:bg-slate-900/60 dark:text-slate-300">
-            <CalendarClock className="h-4 w-4 text-sky-600 dark:text-sky-300" />
-            <span>{lastUpdatedLabel}</span>
+      <div className="rounded-3xl border border-slate-200/70 bg-white/80 p-6 shadow-sm backdrop-blur-md dark:border-slate-900/70 dark:bg-slate-950/60">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Auctions</p>
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Tradera ended auctions</h1>
+            <p className="max-w-2xl text-sm text-slate-600 dark:text-slate-400">
+              Browse and filter ended Tradera auctions imported after completion. Live auctions are not tracked.
+            </p>
           </div>
-        ) : null}
+          {lastUpdatedLabel ? (
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-900/70 dark:bg-slate-900/60 dark:text-slate-300">
+              <CalendarClock className="h-4 w-4 text-sky-600 dark:text-sky-300" />
+              <span>{lastUpdatedLabel}</span>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <Card className="border-slate-200/60 bg-white/60 shadow-sm dark:border-slate-900/60 dark:bg-slate-900/60">
+            <CardContent className="p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total sales</p>
+              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">
+                {currencyFormatter.format(stats.totalSales)}
+              </p>
+              <p className="text-xs text-slate-500">Across {auctionsCount.toLocaleString('sv-SE')} auctions</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200/60 bg-white/60 shadow-sm dark:border-slate-900/60 dark:bg-slate-900/60">
+            <CardContent className="p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total bids</p>
+              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">
+                {stats.totalBids.toLocaleString('sv-SE')}
+              </p>
+              <p className="text-xs text-slate-500">Avg. {stats.averageBids.toFixed(1)} bids per auction</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200/60 bg-white/60 shadow-sm dark:border-slate-900/60 dark:bg-slate-900/60">
+            <CardContent className="p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Average sale</p>
+              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">
+                {currencyFormatter.format(stats.averagePrice || 0)}
+              </p>
+              <p className="text-xs text-slate-500">Median-like feel for quick sizing</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200/60 bg-white/60 shadow-sm dark:border-slate-900/60 dark:bg-slate-900/60">
+            <CardContent className="p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Top sale</p>
+              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">
+                {currencyFormatter.format(stats.highestSale || 0)}
+              </p>
+              <p className="text-xs text-slate-500">Highest realized price in the archive</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200/60 bg-white/60 shadow-sm dark:border-slate-900/60 dark:bg-slate-900/60">
+            <CardContent className="p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Unique sellers</p>
+              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">
+                {stats.uniqueSellers.toLocaleString('sv-SE')}
+              </p>
+              <p className="text-xs text-slate-500">Helps spot supply concentration</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200/60 bg-white/60 shadow-sm dark:border-slate-900/60 dark:bg-slate-900/60">
+            <CardContent className="p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">In view</p>
+              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-50">{filteredAndSorted.length}</p>
+              <p className="text-xs text-slate-500">After applying search and filters</p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <Card>
@@ -349,7 +455,7 @@ export function AuctionsPage(): JSX.Element {
                       </TableCell>
                       <TableCell>{auction.cardEra || 'Unknown era'}</TableCell>
                       <TableCell className="text-right text-slate-900 dark:text-slate-100">
-                        {new Intl.NumberFormat('sv-SE', { style: 'currency', currency: auction.currency }).format(auction.finalPrice)}
+                        {currencyFormatter.format(auction.finalPrice)}
                       </TableCell>
                       <TableCell className="text-center">{auction.bids}</TableCell>
                       <TableCell>
