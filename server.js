@@ -9,6 +9,15 @@ const distPath = path.join(__dirname, 'dashboard', 'dist')
 app.use(compression())
 app.use(express.json())
 
+const now = new Date()
+
+function daysAgo(days, hours = 18, minutes = 0) {
+  const date = new Date(now)
+  date.setDate(date.getDate() - days)
+  date.setHours(hours, minutes, 0, 0)
+  return date.toISOString()
+}
+
 const mockedSales = [
   {
     id: 'T-90101',
@@ -16,16 +25,15 @@ const mockedSales = [
     cardName: 'Booster box',
     seller: 'NordicCardLab',
     sellerType: 'trusted',
-    currentPrice: 1850,
+    finalPrice: 1850,
     currency: 'SEK',
     bids: 18,
-    endTime: '2024-12-05T18:30:00Z',
-    status: 'active',
+    endTime: daysAgo(1, 18, 30),
     condition: 'Sealed',
     category: 'Scarlet & Violet',
     location: 'Stockholm, SE',
     url: 'https://www.tradera.com/item/123456',
-    addedAt: '2024-12-02T12:00:00Z'
+    addedAt: daysAgo(3, 12, 0)
   },
   {
     id: 'T-90102',
@@ -33,16 +41,15 @@ const mockedSales = [
     cardName: 'Charizard VMAX',
     seller: 'RetroPoke',
     sellerType: 'trusted',
-    currentPrice: 720,
+    finalPrice: 720,
     currency: 'SEK',
     bids: 11,
-    endTime: '2024-12-04T20:15:00Z',
-    status: 'active',
+    endTime: daysAgo(2, 20, 15),
     condition: 'Near Mint',
     category: 'Crown Zenith',
     location: 'Gothenburg, SE',
     url: 'https://www.tradera.com/item/223344',
-    addedAt: '2024-12-02T09:30:00Z'
+    addedAt: daysAgo(4, 9, 30)
   },
   {
     id: 'T-90103',
@@ -50,16 +57,15 @@ const mockedSales = [
     cardName: 'Venusaur',
     seller: 'CollectorDen',
     sellerType: 'new',
-    currentPrice: 1210,
+    finalPrice: 1210,
     currency: 'SEK',
     bids: 24,
-    endTime: '2024-12-03T19:05:00Z',
-    status: 'active',
+    endTime: daysAgo(3, 19, 5),
     condition: 'Lightly Played',
     category: 'Base Set',
     location: 'Malmö, SE',
     url: 'https://www.tradera.com/item/998877',
-    addedAt: '2024-12-01T15:45:00Z'
+    addedAt: daysAgo(5, 15, 45)
   },
   {
     id: 'T-90104',
@@ -67,16 +73,15 @@ const mockedSales = [
     cardName: 'Lugia',
     seller: 'MoonlightGames',
     sellerType: 'trusted',
-    currentPrice: 940,
+    finalPrice: 940,
     currency: 'SEK',
     bids: 16,
-    endTime: '2024-12-02T21:45:00Z',
-    status: 'ended',
+    endTime: daysAgo(4, 21, 45),
     condition: 'Played',
     category: 'Neo Genesis',
     location: 'Uppsala, SE',
     url: 'https://www.tradera.com/item/556677',
-    addedAt: '2024-11-30T20:10:00Z'
+    addedAt: daysAgo(6, 20, 10)
   },
   {
     id: 'T-90105',
@@ -84,16 +89,15 @@ const mockedSales = [
     cardName: 'Pokémon Silver',
     seller: 'RetroHandhelds',
     sellerType: 'new',
-    currentPrice: 360,
+    finalPrice: 360,
     currency: 'SEK',
     bids: 7,
-    endTime: '2024-12-06T17:20:00Z',
-    status: 'active',
+    endTime: daysAgo(5, 17, 20),
     condition: 'Used',
     category: 'Games',
     location: 'Stockholm, SE',
     url: 'https://www.tradera.com/item/445566',
-    addedAt: '2024-12-02T08:20:00Z'
+    addedAt: daysAgo(7, 8, 20)
   },
   {
     id: 'T-90106',
@@ -101,16 +105,15 @@ const mockedSales = [
     cardName: 'Eevee Heroes',
     seller: 'TokyoPulls',
     sellerType: 'trusted',
-    currentPrice: 410,
+    finalPrice: 410,
     currency: 'SEK',
     bids: 9,
-    endTime: '2024-12-04T16:50:00Z',
-    status: 'active',
+    endTime: daysAgo(6, 16, 50),
     condition: 'Sealed',
     category: 'Japanese',
     location: 'Osaka, JP',
     url: 'https://www.tradera.com/item/334455',
-    addedAt: '2024-12-01T18:00:00Z'
+    addedAt: daysAgo(8, 18, 0)
   },
   {
     id: 'T-90107',
@@ -118,16 +121,15 @@ const mockedSales = [
     cardName: 'Snorlax',
     seller: 'VintageVista',
     sellerType: 'trusted',
-    currentPrice: 186,
+    finalPrice: 186,
     currency: 'SEK',
     bids: 6,
-    endTime: '2024-12-07T10:00:00Z',
-    status: 'active',
+    endTime: daysAgo(7, 10, 0),
     condition: 'Moderate Play',
     category: 'Jungle',
     location: 'Copenhagen, DK',
     url: 'https://www.tradera.com/item/112233',
-    addedAt: '2024-12-01T07:40:00Z'
+    addedAt: daysAgo(9, 7, 40)
   },
   {
     id: 'T-90108',
@@ -135,16 +137,15 @@ const mockedSales = [
     cardName: 'Pikachu (Illustrator)',
     seller: 'CardForge',
     sellerType: 'new',
-    currentPrice: 2100,
+    finalPrice: 2100,
     currency: 'SEK',
     bids: 31,
-    endTime: '2024-12-01T12:00:00Z',
-    status: 'ended',
+    endTime: daysAgo(8, 12, 0),
     condition: 'Mint',
     category: 'Promo',
     location: 'Helsinki, FI',
     url: 'https://www.tradera.com/item/778899',
-    addedAt: '2024-11-29T10:00:00Z'
+    addedAt: daysAgo(10, 10, 0)
   }
 ]
 

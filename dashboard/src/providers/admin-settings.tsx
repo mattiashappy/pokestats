@@ -6,6 +6,11 @@ type ImportSettings = {
   coverageLabel: string
   coverageStart: string
   coverageEnd: string
+  lastImportAt: string
+  lastImportStatus: 'success' | 'failed'
+  importedCount: number
+  oldestAuctionEndedAt: string
+  newestAuctionEndedAt: string
 }
 
 type AdminSettingsContextValue = {
@@ -24,7 +29,12 @@ function buildDefaultSchedule(): ImportSettings {
     nextImportAt: nextImport.toISOString(),
     coverageLabel: `Ended Tradera auctions from ${format(coverageDate, 'PPP')}`,
     coverageStart: startOfDay(coverageDate).toISOString(),
-    coverageEnd: endOfDay(coverageDate).toISOString()
+    coverageEnd: endOfDay(coverageDate).toISOString(),
+    lastImportAt: subDays(now, 0).toISOString(),
+    lastImportStatus: 'success',
+    importedCount: 128,
+    oldestAuctionEndedAt: startOfDay(coverageDate).toISOString(),
+    newestAuctionEndedAt: endOfDay(coverageDate).toISOString()
   }
 }
 
@@ -36,7 +46,17 @@ function parseSettings(raw: string | null): ImportSettings | null {
   if (!raw) return null
   try {
     const parsed = JSON.parse(raw) as ImportSettings
-    if (parsed.nextImportAt && parsed.coverageStart && parsed.coverageEnd && parsed.coverageLabel) {
+    if (
+      parsed.nextImportAt &&
+      parsed.coverageStart &&
+      parsed.coverageEnd &&
+      parsed.coverageLabel &&
+      parsed.lastImportAt &&
+      parsed.lastImportStatus &&
+      typeof parsed.importedCount === 'number' &&
+      parsed.oldestAuctionEndedAt &&
+      parsed.newestAuctionEndedAt
+    ) {
       return parsed
     }
     return null
@@ -66,7 +86,12 @@ export function AdminSettingsProvider({ children }: { children: React.ReactNode 
       nextImportAt: target.toISOString(),
       coverageLabel: `Ended Tradera auctions from ${format(coverageDate, 'PPP')}`,
       coverageStart: startOfDay(coverageDate).toISOString(),
-      coverageEnd: endOfDay(coverageDate).toISOString()
+      coverageEnd: endOfDay(coverageDate).toISOString(),
+      lastImportAt: importSettings.lastImportAt,
+      lastImportStatus: importSettings.lastImportStatus,
+      importedCount: importSettings.importedCount,
+      oldestAuctionEndedAt: startOfDay(coverageDate).toISOString(),
+      newestAuctionEndedAt: endOfDay(coverageDate).toISOString()
     })
   }
 

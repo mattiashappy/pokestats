@@ -4,11 +4,10 @@ export type AuctionRecord = {
   cardName: string
   seller: string
   sellerType: 'trusted' | 'new'
-  currentPrice: number
+  finalPrice: number
   currency: string
   bids: number
   endTime: string
-  status: 'active' | 'ended'
   condition: string
   category: string
   location: string

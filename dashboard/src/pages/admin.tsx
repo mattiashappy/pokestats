@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { CalendarClock, RefreshCw, Shield, Users } from 'lucide-react'
+import { CalendarClock, CheckCircle2, RefreshCw, Shield, Users } from 'lucide-react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
@@ -9,11 +10,14 @@ import { Input } from '../components/ui/input'
 import { Button } from '../components/ui/button'
 import { registeredUsers } from '../data/users'
 import { useAdminSettings } from '../providers/admin-settings'
+import { fetchAuctions } from '../lib/api'
+import type { AuctionRecord } from '../types'
 
 export function AdminPage(): JSX.Element {
   const { importSettings, updateImportSchedule } = useAdminSettings()
   const [date, setDate] = useState(() => format(new Date(importSettings.nextImportAt), 'yyyy-MM-dd'))
   const [time, setTime] = useState(() => format(new Date(importSettings.nextImportAt), 'HH:mm'))
+  const { data: auctions } = useQuery<AuctionRecord[]>({ queryKey: ['auctions'], queryFn: fetchAuctions })
 
   const totals = useMemo(() => {
     return registeredUsers.reduce(
@@ -26,10 +30,38 @@ export function AdminPage(): JSX.Element {
     )
   }, [])
 
+  const importSummary = useMemo(() => {
+    if (!auctions || auctions.length === 0) {
+      return {
+        importedCount: importSettings.importedCount,
+        oldest: importSettings.oldestAuctionEndedAt,
+        newest: importSettings.newestAuctionEndedAt
+      }
+    }
+
+    const sorted = [...auctions].sort(
+      (a, b) => new Date(a.endTime).getTime() - new Date(b.endTime).getTime()
+    )
+
+    return {
+      importedCount: auctions.length,
+      oldest: sorted[0].endTime,
+      newest: sorted[sorted.length - 1].endTime
+    }
+  }, [auctions, importSettings])
+
   const handleSubmit = (event: React.FormEvent): void => {
     event.preventDefault()
     updateImportSchedule(date, time)
   }
+
+  const formattedCoverageRange = `${format(new Date(importSettings.coverageStart), 'PP')} – ${format(
+    new Date(importSettings.coverageEnd),
+    'PP'
+  )}`
+  const formattedOldest = importSummary.oldest ? format(new Date(importSummary.oldest), 'PPpp') : '—'
+  const formattedNewest = importSummary.newest ? format(new Date(importSummary.newest), 'PPpp') : '—'
+  const formattedLastImport = format(new Date(importSettings.lastImportAt), 'PPpp')
 
   return (
     <div className="space-y-6">
@@ -150,6 +182,44 @@ export function AdminPage(): JSX.Element {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-emerald-300" />
+              Import status
+            </CardTitle>
+            <CardDescription>Freshness and coverage for the ended auction archive.</CardDescription>
+          </div>
+          <Badge variant={importSettings.lastImportStatus === 'success' ? 'success' : 'warning'}>
+            {importSettings.lastImportStatus}
+          </Badge>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-lg bg-slate-900/60 p-3 text-sm text-slate-200">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Last import run</p>
+            <p className="text-base font-semibold text-slate-50">{formattedLastImport}</p>
+          </div>
+          <div className="rounded-lg bg-slate-900/60 p-3 text-sm text-slate-200">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Auctions imported</p>
+            <p className="text-base font-semibold text-slate-50">{importSummary.importedCount.toLocaleString('sv-SE')}</p>
+          </div>
+          <div className="rounded-lg bg-slate-900/60 p-3 text-sm text-slate-200">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Date range covered</p>
+            <p className="text-base font-semibold text-slate-50">{formattedCoverageRange}</p>
+            <p className="text-xs text-slate-400">{importSettings.coverageLabel}</p>
+          </div>
+          <div className="rounded-lg bg-slate-900/60 p-3 text-sm text-slate-200">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Oldest auction in database</p>
+            <p className="text-base font-semibold text-slate-50">{formattedOldest}</p>
+          </div>
+          <div className="rounded-lg bg-slate-900/60 p-3 text-sm text-slate-200">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Newest auction in database</p>
+            <p className="text-base font-semibold text-slate-50">{formattedNewest}</p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
