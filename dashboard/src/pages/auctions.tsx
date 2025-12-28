@@ -125,6 +125,72 @@ export function AuctionsPage(): JSX.Element {
     []
   )
 
+  type AttributeStat = { label: string; count: number }
+
+  const buildDistribution = (
+    selector: (auction: AuctionRecord) => string | null | undefined,
+    fallback: string
+  ) => {
+    if (!data?.length) return [] as AttributeStat[]
+
+    const counts = data.reduce((acc, auction) => {
+      const key = selector(auction) || fallback
+      acc.set(key, (acc.get(key) ?? 0) + 1)
+      return acc
+    }, new Map<string, number>())
+
+    return Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count)
+  }
+
+  const eraDistribution = useMemo(
+    () => buildDistribution((auction) => auction.cardEra, 'Unknown era'),
+    [data]
+  )
+
+  const gradingCompanyDistribution = useMemo(
+    () => buildDistribution((auction) => auction.gradingCompany, 'Ungraded'),
+    [data]
+  )
+
+  const languageDistribution = useMemo(
+    () => buildDistribution((auction) => auction.language, 'Unknown language'),
+    [data]
+  )
+
+  const gradeDistribution = useMemo(
+    () => buildDistribution((auction) => auction.grade, 'Not graded'),
+    [data]
+  )
+
+  const attributeSections = [
+    {
+      id: 'era',
+      title: 'Era',
+      description: 'Auction count by Pokémon TCG era.',
+      items: eraDistribution
+    },
+    {
+      id: 'grading',
+      title: 'Grading company',
+      description: 'How many auctions include a third-party grade.',
+      items: gradingCompanyDistribution
+    },
+    {
+      id: 'language',
+      title: 'Language',
+      description: 'Listing language breakdown across auctions.',
+      items: languageDistribution
+    },
+    {
+      id: 'grade',
+      title: 'Grade',
+      description: 'Reported grade for graded cards.',
+      items: gradeDistribution
+    }
+  ]
+
   const filteredAndSorted = useMemo(() => {
     if (!data) return []
 
@@ -181,6 +247,7 @@ export function AuctionsPage(): JSX.Element {
 
   const auctionsCount = data?.length ?? 0
   const topEra = eraRadarData[0]
+  const totalAuctions = data?.length ?? 0
 
   return (
     <div className="space-y-6">
@@ -279,6 +346,9 @@ export function AuctionsPage(): JSX.Element {
           <CardContent className="pb-6">
             <div className="mx-auto max-w-3xl">
               <ChartContainer config={eraChartConfig} className="mx-auto aspect-square max-h-[360px] w-full">
+          <CardContent className="pb-0">
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+              <ChartContainer config={eraChartConfig} className="mx-auto aspect-square max-h-[320px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <RadarChart
                     data={eraRadarData}
@@ -298,6 +368,53 @@ export function AuctionsPage(): JSX.Element {
                   </RadarChart>
                 </ResponsiveContainer>
               </ChartContainer>
+
+              <div className="space-y-3 rounded-2xl border border-slate-200/70 bg-white/70 p-3 shadow-sm dark:border-slate-900/70 dark:bg-slate-950/50">
+                {attributeSections.map((section, index) => (
+                  <details
+                    key={section.id}
+                    className="group rounded-xl border border-slate-200/60 bg-white/70 p-3 shadow-sm dark:border-slate-900/60 dark:bg-slate-900/60"
+                    open={index === 0}
+                  >
+                    <summary className="flex cursor-pointer items-center justify-between gap-2 text-sm font-semibold text-slate-900 transition hover:text-sky-600 dark:text-slate-50">
+                      <span>{section.title}</span>
+                      <ChevronDown className="h-4 w-4 transition group-open:rotate-180" />
+                    </summary>
+                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{section.description}</p>
+                    <div className="mt-3 space-y-3">
+                      {section.items.length ? (
+                        section.items.map((item) => {
+                          const percent = totalAuctions ? Math.round((item.count / totalAuctions) * 100) : 0
+                          return (
+                            <div
+                              key={item.label}
+                              className="rounded-lg border border-slate-200/60 bg-white/60 p-2 dark:border-slate-800 dark:bg-slate-900/60"
+                            >
+                              <div className="flex items-center justify-between text-sm font-medium text-slate-900 dark:text-slate-50">
+                                <span className="truncate" title={item.label}>
+                                  {item.label}
+                                </span>
+                                <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                                  {item.count.toLocaleString('sv-SE')} ({percent}%)
+                                </span>
+                              </div>
+                              <div className="mt-2 h-2 rounded-full bg-slate-100 dark:bg-slate-800">
+                                <div
+                                  className="h-full rounded-full bg-sky-500/80 transition-all dark:bg-sky-400/80"
+                                  style={{ width: `${percent}%` }}
+                                  aria-label={`${percent}% of auctions`}
+                                />
+                              </div>
+                            </div>
+                          )
+                        })
+                      ) : (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">No data available.</p>
+                      )}
+                    </div>
+                  </details>
+                ))}
+              </div>
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-2 text-sm text-slate-600 dark:text-slate-400">
