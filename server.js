@@ -522,6 +522,62 @@ async function fetchCard(cardId) {
   return cardResult.rows[0]
 }
 
+async function fetchCardsList({ setCode = null } = {}) {
+  if (!pool) return []
+
+  const infrastructureReady = await ensureCardInfrastructure()
+  if (!infrastructureReady) return []
+
+  const whereClause = setCode ? 'WHERE c.set_code = $1 OR c.set_name = $1' : ''
+  const params = setCode ? [setCode] : []
+
+  const cardsQuery = `
+    SELECT
+      c.id,
+      c.name,
+      c.era,
+      c.set_name AS set_name,
+      c.set_code,
+      c.set_total,
+      c.card_number,
+      c.created_at,
+      COUNT(ts.item_id)::int AS auction_count,
+      MAX(ts.end_date) AS last_sale_at
+    FROM cards c
+    LEFT JOIN tradera_sales ts ON ts.card_id = c.id
+    ${whereClause}
+    GROUP BY c.id
+    ORDER BY c.set_code NULLS LAST, c.set_name, c.card_number
+  `
+
+  const cardsResult = await pool.query(cardsQuery, params)
+  return cardsResult.rows
+}
+
+async function fetchExpansionSummaries() {
+  if (!pool) return []
+
+  const infrastructureReady = await ensureCardInfrastructure()
+  if (!infrastructureReady) return []
+
+  const expansionsQuery = `
+    SELECT
+      c.set_code,
+      c.set_name,
+      c.era,
+      c.set_total,
+      COUNT(DISTINCT c.id)::int AS card_count,
+      COUNT(ts.item_id)::int AS auction_count
+    FROM cards c
+    LEFT JOIN tradera_sales ts ON ts.card_id = c.id
+    GROUP BY c.set_code, c.set_name, c.era, c.set_total
+    ORDER BY c.set_name
+  `
+
+  const result = await pool.query(expansionsQuery)
+  return result.rows
+}
+
 async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
   if (!pool) return []
 
@@ -593,6 +649,27 @@ app.get('/api/sales', async (req, res) => {
   } catch (error) {
     console.error('Failed to fetch auctions', error)
     return res.status(500).json({ error: 'Failed to load auctions' })
+  }
+})
+
+app.get('/api/expansions', async (_req, res) => {
+  try {
+    const expansions = await fetchExpansionSummaries()
+    return res.json(expansions)
+  } catch (error) {
+    console.error('Failed to fetch expansions', error)
+    return res.status(500).json({ error: 'Failed to load expansions' })
+  }
+})
+
+app.get('/api/cards', async (req, res) => {
+  try {
+    const setCode = typeof req.query.set === 'string' ? req.query.set : null
+    const cards = await fetchCardsList({ setCode })
+    return res.json(cards)
+  } catch (error) {
+    console.error('Failed to fetch cards', error)
+    return res.status(500).json({ error: 'Failed to load cards' })
   }
 })
 

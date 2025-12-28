@@ -36,6 +36,20 @@ export type CardResponse = {
   created_at: string
 }
 
+export type CardListItem = CardResponse & {
+  auction_count: number
+  last_sale_at: string | null
+}
+
+export type ExpansionSummary = {
+  set_code: string | null
+  set_name: string
+  era: string | null
+  set_total: number | null
+  card_count: number
+  auction_count: number
+}
+
 export type EnrichmentSummary = {
   available: boolean
   totalAuctions?: number

@@ -1,15 +1,72 @@
-import { BookOpen, LayoutList, Layers, ListTree, Sparkles } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { format } from 'date-fns'
+import { Layers, ListFilter, Loader2, Sparkles } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
+import { TransportBadge } from '../components/blocks/transport-badge'
 import { Badge } from '../components/ui/badge'
+import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { Input } from '../components/ui/input'
+import { Select } from '../components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
-import { pokemonEras } from '../data/pokemon'
+import { fetchCards, fetchExpansions } from '../lib/api'
+import type { CardListItem, ExpansionSummary } from '../types'
 
 export function PokemonPage(): JSX.Element {
-  const eraCount = pokemonEras.length
-  const allSets = pokemonEras.flatMap((era) => era.sets.map((set) => ({ ...set, era })))
-  const setCount = allSets.length
-  const knownCardTotal = allSets.reduce((total, set) => total + (set.cardTotal ?? 0), 0)
+  const [selectedExpansion, setSelectedExpansion] = useState<string>('')
+  const [searchTerm, setSearchTerm] = useState('')
+
+  const {
+    data: expansions,
+    isLoading: isLoadingExpansions,
+    error: expansionsError
+  } = useQuery<ExpansionSummary[]>({
+    queryKey: ['expansions'],
+    queryFn: fetchExpansions
+  })
+
+  useEffect(() => {
+    if (expansions?.length && !selectedExpansion) {
+      const first = expansions[0]
+      setSelectedExpansion(first.set_code || first.set_name)
+    }
+  }, [expansions, selectedExpansion])
+
+  const {
+    data: cards,
+    isLoading: isLoadingCards,
+    error: cardsError
+  } = useQuery<CardListItem[]>({
+    queryKey: ['cards', selectedExpansion],
+    queryFn: () => fetchCards(selectedExpansion),
+    enabled: Boolean(selectedExpansion)
+  })
+
+  const selectedExpansionMeta = useMemo(
+    () => expansions?.find((exp) => (exp.set_code || exp.set_name) === selectedExpansion) ?? null,
+    [expansions, selectedExpansion]
+  )
+
+  const filteredCards = useMemo(() => {
+    if (!cards) return []
+    const term = searchTerm.trim().toLowerCase()
+
+    if (!term) return cards
+
+    return cards.filter((card) => {
+      return (
+        card.name.toLowerCase().includes(term) ||
+        (card.card_number ?? '').toLowerCase().includes(term) ||
+        (card.set_code ?? '').toLowerCase().includes(term)
+      )
+    })
+  }, [cards, searchTerm])
+
+  const totalExpansions = expansions?.length ?? 0
+  const totalCardsInSet = selectedExpansionMeta?.card_count ?? cards?.length ?? 0
+  const totalLinkedAuctions = (cards ?? []).reduce((acc, card) => acc + (card.auction_count ?? 0), 0)
 
   return (
     <div className="space-y-6">
@@ -17,174 +74,196 @@ export function PokemonPage(): JSX.Element {
         <Sparkles className="h-5 w-5 text-amber-500" />
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pokémon</p>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Pokémon browser</h1>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Pokémon cards</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Organize the enriched catalogue by era, sets, and the cards contained within each set.
+            Browse every card that has been normalized in the database. Pick an expansion first, then drill into the cards within it.
           </p>
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-3">
         <Card>
-          <CardHeader className="flex items-center gap-3">
-            <div className="rounded-full bg-amber-100 p-2 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
-              <LayoutList className="h-4 w-4" />
-            </div>
-            <div>
-              <CardTitle>Era first</CardTitle>
-              <CardDescription>Start with the Scarlet &amp; Violet era.</CardDescription>
-            </div>
+          <CardHeader className="pb-2">
+            <CardDescription className="text-xs uppercase tracking-wide text-slate-500">Expansions</CardDescription>
+            <CardTitle className="text-3xl font-bold">{isLoadingExpansions ? '…' : totalExpansions}</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
-            <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-900/70 dark:text-slate-300">
-              <span className="text-slate-500">Level 1</span>
-              <Badge variant="secondary">Era</Badge>
-            </div>
-            <p>
-              All Pokémon data is grouped under the Scarlet &amp; Violet era for now so enrichment stays aligned with the
-              current Tradera imports.
-            </p>
+          <CardContent className="text-sm text-slate-600 dark:text-slate-300">
+            Distinct expansions discovered from the linked cards table.
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex items-center gap-3">
-            <div className="rounded-full bg-sky-100 p-2 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200">
-              <Layers className="h-4 w-4" />
-            </div>
-            <div>
-              <CardTitle>Sets within the era</CardTitle>
-              <CardDescription>Ordered by release codes (SV10.5 → SV1).</CardDescription>
-            </div>
+          <CardHeader className="pb-2">
+            <CardDescription className="text-xs uppercase tracking-wide text-slate-500">Cards in selection</CardDescription>
+            <CardTitle className="text-3xl font-bold">
+              {isLoadingCards ? '…' : totalCardsInSet.toLocaleString('sv-SE')}
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
-            <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-900/70 dark:text-slate-300">
-              <span className="text-slate-500">Level 2</span>
-              <Badge variant="secondary">Set</Badge>
-            </div>
-            <p>Each set maintains the original Tradera data but can be enriched with additional card context.</p>
+          <CardContent className="text-sm text-slate-600 dark:text-slate-300">
+            Counts reflect cards inside the chosen expansion.
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex items-center gap-3">
-            <div className="rounded-full bg-emerald-100 p-2 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
-              <ListTree className="h-4 w-4" />
-            </div>
-            <div>
-              <CardTitle>Cards per set</CardTitle>
-              <CardDescription>Counts are tracked without altering source auctions.</CardDescription>
-            </div>
+          <CardHeader className="pb-2">
+            <CardDescription className="text-xs uppercase tracking-wide text-slate-500">Linked auctions</CardDescription>
+            <CardTitle className="text-3xl font-bold">
+              {isLoadingCards ? '…' : totalLinkedAuctions.toLocaleString('sv-SE')}
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
-            <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-900/70 dark:text-slate-300">
-              <span className="text-slate-500">Level 3</span>
-              <Badge variant="secondary">Cards</Badge>
-            </div>
-            <p>
-              Card totals (e.g. 200 in Paldean Fates) are documented here as enrichment complements; the underlying Tradera
-              auction rows remain untouched.
-            </p>
+          <CardContent className="text-sm text-slate-600 dark:text-slate-300">
+            Auctions already mapped to cards in the selected expansion.
           </CardContent>
         </Card>
       </div>
 
       <Card>
-        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2">
-              <BookOpen className="h-5 w-5 text-slate-400" />
-              Era overview
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <ListFilter className="h-4 w-4 text-slate-400" />
+              Filter by expansion
             </CardTitle>
-            <CardDescription>Rollup of eras, sets, and the card counts captured so far.</CardDescription>
+            <CardDescription>Choose an expansion first, then search inside its cards.</CardDescription>
           </div>
-          <div className="flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <span className="rounded-full bg-slate-100 px-3 py-1 dark:bg-slate-900/70">{eraCount} era</span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 dark:bg-slate-900/70">{setCount} sets</span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 dark:bg-slate-900/70">
-              {knownCardTotal.toLocaleString('sv-SE')} cards tracked
-            </span>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {pokemonEras.map((era) => (
-            <div key={era.code} className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-3">
-                  <Badge variant="secondary" className="uppercase">{era.code}</Badge>
-                  <div>
-                    <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">{era.name}</p>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">{era.description}</p>
-                  </div>
+          <div className="grid w-full gap-2 md:w-auto md:grid-cols-2 md:items-center md:gap-4">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Expansion</p>
+              {isLoadingExpansions ? (
+                <div className="flex items-center gap-2 text-sm text-slate-400">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading expansions…
                 </div>
-                <div className="text-right text-xs uppercase tracking-wide text-slate-500">
-                  <p>{era.sets.length} sets</p>
-                </div>
-              </div>
+              ) : expansionsError ? (
+                <p className="text-sm text-rose-400">Failed to load expansions.</p>
+              ) : (
+                <Select
+                  value={selectedExpansion}
+                  onChange={(event) => setSelectedExpansion(event.target.value)}
+                  aria-label="Select expansion"
+                >
+                  {expansions?.map((expansion) => {
+                    const value = expansion.set_code || expansion.set_name
+                    const label = expansion.set_code ? `${expansion.set_code} — ${expansion.set_name}` : expansion.set_name
+                    return (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    )
+                  })}
+                </Select>
+              )}
+            </div>
 
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {era.sets.map((set) => (
-                  <div
-                    key={set.code}
-                    className="flex flex-col gap-1 rounded-md bg-slate-50 p-3 text-sm text-slate-700 ring-1 ring-slate-200 dark:bg-slate-900/60 dark:text-slate-200 dark:ring-slate-800"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary" className="uppercase">{set.code}</Badge>
-                      <p className="font-semibold text-slate-900 dark:text-slate-50">{set.name}</p>
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
-                      <span>Cards</span>
-                      <span className="font-semibold text-slate-900 dark:text-slate-100">
-                        {set.cardTotal ? `${set.cardTotal.toLocaleString('sv-SE')}` : 'TBD'}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400">{set.notes ?? 'Awaiting detailed count.'}</p>
-                  </div>
-                ))}
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Search in expansion</p>
+              <div className="relative">
+                <Input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search by card name or number"
+                  className="pr-10"
+                />
+                <Layers className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               </div>
             </div>
-          ))}
-        </CardContent>
+          </div>
+        </CardHeader>
+
+        {selectedExpansionMeta ? (
+          <CardContent className="space-y-3 pt-0">
+            <div className="flex flex-col gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 shadow-inner dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-200">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <TransportBadge stationCode={selectedExpansionMeta.set_code ?? '—'} highlight={selectedExpansionMeta.era ?? undefined} />
+                  <div>
+                    <p className="text-base font-semibold text-slate-900 dark:text-slate-50">{selectedExpansionMeta.set_name}</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      {selectedExpansionMeta.card_count.toLocaleString('sv-SE')} cards · {selectedExpansionMeta.auction_count.toLocaleString('sv-SE')} linked auctions
+                    </p>
+                  </div>
+                </div>
+                {selectedExpansionMeta.set_total ? (
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Set total: {selectedExpansionMeta.set_total.toLocaleString('sv-SE')}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </CardContent>
+        ) : null}
       </Card>
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Layers className="h-5 w-5 text-slate-400" />
-            Set catalogue
+            Cards in expansion
           </CardTitle>
-          <CardDescription>Flattened list of the Scarlet &amp; Violet sets with card totals for enrichment.</CardDescription>
+          <CardDescription>Cards are sourced directly from the cards table and linked to their auctions.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Set</TableHead>
-                  <TableHead>Era</TableHead>
-                  <TableHead>Cards</TableHead>
-                  <TableHead>Notes</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {allSets.map((set) => (
-                  <TableRow key={`${set.era.code}-${set.code}`}>
-                    <TableCell className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="uppercase">{set.code}</Badge>
-                        <span className="font-semibold text-slate-900 dark:text-slate-50">{set.name}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-slate-600 dark:text-slate-300">{set.era.name}</TableCell>
-                    <TableCell className="text-slate-600 dark:text-slate-300">
-                      {set.cardTotal ? `${set.cardTotal.toLocaleString('sv-SE')} cards` : 'TBD'}
-                    </TableCell>
-                    <TableCell className="text-slate-500 dark:text-slate-400">{set.notes ?? '—'}</TableCell>
+          {isLoadingCards ? (
+            <div className="flex items-center gap-2 text-sm text-slate-400">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading cards…
+            </div>
+          ) : cardsError ? (
+            <p className="text-sm text-rose-400">Failed to load cards for this expansion.</p>
+          ) : filteredCards.length === 0 ? (
+            <p className="text-sm text-slate-500">No cards found in this expansion.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-28">Number</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead className="text-center">Linked auctions</TableHead>
+                    <TableHead>Last seen</TableHead>
+                    <TableHead className="text-right">Link</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {filteredCards.map((card) => (
+                    <TableRow key={card.id}>
+                      <TableCell>
+                        <Badge variant="secondary" className="uppercase">
+                          {card.card_number ?? '—'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="space-y-1">
+                        <Link
+                          to={`/cards/${card.id}`}
+                          className="font-semibold text-slate-900 hover:text-sky-600 dark:text-slate-50 dark:hover:text-sky-300"
+                        >
+                          {card.name}
+                        </Link>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">
+                          {card.set_code ? `${card.set_code} · ` : ''}
+                          {card.set_name || 'Unknown set'}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center">{card.auction_count.toLocaleString('sv-SE')}</TableCell>
+                      <TableCell>
+                        {card.last_sale_at ? (
+                          <div className="space-y-0.5 text-sm">
+                            <p className="text-slate-900 dark:text-slate-100">{format(new Date(card.last_sale_at), 'PP')}</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">Most recent linked auction</p>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-slate-500">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button asChild size="sm" variant="secondary">
+                          <Link to={`/cards/${card.id}`}>View card</Link>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
