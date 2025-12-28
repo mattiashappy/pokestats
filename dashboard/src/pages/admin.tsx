@@ -5,8 +5,6 @@ import {
   CalendarClock,
   CheckCircle2,
   Database,
-  ListChecks,
-  RefreshCw,
   Shield,
   Sparkles,
   UploadCloud,
@@ -19,8 +17,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Button } from '../components/ui/button'
 import { registeredUsers } from '../data/users'
 import { useAdminSettings } from '../providers/admin-settings'
-import { fetchAuctionDiagnostics, fetchAuctions, fetchEnrichmentSummary, runEnrichment } from '../lib/api'
-import type { AuctionRecord, EnrichmentSummary } from '../types'
+import {
+  fetchAuctionDiagnostics,
+  fetchAuctions,
+  fetchEnrichmentSummary,
+  fetchUnmatchedAuctions,
+  runEnrichment
+} from '../lib/api'
+import type { AuctionRecord } from '../types'
+import type { EnrichmentSummary, UnmatchedAuction } from '../lib/api'
 
 export function AdminPage(): JSX.Element {
   const { importSettings } = useAdminSettings()
@@ -35,11 +40,16 @@ export function AdminPage(): JSX.Element {
     refetch: refetchEnrichment,
     isFetching: isFetchingEnrichment
   } = useQuery<EnrichmentSummary>({ queryKey: ['enrichment-summary'], queryFn: fetchEnrichmentSummary })
+  const {
+    data: unmatched,
+    refetch: refetchUnmatched,
+    isFetching: isFetchingUnmatched
+  } = useQuery<UnmatchedAuction[]>({ queryKey: ['enrichment-unmatched'], queryFn: () => fetchUnmatchedAuctions(25) })
   const [lastManualCheckAt, setLastManualCheckAt] = useState<string | null>(null)
   const [manualCheckNote, setManualCheckNote] = useState<string | null>(null)
   const [manualCheckPending, setManualCheckPending] = useState(false)
-  const [enrichmentNote, setEnrichmentNote] = useState<string | null>(null)
-  const [enrichmentPending, setEnrichmentPending] = useState(false)
+  const [enrichmentRunResult, setEnrichmentRunResult] = useState<string | null>(null)
+  const [enrichmentRunPending, setEnrichmentRunPending] = useState(false)
 
   const totals = useMemo(() => {
     return registeredUsers.reduce(
@@ -92,6 +102,24 @@ export function AdminPage(): JSX.Element {
     }
     setLastManualCheckAt(new Date().toISOString())
     setManualCheckPending(false)
+  }
+
+  const handleRunEnrichment = async (): Promise<void> => {
+    setEnrichmentRunResult(null)
+    setEnrichmentRunPending(true)
+    try {
+      const result = await runEnrichment(400, 80)
+      setEnrichmentRunResult(
+        `Attempted ${result.attempted}, linked ${result.linked}, needs review ${result.needsReview}, unmatched ${result.unmatched}.`
+      )
+      await refetchEnrichment()
+      await refetchUnmatched()
+      await refetchAuctions()
+    } catch (e) {
+      setEnrichmentRunResult(`Enrichment failed: ${String(e)}`)
+    } finally {
+      setEnrichmentRunPending(false)
+    }
   }
 
   const rawAuctions = useMemo(() => {
@@ -357,54 +385,28 @@ export function AdminPage(): JSX.Element {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-emerald-300" />
-              Data enrichment
-            </CardTitle>
-            <CardDescription>
-              Track how many auctions have been linked to card records without altering the original feed.
-            </CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              onClick={async () => {
-                setEnrichmentPending(true)
-                setEnrichmentNote(null)
-                try {
-                  const result = await runEnrichment()
-                  setEnrichmentNote(
-                    `Enrichment ran: linked ${result.linked ?? 0}, needs review ${result.needsReview ?? 0}, unmatched ${
-                      result.unmatched ?? 0
-                    }.`
-                  )
-                  await Promise.all([refetchAuctions(), refetchEnrichment()])
-                } catch (error) {
-                  console.error('Failed to run enrichment', error)
-                  setEnrichmentNote('Enrichment failed to run. Please check the server logs.')
-                }
-                setEnrichmentPending(false)
-              }}
-              size="sm"
-              className="gap-2"
-              disabled={enrichmentPending || isFetching || isFetchingEnrichment}
-            >
-              <Sparkles className="h-4 w-4" /> {enrichmentPending ? 'Running…' : 'Run enrichment'}
-            </Button>
-            <Button
-              onClick={() => {
-                void refetchAuctions()
-                void refetchEnrichment()
-              }}
-              variant="secondary"
-              size="sm"
-              className="gap-2"
-              disabled={isFetching || isFetchingEnrichment}
-            >
-              <RefreshCw className="h-4 w-4" /> Refresh
-            </Button>
-          </div>
+        <CardHeader className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-emerald-300" />
+            Data enrichment
+          </CardTitle>
+          <CardDescription>
+            Track how many auctions have been linked to card records without altering the original feed.
+          </CardDescription>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={handleRunEnrichment}
+            variant="secondary"
+            size="sm"
+            className="gap-2"
+            disabled={enrichmentRunPending || isFetchingEnrichment || isFetchingUnmatched}
+          >
+            <Sparkles className="h-4 w-4" />
+            {enrichmentRunPending ? 'Running…' : 'Run enrichment'}
+          </Button>
+        </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -430,32 +432,53 @@ export function AdminPage(): JSX.Element {
                 <p className="text-xs text-slate-600 dark:text-slate-400">Still to be matched with card details.</p>
               </div>
               <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Distinct cards</p>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Needs review</p>
                 <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                  {enrichmentSummary?.distinctCards?.toLocaleString('sv-SE') ?? '—'}
+                  {enrichmentSummary?.needsReview?.toLocaleString('sv-SE') ?? 0}
                 </p>
-                <p className="text-xs text-slate-600 dark:text-slate-400">Unique card records created from enrichment.</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">Listings requiring manual checks.</p>
               </div>
             </div>
 
-            <div className="rounded-lg border border-dashed border-slate-400/60 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-200">
-              <p className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
-                <ListChecks className="h-4 w-4" /> Freshness
-              </p>
-              <p className="mt-1 text-slate-800 dark:text-slate-100">
-                Latest fetch: {enrichmentSummary?.lastFetchedAt ? format(new Date(enrichmentSummary.lastFetchedAt), 'PPpp') : '—'}
-              </p>
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                Latest auction end date seen: {enrichmentSummary?.lastEndAt ? format(new Date(enrichmentSummary.lastEndAt), 'PPpp') : '—'}
-              </p>
-              {!enrichmentSummary?.available && (
-                <p className="mt-2 text-xs font-semibold text-amber-600 dark:text-amber-300">
-                  Enrichment metrics are unavailable until the database connection succeeds.
-                </p>
-              )}
-              {enrichmentNote && (
-                <p className="mt-2 text-xs text-slate-700 dark:text-slate-200">{enrichmentNote}</p>
-              )}
+            {enrichmentRunResult ? (
+              <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Last enrichment run</p>
+                <p className="mt-1 text-slate-900 dark:text-slate-50">{enrichmentRunResult}</p>
+              </div>
+            ) : null}
+
+            <div className="overflow-hidden rounded-xl border border-slate-900/80">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Ended</TableHead>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Set guess</TableHead>
+                    <TableHead>Number</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Confidence</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(unmatched ?? []).map((row) => (
+                    <TableRow key={row.item_id}>
+                      <TableCell className="text-slate-300">{format(new Date(row.end_date), 'PP')}</TableCell>
+                      <TableCell className="font-medium text-slate-100">{row.title}</TableCell>
+                      <TableCell className="text-slate-300">{row.parsed_set_guess ?? '—'}</TableCell>
+                      <TableCell className="text-slate-300">{row.parsed_number_text ?? '—'}</TableCell>
+                      <TableCell className="text-slate-300">{row.enrich_status ?? '—'}</TableCell>
+                      <TableCell className="text-right text-slate-300">{row.enrich_confidence ?? 0}</TableCell>
+                    </TableRow>
+                  ))}
+                  {(!unmatched || unmatched.length === 0) && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-slate-300">
+                        No unmatched auctions found (nice).
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </div>
           </CardContent>
         </Card>

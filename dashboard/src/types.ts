@@ -41,7 +41,6 @@ export type EnrichmentSummary = {
   totalAuctions?: number
   linkedAuctions?: number
   unlinkedAuctions?: number
-  distinctCards?: number
-  lastFetchedAt?: string | null
-  lastEndAt?: string | null
+  needsReview?: number
+  error?: string
 }
