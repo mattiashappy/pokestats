@@ -33,6 +33,7 @@ export type CardResponse = {
   set_code: string | null
   set_total: number | null
   card_number: string | null
+  expansion_id: number | null
   created_at: string
 }
 
@@ -42,12 +43,15 @@ export type CardListItem = CardResponse & {
 }
 
 export type ExpansionSummary = {
-  set_code: string | null
-  set_name: string
+  id: number
+  set_code: string
+  name: string | null
   era: string | null
+  language: string | null
   set_total: number | null
-  card_count: number
-  auction_count: number
+  release_date: string | null
+  cards_total: number
+  linked_auctions: number
 }
 
 export type EnrichmentSummary = {
