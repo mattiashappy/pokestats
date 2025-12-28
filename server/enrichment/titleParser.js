@@ -49,6 +49,22 @@ function stripNoise(s) {
   return out.replace(/\s+/g, ' ').trim()
 }
 
+function extractSetCode(titleNorm) {
+  // Examples:
+  // "sv4a", "sv04", "sv5a", "sv7a"
+  const sv = titleNorm.match(/\bsv\s*0?(\d{1,2})([a-z])?\b/i)
+  if (sv) {
+    const num = String(Number(sv[1])).padStart(2, "0") // 4 -> "04"
+    const suffix = sv[2] ? sv[2].toUpperCase() : ""
+    return `SV${num}${suffix}`
+  }
+
+  // SWSH promo codes: SWSH134 etc (not set_code, but still useful)
+  // You can decide mapping later. For now: return null.
+
+  return null
+}
+
 function detectSet(title) {
   const t = normalize(title)
   for (const entry of SET_ALIASES) {
@@ -111,6 +127,8 @@ function extractCardName(title, setAlias) {
 }
 
 function parseAuctionTitle(title) {
+  const titleNorm = normalize(title)
+  const setCode = extractSetCode(titleNorm)
   const { setGuess, setAlias, confidence: setConfidence } = detectSet(title)
   const { numberText, cardNo, totalInSet } = extractNumberText(title)
   const cardName = extractCardName(title, setAlias)
@@ -131,6 +149,7 @@ function parseAuctionTitle(title) {
     parsed_total_in_set: totalInSet,
     parsed_set_guess: setGuess,
     parsed_set_confidence: setConfidence,
+    setCode,
     enrich_status: status,
     enrich_confidence: enrichConfidence
   }

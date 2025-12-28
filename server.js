@@ -30,7 +30,26 @@ let hasCheckedCardsTable = false
 let cardsTableAvailable = false
 let hasCheckedSalesCardColumn = false
 let salesCardColumnAvailable = false
+let hasCheckedSalesParsedSetCodeColumn = false
+let salesParsedSetCodeColumnAvailable = false
 let hasBackfilledSalesCards = false
+
+async function ensureColumnExists(tableName, columnName, definition) {
+  const { rows } = await pool.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND column_name = $2`,
+    [tableName, columnName]
+  )
+
+  if (rows.length > 0) return true
+
+  try {
+    await pool.query(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`)
+    return true
+  } catch (error) {
+    console.error(`Failed to add ${columnName} column to ${tableName}`, error)
+    return false
+  }
+}
 
 async function ensureSalesTableAvailable() {
   if (!pool) return false
@@ -61,13 +80,18 @@ async function ensureCardsTableAvailable() {
         name TEXT NOT NULL,
         era TEXT,
         set_name TEXT NOT NULL,
+        set_code TEXT,
+        set_total INTEGER,
         card_number TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         CONSTRAINT cards_unique_name_set UNIQUE (name, set_name)
       )
     `)
 
-    cardsTableAvailable = true
+    const setCodeColumnReady = await ensureColumnExists('cards', 'set_code', 'TEXT')
+    const setTotalColumnReady = await ensureColumnExists('cards', 'set_total', 'INTEGER')
+
+    cardsTableAvailable = setCodeColumnReady && setTotalColumnReady
   } catch (error) {
     console.error('Failed to ensure cards table exists', error)
     cardsTableAvailable = false
@@ -105,23 +129,42 @@ async function ensureSalesCardColumnAvailable() {
   return salesCardColumnAvailable
 }
 
+async function ensureSalesParsedSetCodeColumnAvailable() {
+  if (!pool) return false
+  if (hasCheckedSalesParsedSetCodeColumn) return salesParsedSetCodeColumnAvailable
+
+  if (!salesTableAvailable) return false
+
+  const { rows } = await pool.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'tradera_sales' AND column_name = 'parsed_set_code'`
+  )
+
+  if (rows.length > 0) {
+    salesParsedSetCodeColumnAvailable = true
+    hasCheckedSalesParsedSetCodeColumn = true
+    return true
+  }
+
+  try {
+    await pool.query('ALTER TABLE tradera_sales ADD COLUMN parsed_set_code TEXT')
+    salesParsedSetCodeColumnAvailable = true
+  } catch (error) {
+    console.error('Failed to add parsed_set_code column to tradera_sales', error)
+    salesParsedSetCodeColumnAvailable = false
+  }
+
+  hasCheckedSalesParsedSetCodeColumn = true
+  return salesParsedSetCodeColumnAvailable
+}
+
 async function ensureCardInfrastructure() {
   const salesAvailable = await ensureSalesTableAvailable()
   const cardsAvailable = await ensureCardsTableAvailable()
   if (!salesAvailable || !cardsAvailable) return false
 
   const cardColumnAvailable = await ensureSalesCardColumnAvailable()
-  return cardColumnAvailable
-  const { rows } = await pool.query("SELECT to_regclass('public.cards') AS table_name")
-
-  cardsTableAvailable = Boolean(rows?.[0]?.table_name)
-  hasCheckedCardsTable = true
-
-  if (!cardsTableAvailable) {
-    console.warn('cards table does not exist')
-  }
-
-  return cardsTableAvailable
+  const parsedSetCodeAvailable = await ensureSalesParsedSetCodeColumnAvailable()
+  return cardColumnAvailable && parsedSetCodeAvailable
 }
 
 function normalizeCardValue(value) {
@@ -252,6 +295,7 @@ async function fetchAuctionsFromDatabase(filters = {}) {
       c.name AS card_name,
       c.era AS card_era,
       c.set_name AS card_set_name,
+      c.set_code AS card_set_code,
       c.card_number AS card_number,
       ts.attributes->'pokemon_era'->>0 AS pokemon_era,
       ts.attributes->'pokemon_language'->>0 AS pokemon_language,
@@ -332,6 +376,7 @@ function normalizeAuctionRow(row) {
       attributeValue('pokemon_era') ||
       attributeValue('Era', 'Unknown era'),
     cardSetName: row.card_set_name || attributeValue('Series', 'Unknown set'),
+    cardSetCode: row.card_set_code || null,
     cardNumber: row.card_number || attributeValue('Card number', null),
     seller: row.seller_alias || 'Unknown seller',
     sellerType:
@@ -365,7 +410,7 @@ async function fetchCardWithAuctions(cardId) {
   if (!tableExists || !cardsExist) return null
 
   const cardQuery = `
-    SELECT id, name, era, set_name AS set_name, card_number, created_at
+    SELECT id, name, era, set_name AS set_name, set_code, set_total, card_number, created_at
     FROM cards
     WHERE id = $1
   `
@@ -392,6 +437,7 @@ async function fetchCardWithAuctions(cardId) {
       c.name AS card_name,
       c.era AS card_era,
       c.set_name AS card_set_name,
+      c.set_code AS card_set_code,
       c.card_number AS card_number
     FROM tradera_sales ts
     JOIN cards c ON c.id = ts.card_id
@@ -481,13 +527,18 @@ app.get('/api/sales/diagnostic', async (_req, res) => {
 app.post('/api/enrichment/run', async (req, res) => {
   if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
 
+  const infrastructureReady = await ensureCardInfrastructure()
+  if (!infrastructureReady) {
+    return res.status(500).json({ ok: false, error: 'Card infrastructure unavailable' })
+  }
+
   const client = await pool.connect()
   try {
     const limit = Number(req.body?.limit ?? 500)
 
     const { rows } = await client.query(
       `
-      SELECT item_id, title
+      SELECT item_id, title, card_id
       FROM public.tradera_sales
       WHERE end_date >= NOW() - INTERVAL '60 days'
       ORDER BY end_date DESC
@@ -503,8 +554,17 @@ app.post('/api/enrichment/run', async (req, res) => {
     for (const row of rows) {
       const parsed = parseAuctionTitle(row.title ?? '')
 
-      const status = parsed.enrich_status ?? 'unmatched'
+      let status = parsed.enrich_status ?? 'unmatched'
       const confidence = parsed.enrich_confidence ?? null
+
+      const canLink =
+        !row.card_id &&
+        parsed.setCode &&
+        parsed.parsed_card_no &&
+        parsed.parsed_total_in_set &&
+        (parsed.enrich_confidence ?? 0) >= 80
+
+      if (status === 'linked' && !canLink) status = 'needs_review'
 
       await client.query(
         `
@@ -516,9 +576,10 @@ app.post('/api/enrichment/run', async (req, res) => {
           parsed_total_in_set = $5,
           parsed_set_guess = $6,
           parsed_set_confidence = $7,
-          enrich_status = $8,
-          enrich_confidence = $9,
-          enrich_notes = $10
+          parsed_set_code = $8,
+          enrich_status = $9,
+          enrich_confidence = $10,
+          enrich_notes = $11
         WHERE item_id = $1
         `,
         [
@@ -529,6 +590,7 @@ app.post('/api/enrichment/run', async (req, res) => {
           parsed.parsed_total_in_set ?? null,
           parsed.parsed_set_guess ?? null,
           parsed.parsed_set_confidence ?? null,
+          parsed.setCode ?? null,
           status,
           confidence,
           JSON.stringify({ source: 'title', title: row.title })
@@ -547,20 +609,46 @@ app.post('/api/enrichment/run', async (req, res) => {
 
       const cardName = parsed.parsed_card_name
       const setName = parsed.parsed_set_guess ?? 'unknown'
-      const cardNumber = parsed.parsed_number_text ?? null
 
-      const cardResult = await client.query(
+      if (!canLink) {
+        needsReview++
+        continue
+      }
+
+      const cardNumberText = `${parsed.parsed_card_no}/${parsed.parsed_total_in_set}`
+
+      const existing = await client.query(
         `
-        INSERT INTO public.cards (name, set_name, card_number, era)
-        VALUES ($1, $2, $3, NULL)
-        ON CONFLICT (name, set_name)
-        DO UPDATE SET card_number = COALESCE(public.cards.card_number, EXCLUDED.card_number)
-        RETURNING id
+        SELECT id
+        FROM public.cards
+        WHERE set_code = $1 AND card_number = $2
+        LIMIT 1
         `,
-        [cardName, setName, cardNumber],
+        [parsed.setCode, cardNumberText],
       )
 
-      const cardId = cardResult.rows[0]?.id
+      let cardId
+
+      if (existing.rows.length) {
+        cardId = existing.rows[0].id
+      } else {
+        const created = await client.query(
+          `
+          INSERT INTO public.cards (name, set_name, era, set_code, set_total, card_number)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING id
+          `,
+          [
+            cardName ?? 'unknown',
+            setName ?? 'unknown',
+            null,
+            parsed.setCode,
+            parsed.parsed_total_in_set,
+            cardNumberText
+          ],
+        )
+        cardId = created.rows[0].id
+      }
 
       await client.query(
         `
