@@ -43,12 +43,15 @@ export function CardPage(): JSX.Element {
   const isLoading = isLoadingCard || isLoadingAuctions
   const error = cardError || auctionsError
 
+  const backLink = card?.set_code ? `/pokemon/sets/${card.set_code}` : '/pokemon'
+  const backLabel = card?.set_code ? `Back to ${card.set_code}` : 'Back to sets'
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <Button asChild variant="ghost" size="sm">
-          <Link to="/auctions">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back
+          <Link to={backLink}>
+            <ArrowLeft className="mr-2 h-4 w-4" /> {backLabel}
           </Link>
         </Button>
         <div>
