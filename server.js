@@ -1,7 +1,10 @@
+// server.js
+
 const express = require('express')
 const compression = require('compression')
 const path = require('path')
 const { Pool } = require('pg')
+
 const {
   parseAuctionTitle,
   normalize,
@@ -19,6 +22,7 @@ app.use(express.json())
 const DATABASE_URL = process.env.DATABASE_URL
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 
+// Optional seed (kept minimal)
 const CANONICAL_EXPANSIONS = [
   {
     set_code: 'BASE',
@@ -27,6 +31,7 @@ const CANONICAL_EXPANSIONS = [
     language: 'EN',
     set_total: 102,
     release_date: '1999-01-09',
+    image_url: null,
     cards: [
       { card_number: '1/102', name: 'Alakazam' },
       { card_number: '4/102', name: 'Charizard' },
@@ -53,8 +58,6 @@ let hasCheckedCardsTable = false
 let cardsTableAvailable = false
 let hasCheckedExpansionsTable = false
 let expansionsTableAvailable = false
-let hasCheckedCardExpansionColumn = false
-let cardExpansionColumnAvailable = false
 let hasCheckedSalesCardColumn = false
 let salesCardColumnAvailable = false
 let hasCheckedSalesParsedSetCodeColumn = false
@@ -64,62 +67,21 @@ let hasEnsuredSalesCardIndex = false
 
 async function ensureColumnExists(tableName, columnName, definition) {
   const { rows } = await pool.query(
-    `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND column_name = $2`,
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema='public'
+       AND table_name = $1
+       AND column_name = $2`,
     [tableName, columnName]
   )
 
   if (rows.length > 0) return true
 
   try {
-    await pool.query(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`)
+    await pool.query(`ALTER TABLE public.${tableName} ADD COLUMN ${columnName} ${definition}`)
     return true
   } catch (error) {
     console.error(`Failed to add ${columnName} column to ${tableName}`, error)
-    return false
-  }
-}
-
-async function ensureUniqueConstraint(tableName, constraintName, definition) {
-  const { rows } = await pool.query(
-    `
-      SELECT 1
-      FROM pg_constraint
-      WHERE conname = $1
-        AND conrelid = $2::regclass
-    `,
-    [constraintName, tableName]
-  )
-
-  if (rows.length > 0) return true
-
-  try {
-    await pool.query(`ALTER TABLE ${tableName} ADD CONSTRAINT ${constraintName} UNIQUE ${definition}`)
-    return true
-  } catch (error) {
-    console.error(`Failed to add ${constraintName} constraint to ${tableName}`, error)
-    return false
-  }
-}
-
-async function ensureForeignKeyConstraint(tableName, constraintName, definition) {
-  const { rows } = await pool.query(
-    `
-      SELECT 1
-      FROM information_schema.table_constraints
-      WHERE constraint_type = 'FOREIGN KEY'
-        AND constraint_name = $1
-        AND table_name = $2
-    `,
-    [constraintName, tableName]
-  )
-
-  if (rows.length > 0) return true
-
-  try {
-    await pool.query(`ALTER TABLE ${tableName} ADD CONSTRAINT ${constraintName} ${definition}`)
-    return true
-  } catch (error) {
-    console.error(`Failed to add ${constraintName} constraint to ${tableName}`, error)
     return false
   }
 }
@@ -135,15 +97,14 @@ async function ensureIndexExists(tableName, indexName, definition) {
     `,
     [tableName, indexName]
   )
-
   if (rows.length > 0) return true
 
   const trimmedDefinition = definition.trim()
   const isUnique = trimmedDefinition.toUpperCase().startsWith('UNIQUE ')
   const indexDefinition = isUnique ? trimmedDefinition.replace(/^UNIQUE\s+/i, '') : trimmedDefinition
   const createStatement = isUnique
-    ? `CREATE UNIQUE INDEX IF NOT EXISTS ${indexName} ON ${tableName} ${indexDefinition}`
-    : `CREATE INDEX IF NOT EXISTS ${indexName} ON ${tableName} ${indexDefinition}`
+    ? `CREATE UNIQUE INDEX IF NOT EXISTS ${indexName} ON public.${tableName} ${indexDefinition}`
+    : `CREATE INDEX IF NOT EXISTS ${indexName} ON public.${tableName} ${indexDefinition}`
 
   try {
     await pool.query(createStatement)
@@ -158,17 +119,11 @@ async function ensureSalesTableAvailable() {
   if (!pool) return false
   if (hasCheckedSalesTable) return salesTableAvailable
 
-  const { rows } = await pool.query(
-    "SELECT to_regclass('public.tradera_sales') AS table_name"
-  )
-
+  const { rows } = await pool.query("SELECT to_regclass('public.tradera_sales') AS table_name")
   salesTableAvailable = Boolean(rows?.[0]?.table_name)
   hasCheckedSalesTable = true
 
-  if (!salesTableAvailable) {
-    console.warn('tradera_sales table does not exist')
-  }
-
+  if (!salesTableAvailable) console.warn('tradera_sales table does not exist')
   return salesTableAvailable
 }
 
@@ -178,7 +133,7 @@ async function ensureExpansionsTableAvailable() {
 
   try {
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS expansions (
+      CREATE TABLE IF NOT EXISTS public.expansions (
         id SERIAL PRIMARY KEY,
         set_code TEXT NOT NULL UNIQUE,
         name TEXT,
@@ -186,14 +141,13 @@ async function ensureExpansionsTableAvailable() {
         language TEXT DEFAULT 'EN',
         set_total INTEGER,
         release_date DATE,
+        image_url TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `)
 
     const hasEraIndex = await ensureIndexExists('expansions', 'idx_expansions_era', '(era)')
-    const hasImageUrlColumn = await ensureColumnExists('expansions', 'image_url', 'TEXT')
-
-    expansionsTableAvailable = hasEraIndex && hasImageUrlColumn
+    expansionsTableAvailable = Boolean(hasEraIndex)
   } catch (error) {
     console.error('Failed to ensure expansions table exists', error)
     expansionsTableAvailable = false
@@ -209,7 +163,7 @@ async function ensureCardsTableAvailable() {
 
   try {
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS cards (
+      CREATE TABLE IF NOT EXISTS public.cards (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         era TEXT,
@@ -217,41 +171,27 @@ async function ensureCardsTableAvailable() {
         set_code TEXT,
         set_total INTEGER,
         card_number TEXT,
-        expansion_id INTEGER REFERENCES expansions(id),
+        expansion_id INTEGER REFERENCES public.expansions(id),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         CONSTRAINT cards_unique_name_set UNIQUE (name, set_name)
       )
     `)
 
-    const setCodeColumnReady = await ensureColumnExists('cards', 'set_code', 'TEXT')
-    const setTotalColumnReady = await ensureColumnExists('cards', 'set_total', 'INTEGER')
-    const expansionColumnReady = await ensureColumnExists('cards', 'expansion_id', 'INTEGER REFERENCES expansions(id)')
-    const expansionForeignKeyReady = await ensureForeignKeyConstraint(
-      'cards',
-      'cards_expansion_id_fkey',
-      'FOREIGN KEY (expansion_id) REFERENCES expansions(id)'
-    )
+    // Ensure key columns exist (if table was created earlier without them)
+    const setCodeOk = await ensureColumnExists('cards', 'set_code', 'TEXT')
+    const setTotalOk = await ensureColumnExists('cards', 'set_total', 'INTEGER')
+    const expansionOk = await ensureColumnExists('cards', 'expansion_id', 'INTEGER REFERENCES public.expansions(id)')
 
-    const hasSetCodeCardNumberUnique = await ensureUniqueConstraint(
-      'public.cards',
-      'cards_unique_set_code_number',
-      '(set_code, card_number)'
-    )
-
-    const hasExpansionNumberIndex = await ensureIndexExists(
+    const uniqueByExpansionNumber = await ensureIndexExists(
       'cards',
       'cards_unique_expansion_number',
       'UNIQUE (expansion_id, card_number) WHERE expansion_id IS NOT NULL AND card_number IS NOT NULL'
     )
 
-    cardExpansionColumnAvailable = expansionColumnReady
-    cardsTableAvailable =
-      setCodeColumnReady &&
-      setTotalColumnReady &&
-      cardExpansionColumnAvailable &&
-      expansionForeignKeyReady &&
-      hasSetCodeCardNumberUnique &&
-      hasExpansionNumberIndex
+    const setCodeIdx = await ensureIndexExists('cards', 'idx_cards_set_code', '(set_code)')
+    const numberIdx = await ensureIndexExists('cards', 'idx_cards_card_number', '(card_number)')
+
+    cardsTableAvailable = Boolean(setCodeOk && setTotalOk && expansionOk && uniqueByExpansionNumber && setCodeIdx && numberIdx)
   } catch (error) {
     console.error('Failed to ensure cards table exists', error)
     cardsTableAvailable = false
@@ -264,11 +204,14 @@ async function ensureCardsTableAvailable() {
 async function ensureSalesCardColumnAvailable() {
   if (!pool) return false
   if (hasCheckedSalesCardColumn) return salesCardColumnAvailable
-
   if (!salesTableAvailable) return false
 
   const { rows } = await pool.query(
-    `SELECT column_name FROM information_schema.columns WHERE table_name = 'tradera_sales' AND column_name = 'card_id'`
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema='public'
+       AND table_name = 'tradera_sales'
+       AND column_name = 'card_id'`
   )
 
   if (rows.length > 0) {
@@ -278,7 +221,7 @@ async function ensureSalesCardColumnAvailable() {
   }
 
   try {
-    await pool.query('ALTER TABLE tradera_sales ADD COLUMN card_id INTEGER REFERENCES cards(id)')
+    await pool.query('ALTER TABLE public.tradera_sales ADD COLUMN card_id INTEGER REFERENCES public.cards(id)')
     salesCardColumnAvailable = true
   } catch (error) {
     console.error('Failed to add card_id column to tradera_sales', error)
@@ -292,11 +235,14 @@ async function ensureSalesCardColumnAvailable() {
 async function ensureSalesParsedSetCodeColumnAvailable() {
   if (!pool) return false
   if (hasCheckedSalesParsedSetCodeColumn) return salesParsedSetCodeColumnAvailable
-
   if (!salesTableAvailable) return false
 
   const { rows } = await pool.query(
-    `SELECT column_name FROM information_schema.columns WHERE table_name = 'tradera_sales' AND column_name = 'parsed_set_code'`
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema='public'
+       AND table_name = 'tradera_sales'
+       AND column_name = 'parsed_set_code'`
   )
 
   if (rows.length > 0) {
@@ -306,7 +252,7 @@ async function ensureSalesParsedSetCodeColumnAvailable() {
   }
 
   try {
-    await pool.query('ALTER TABLE tradera_sales ADD COLUMN parsed_set_code TEXT')
+    await pool.query('ALTER TABLE public.tradera_sales ADD COLUMN parsed_set_code TEXT')
     salesParsedSetCodeColumnAvailable = true
   } catch (error) {
     console.error('Failed to add parsed_set_code column to tradera_sales', error)
@@ -342,17 +288,20 @@ async function ensureCardInfrastructure() {
   const cardColumnAvailable = await ensureSalesCardColumnAvailable()
   const parsedSetCodeAvailable = await ensureSalesParsedSetCodeColumnAvailable()
   const cardIndexAvailable = await ensureSalesCardIndexAvailable()
-  return cardColumnAvailable && parsedSetCodeAvailable && cardIndexAvailable
+
+  return Boolean(cardColumnAvailable && parsedSetCodeAvailable && cardIndexAvailable)
 }
 
+// --------------------
+// Seeding
+// --------------------
 async function seedCanonicalExpansionsAndCards() {
   if (!pool) return
 
-  const infrastructureReady = await ensureCardInfrastructure()
-  if (!infrastructureReady) return
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return
 
   const client = await pool.connect()
-
   try {
     await client.query('BEGIN')
 
@@ -363,12 +312,11 @@ async function seedCanonicalExpansionsAndCards() {
       )
 
       let expansionId = existingExpansion.rows[0]?.id ?? null
-
       if (!expansionId) {
-        const insertedExpansion = await client.query(
+        const inserted = await client.query(
           `
-            INSERT INTO public.expansions (set_code, name, era, language, set_total, release_date)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO public.expansions (set_code, name, era, language, set_total, release_date, image_url)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id
           `,
           [
@@ -377,11 +325,11 @@ async function seedCanonicalExpansionsAndCards() {
             expansion.era ?? null,
             expansion.language ?? null,
             expansion.set_total ?? null,
-            expansion.release_date ?? null
+            expansion.release_date ?? null,
+            expansion.image_url ?? null
           ]
         )
-
-        expansionId = insertedExpansion.rows[0].id
+        expansionId = inserted.rows[0].id
       }
 
       for (const card of expansion.cards) {
@@ -389,7 +337,6 @@ async function seedCanonicalExpansionsAndCards() {
           `SELECT id FROM public.cards WHERE expansion_id = $1 AND card_number = $2 LIMIT 1`,
           [expansionId, card.card_number]
         )
-
         if (existingCard.rows[0]) continue
 
         await client.query(
@@ -419,13 +366,15 @@ async function seedCanonicalExpansionsAndCards() {
   }
 }
 
+// --------------------
+// Cards linking helpers
+// --------------------
 async function findOrCreateCardBySetCodeAndNumber(
   db,
   { setCode = null, numberText = null, cardNo = null, totalInSet = null, cardName = null, setGuess = null }
 ) {
   const normalizedSetCode = setCode?.trim() || null
   const cardNumber = canonicalNumberText(numberText, cardNo ?? null, totalInSet ?? null)
-
   if (!normalizedSetCode || !cardNumber) return null
 
   const existing = await db.query(
@@ -436,9 +385,9 @@ async function findOrCreateCardBySetCodeAndNumber(
 
   const inserted = await db.query(
     `
-    INSERT INTO public.cards (name, set_name, card_number, set_code, set_total)
-    VALUES ($1, $2, $3, $4, $5)
-    RETURNING id
+      INSERT INTO public.cards (name, set_name, card_number, set_code, set_total)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id
     `,
     [cardName ?? 'unknown', setGuess ?? 'unknown', cardNumber, normalizedSetCode, totalInSet ?? null]
   )
@@ -448,11 +397,7 @@ async function findOrCreateCardBySetCodeAndNumber(
 
 function normalizeCardValue(value) {
   if (!value) return 'unknown'
-  return value
-    .trim()
-    .toLowerCase()
-    .split(/\s+/)
-    .join(' ') || 'unknown'
+  return value.trim().toLowerCase().split(/\s+/).join(' ') || 'unknown'
 }
 
 function extractCardPayload(row) {
@@ -475,17 +420,15 @@ function extractCardPayload(row) {
   }
 }
 
+// Backfill only if needed (kept, but note: this creates “unknown” cards from Tradera filters)
 async function ensureMissingSalesAreLinkedToCards() {
   if (!pool || hasBackfilledSalesCards) return
 
-  const infrastructureReady = await ensureCardInfrastructure()
-  if (!infrastructureReady) return
-  const tableExists = await ensureSalesTableAvailable()
-  const cardsExist = await ensureCardsTableAvailable()
-  if (!tableExists || !cardsExist) return
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return
 
   const { rows: missingRows } = await pool.query(
-    `SELECT item_id, title, attributes FROM tradera_sales WHERE card_id IS NULL LIMIT 5000`
+    `SELECT item_id, title, attributes FROM public.tradera_sales WHERE card_id IS NULL LIMIT 5000`
   )
 
   if (missingRows.length === 0) {
@@ -506,21 +449,20 @@ async function ensureMissingSalesAreLinkedToCards() {
       if (!cardCache.has(cacheKey)) {
         const cardResult = await client.query(
           `
-            INSERT INTO cards (name, era, set_name, card_number)
+            INSERT INTO public.cards (name, era, set_name, card_number)
             VALUES ($1, $2, $3, $4)
             ON CONFLICT (name, set_name) DO UPDATE SET
-              era = COALESCE(cards.era, EXCLUDED.era),
-              card_number = COALESCE(cards.card_number, EXCLUDED.card_number)
+              era = COALESCE(public.cards.era, EXCLUDED.era),
+              card_number = COALESCE(public.cards.card_number, EXCLUDED.card_number)
             RETURNING id
           `,
           [payload.name, payload.era, payload.set_name, payload.card_number]
         )
-
         cardCache.set(cacheKey, cardResult.rows[0].id)
       }
 
       const cardId = cardCache.get(cacheKey)
-      await client.query('UPDATE tradera_sales SET card_id = $1 WHERE item_id = $2', [
+      await client.query('UPDATE public.tradera_sales SET card_id = $1 WHERE item_id = $2', [
         cardId,
         row.item_id
       ])
@@ -535,80 +477,9 @@ async function ensureMissingSalesAreLinkedToCards() {
   }
 }
 
-async function fetchAuctionsFromDatabase(filters = {}) {
-  if (!pool) return []
-
-  const infrastructureReady = await ensureCardInfrastructure()
-  if (!infrastructureReady) return []
-  const tableExists = await ensureSalesTableAvailable()
-  const cardsExist = await ensureCardsTableAvailable()
-  if (!tableExists || !cardsExist) return []
-
-  await ensureMissingSalesAreLinkedToCards()
-
-  const {
-    era = null,
-    language = null,
-    gradingIssuer = null,
-    grade = null,
-    minPrice = null,
-    maxPrice = null,
-    limit = null,
-    offset = 0
-  } = filters
-
-  const query = `
-    SELECT
-      ts.item_id,
-      ts.title,
-      ts.price,
-      ts.bid_count,
-      ts.end_date,
-      ts.seller_alias,
-      ts.seller_dsr,
-      ts.item_url,
-      ts.thumbnail_url,
-      ts.attributes,
-      ts.fetched_at,
-      ts.card_id,
-      c.name AS card_name,
-      COALESCE(e.era, c.era) AS card_era,
-      COALESCE(e.name, c.set_name) AS card_set_name,
-      COALESCE(e.set_code, c.set_code) AS card_set_code,
-      c.card_number AS card_number,
-      ts.attributes->'pokemon_era'->>0 AS pokemon_era,
-      ts.attributes->'pokemon_language'->>0 AS pokemon_language,
-      ts.attributes->'pokemon_grading_issuer'->>0 AS grading_issuer,
-      ts.attributes->'pokemon_grade'->>0 AS grading_grade
-    FROM tradera_sales ts
-    LEFT JOIN cards c ON c.id = ts.card_id
-    LEFT JOIN expansions e ON e.id = c.expansion_id
-    WHERE
-      ($1::text IS NULL OR ts.attributes->'pokemon_era' ? $1)
-      AND ($2::text IS NULL OR ts.attributes->'pokemon_language' ? $2)
-      AND ($3::text IS NULL OR ts.attributes->'pokemon_grading_issuer' ? $3)
-      AND ($4::text IS NULL OR ts.attributes->'pokemon_grade' ? $4)
-      AND ($5::int IS NULL OR ts.price >= $5)
-      AND ($6::int IS NULL OR ts.price <= $6)
-    ORDER BY ts.end_date DESC
-  `
-
-  const params = [era, language, gradingIssuer, grade, minPrice, maxPrice]
-
-  if (typeof limit === 'number' && Number.isFinite(limit)) {
-    params.push(limit)
-    query += ` LIMIT $${params.length}`
-
-    if (typeof offset === 'number' && Number.isFinite(offset) && offset > 0) {
-      params.push(offset)
-      query += ` OFFSET $${params.length}`
-    }
-  }
-
-  const { rows } = await pool.query(query, params)
-  return rows.map(normalizeAuctionRow)
-}
-
+// --------------------
+// Query helpers
+// --------------------
 function normalizeAuctionRow(row) {
   const attributes = row.attributes || {}
 
@@ -659,10 +530,7 @@ function normalizeAuctionRow(row) {
     cardSetCode: row.card_set_code || null,
     cardNumber: row.card_number || attributeValue('Card number', null),
     seller: row.seller_alias || 'Unknown seller',
-    sellerType:
-      typeof row.seller_dsr === 'number' && row.seller_dsr >= 4.7
-        ? 'trusted'
-        : 'new',
+    sellerType: typeof row.seller_dsr === 'number' && row.seller_dsr >= 4.7 ? 'trusted' : 'new',
     finalPrice: row.price ?? 0,
     currency: 'SEK',
     bids: row.bid_count ?? 0,
@@ -680,14 +548,82 @@ function normalizeAuctionRow(row) {
   }
 }
 
+async function fetchAuctionsFromDatabase(filters = {}) {
+  if (!pool) return []
+
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return []
+
+  await ensureMissingSalesAreLinkedToCards()
+
+  const {
+    era = null,
+    language = null,
+    gradingIssuer = null,
+    grade = null,
+    minPrice = null,
+    maxPrice = null,
+    limit = null,
+    offset = 0
+  } = filters
+
+  // Use let so we can append LIMIT/OFFSET
+  let query = `
+    SELECT
+      ts.item_id,
+      ts.title,
+      ts.price,
+      ts.bid_count,
+      ts.end_date,
+      ts.seller_alias,
+      ts.seller_dsr,
+      ts.item_url,
+      ts.thumbnail_url,
+      ts.attributes,
+      ts.fetched_at,
+      ts.card_id,
+      c.name AS card_name,
+      COALESCE(e.era, c.era) AS card_era,
+      COALESCE(e.name, c.set_name) AS card_set_name,
+      COALESCE(e.set_code, c.set_code) AS card_set_code,
+      c.card_number AS card_number,
+      ts.attributes->'pokemon_era'->>0 AS pokemon_era,
+      ts.attributes->'pokemon_language'->>0 AS pokemon_language,
+      ts.attributes->'pokemon_grading_issuer'->>0 AS grading_issuer,
+      ts.attributes->'pokemon_grade'->>0 AS grading_grade
+    FROM public.tradera_sales ts
+    LEFT JOIN public.cards c ON c.id = ts.card_id
+    LEFT JOIN public.expansions e ON e.id = c.expansion_id
+    WHERE
+      ($1::text IS NULL OR ts.attributes->'pokemon_era' ? $1)
+      AND ($2::text IS NULL OR ts.attributes->'pokemon_language' ? $2)
+      AND ($3::text IS NULL OR ts.attributes->'pokemon_grading_issuer' ? $3)
+      AND ($4::text IS NULL OR ts.attributes->'pokemon_grade' ? $4)
+      AND ($5::int IS NULL OR ts.price >= $5)
+      AND ($6::int IS NULL OR ts.price <= $6)
+    ORDER BY ts.end_date DESC
+  `
+
+  const params = [era, language, gradingIssuer, grade, minPrice, maxPrice]
+
+  if (typeof limit === 'number' && Number.isFinite(limit)) {
+    params.push(limit)
+    query += ` LIMIT $${params.length}`
+
+    if (typeof offset === 'number' && Number.isFinite(offset) && offset > 0) {
+      params.push(offset)
+      query += ` OFFSET $${params.length}`
+    }
+  }
+
+  const { rows } = await pool.query(query, params)
+  return rows.map(normalizeAuctionRow)
+}
+
 async function fetchCard(cardId) {
   if (!pool) return null
-
-  const infrastructureReady = await ensureCardInfrastructure()
-  if (!infrastructureReady) return null
-  const tableExists = await ensureSalesTableAvailable()
-  const cardsExist = await ensureCardsTableAvailable()
-  if (!tableExists || !cardsExist) return null
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return null
 
   const cardQuery = `
     SELECT
@@ -700,101 +636,19 @@ async function fetchCard(cardId) {
       c.card_number,
       c.created_at,
       c.expansion_id
-    FROM cards c
-    LEFT JOIN expansions e ON e.id = c.expansion_id
+    FROM public.cards c
+    LEFT JOIN public.expansions e ON e.id = c.expansion_id
     WHERE c.id = $1
   `
-
-  const cardResult = await pool.query(cardQuery, [cardId])
-  if (cardResult.rows.length === 0) return null
-
-  return cardResult.rows[0]
-}
-
-async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
-  if (!pool) return []
-
-  const infrastructureReady = await ensureCardInfrastructure()
-  if (!infrastructureReady) return []
-
-  let whereClause = ''
-  const params = []
-
-  if (Number.isFinite(expansionId)) {
-    whereClause = 'WHERE c.expansion_id = $1'
-    params.push(Number(expansionId))
-  } else if (setCode) {
-    whereClause = `
-      WHERE LOWER(COALESCE(e.set_code, c.set_code)) = LOWER($1)
-         OR LOWER(COALESCE(e.name, c.set_name)) = LOWER($1)
-    `
-    params.push(setCode.trim())
-  }
-
-  const cardsQuery = `
-    SELECT
-      c.id,
-      c.name,
-      COALESCE(e.era, c.era) AS era,
-      COALESCE(e.name, c.set_name) AS set_name,
-      COALESCE(e.set_code, c.set_code) AS set_code,
-      COALESCE(e.set_total, c.set_total) AS set_total,
-      c.card_number,
-      c.created_at,
-      c.expansion_id,
-      COUNT(ts.item_id)::int AS linked_auctions,
-      MAX(ts.end_date) AS last_seen
-    FROM cards c
-    LEFT JOIN expansions e ON e.id = c.expansion_id
-    LEFT JOIN tradera_sales ts ON ts.card_id = c.id
-    ${whereClause}
-    GROUP BY c.id, e.id
-    ORDER BY
-      CASE WHEN c.card_number ~ '^\\d+$' THEN c.card_number::int ELSE 999999 END,
-      c.card_number
-  `
-
-  const cardsResult = await pool.query(cardsQuery, params)
-  return cardsResult.rows
-}
-
-async function fetchExpansionSummaries() {
-  if (!pool) return []
-
-  const infrastructureReady = await ensureCardInfrastructure()
-  if (!infrastructureReady) return []
-
-  const expansionsQuery = `
-    SELECT
-      e.id,
-      e.set_code,
-      e.name,
-      e.era,
-      e.language,
-      e.set_total,
-      e.release_date,
-      e.image_url,
-      COUNT(DISTINCT c.id)::int AS cards_total,
-      COUNT(ts.item_id)::int AS linked_auctions
-    FROM expansions e
-    LEFT JOIN cards c ON c.expansion_id = e.id
-    LEFT JOIN tradera_sales ts ON ts.card_id = c.id
-    GROUP BY e.id
-    ORDER BY e.era, e.release_date NULLS LAST, e.set_code
-  `
-
-  const result = await pool.query(expansionsQuery)
-  return result.rows
+  const result = await pool.query(cardQuery, [cardId])
+  if (result.rows.length === 0) return null
+  return result.rows[0]
 }
 
 async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
   if (!pool) return []
-
-  const infrastructureReady = await ensureCardInfrastructure()
-  if (!infrastructureReady) return []
-  const tableExists = await ensureSalesTableAvailable()
-  const cardsExist = await ensureCardsTableAvailable()
-  if (!tableExists || !cardsExist) return []
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return []
 
   const auctionsQuery = `
     SELECT
@@ -815,22 +669,93 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
       COALESCE(e.name, c.set_name) AS card_set_name,
       COALESCE(e.set_code, c.set_code) AS card_set_code,
       c.card_number AS card_number
-    FROM tradera_sales ts
-    JOIN cards c ON c.id = ts.card_id
-    LEFT JOIN expansions e ON e.id = c.expansion_id
+    FROM public.tradera_sales ts
+    JOIN public.cards c ON c.id = ts.card_id
+    LEFT JOIN public.expansions e ON e.id = c.expansion_id
     WHERE ts.card_id = $1
     ORDER BY ts.end_date DESC
     LIMIT $2
   `
-
   const auctionsResult = await pool.query(auctionsQuery, [cardId, limit])
   return auctionsResult.rows.map(normalizeAuctionRow)
+}
+
+async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
+  if (!pool) return []
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return []
+
+  let whereClause = ''
+  const params = []
+
+  if (Number.isFinite(expansionId)) {
+    whereClause = 'WHERE c.expansion_id = $1'
+    params.push(Number(expansionId))
+  } else if (setCode) {
+    // flexible matching (set_code OR set name, case-insensitive)
+    whereClause = `
+      WHERE LOWER(COALESCE(e.set_code, c.set_code)) = LOWER($1)
+         OR LOWER(COALESCE(e.name, c.set_name)) = LOWER($1)
+    `
+    params.push(setCode.trim())
+  }
+
+  const cardsQuery = `
+    SELECT
+      c.id,
+      c.name,
+      COALESCE(e.era, c.era) AS era,
+      COALESCE(e.name, c.set_name) AS set_name,
+      COALESCE(e.set_code, c.set_code) AS set_code,
+      COALESCE(e.set_total, c.set_total) AS set_total,
+      c.card_number,
+      c.created_at,
+      c.expansion_id,
+      COUNT(ts.item_id)::int AS linked_auctions,
+      MAX(ts.end_date) AS last_seen
+    FROM public.cards c
+    LEFT JOIN public.expansions e ON e.id = c.expansion_id
+    LEFT JOIN public.tradera_sales ts ON ts.card_id = c.id
+    ${whereClause}
+    GROUP BY c.id, e.id
+    ORDER BY
+      CASE WHEN c.card_number ~ '^\\d+' THEN (regexp_replace(c.card_number,'[^0-9].*',''))::int ELSE 999999 END,
+      c.card_number
+  `
+  const result = await pool.query(cardsQuery, params)
+  return result.rows
+}
+
+async function fetchExpansionSummaries() {
+  if (!pool) return []
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return []
+
+  const query = `
+    SELECT
+      e.id,
+      e.set_code,
+      e.name,
+      e.era,
+      e.language,
+      e.set_total,
+      e.release_date,
+      e.image_url,
+      COUNT(DISTINCT c.id)::int AS cards_total,
+      COUNT(ts.item_id)::int AS linked_auctions
+    FROM public.expansions e
+    LEFT JOIN public.cards c ON c.expansion_id = e.id
+    LEFT JOIN public.tradera_sales ts ON ts.card_id = c.id
+    GROUP BY e.id
+    ORDER BY e.era, e.release_date NULLS LAST, e.set_code
+  `
+  const result = await pool.query(query)
+  return result.rows
 }
 
 // --------------------
 // API
 // --------------------
-
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
@@ -855,7 +780,7 @@ app.get('/api/sales', async (req, res) => {
       limit,
       offset
     })
-    return res.json(auctions) // may be []
+    return res.json(auctions)
   } catch (error) {
     console.error('Failed to fetch auctions', error)
     return res.status(500).json({ error: 'Failed to load auctions' })
@@ -872,11 +797,13 @@ app.get('/api/expansions', async (_req, res) => {
   }
 })
 
+// Optional listing endpoint (useful for admin/debug)
 app.get('/api/cards', async (req, res) => {
   try {
     const expansionIdParam = typeof req.query.expansionId === 'string' ? Number(req.query.expansionId) : null
     const expansionId = Number.isFinite(expansionIdParam) ? expansionIdParam : null
     const setCode = expansionId ? null : typeof req.query.set === 'string' ? req.query.set : null
+
     const cards = await fetchCardsList({ setCode, expansionId })
     return res.json(cards)
   } catch (error) {
@@ -885,18 +812,15 @@ app.get('/api/cards', async (req, res) => {
   }
 })
 
-app.get('/api/expansions/:setCode/cards', async (req, res) => {
+// ✅ canonical route used by your merged frontend
+app.get('/api/expansions/:id/cards', async (req, res) => {
   try {
-    const rawCode = req.params.setCode
-    const parsedNumericId = Number(rawCode)
-    const expansionId = Number.isFinite(parsedNumericId) ? parsedNumericId : null
-    const setCode = Number.isFinite(parsedNumericId) ? null : rawCode
-
-    if (!setCode && !expansionId) {
-      return res.status(400).json({ error: 'Invalid expansion identifier' })
+    const expansionId = Number(req.params.id)
+    if (!Number.isFinite(expansionId)) {
+      return res.status(400).json({ error: 'Invalid expansion id' })
     }
 
-    const cards = await fetchCardsList({ setCode, expansionId })
+    const cards = await fetchCardsList({ expansionId })
     return res.json(cards)
   } catch (error) {
     console.error('Failed to fetch cards for expansion', error)
@@ -907,14 +831,10 @@ app.get('/api/expansions/:setCode/cards', async (req, res) => {
 app.get('/api/cards/:id', async (req, res) => {
   try {
     const cardId = Number(req.params.id)
-    if (Number.isNaN(cardId)) {
-      return res.status(400).json({ error: 'Invalid card id' })
-    }
+    if (!Number.isFinite(cardId)) return res.status(400).json({ error: 'Invalid card id' })
 
     const card = await fetchCard(cardId)
-    if (!card) {
-      return res.status(404).json({ error: 'Card not found' })
-    }
+    if (!card) return res.status(404).json({ error: 'Card not found' })
 
     return res.json(card)
   } catch (error) {
@@ -926,9 +846,7 @@ app.get('/api/cards/:id', async (req, res) => {
 app.get('/api/cards/:id/auctions', async (req, res) => {
   try {
     const cardId = Number(req.params.id)
-    if (Number.isNaN(cardId)) {
-      return res.status(400).json({ error: 'Invalid card id' })
-    }
+    if (!Number.isFinite(cardId)) return res.status(400).json({ error: 'Invalid card id' })
 
     const auctions = await fetchCardAuctions(cardId, { limit: 500 })
     return res.json(auctions)
@@ -941,26 +859,20 @@ app.get('/api/cards/:id/auctions', async (req, res) => {
 app.get('/api/sales/diagnostic', async (_req, res) => {
   try {
     const auctions = await fetchAuctionsFromDatabase()
-    res.json({
-      source: 'database',
-      count: auctions.length,
-      auctions
-    })
+    res.json({ source: 'database', count: auctions.length, auctions })
   } catch (error) {
-    res.status(500).json({
-      source: 'database',
-      error: error.message
-    })
+    res.status(500).json({ source: 'database', error: error?.message || String(error) })
   }
 })
 
+// --------------------
+// Enrichment
+// --------------------
 app.post('/api/enrichment/run', async (req, res) => {
   if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
 
-  const infrastructureReady = await ensureCardInfrastructure()
-  if (!infrastructureReady) {
-    return res.status(500).json({ ok: false, error: 'Card infrastructure unavailable' })
-  }
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return res.status(500).json({ ok: false, error: 'Card infrastructure unavailable' })
 
   const client = await pool.connect()
   try {
@@ -968,13 +880,13 @@ app.post('/api/enrichment/run', async (req, res) => {
 
     const { rows } = await client.query(
       `
-      SELECT item_id, title, card_id
-      FROM public.tradera_sales
-      WHERE end_date >= NOW() - INTERVAL '60 days'
-      ORDER BY end_date DESC
-      LIMIT $1
+        SELECT item_id, title, card_id
+        FROM public.tradera_sales
+        WHERE end_date >= NOW() - INTERVAL '60 days'
+        ORDER BY end_date DESC
+        LIMIT $1
       `,
-      [limit],
+      [limit]
     )
 
     let linked = 0
@@ -989,19 +901,19 @@ app.post('/api/enrichment/run', async (req, res) => {
 
       await client.query(
         `
-        UPDATE public.tradera_sales
-        SET
-          parsed_card_name = $2,
-          parsed_number_text = $3,
-          parsed_card_no = $4,
-          parsed_total_in_set = $5,
-          parsed_set_guess = $6,
-          parsed_set_confidence = $7,
-          parsed_set_code = $8,
-          enrich_status = $9,
-          enrich_confidence = $10,
-          enrich_notes = $11
-        WHERE item_id = $1
+          UPDATE public.tradera_sales
+          SET
+            parsed_card_name = $2,
+            parsed_number_text = $3,
+            parsed_card_no = $4,
+            parsed_total_in_set = $5,
+            parsed_set_guess = $6,
+            parsed_set_confidence = $7,
+            parsed_set_code = $8,
+            enrich_status = $9,
+            enrich_confidence = $10,
+            enrich_notes = $11
+          WHERE item_id = $1
         `,
         [
           row.item_id,
@@ -1015,23 +927,22 @@ app.post('/api/enrichment/run', async (req, res) => {
           status,
           confidence,
           JSON.stringify({ source: 'title', title: row.title })
-        ],
+        ]
       )
 
-      if (row.card_id != null) {
-        continue
-      }
+      // keep existing links intact
+      if (row.card_id != null) continue
 
       if (looksLikeLotOrSealed(titleNorm)) {
         await client.query(
           `
-          UPDATE public.tradera_sales
-          SET enrich_status = 'needs_review',
-              enrich_confidence = LEAST(COALESCE(enrich_confidence, 0), 20),
-              enrich_notes = COALESCE(enrich_notes, '{}'::jsonb) || jsonb_build_object('skip', 'lot_or_sealed')
-          WHERE item_id = $1
+            UPDATE public.tradera_sales
+            SET enrich_status = 'needs_review',
+                enrich_confidence = LEAST(COALESCE(enrich_confidence, 0), 20),
+                enrich_notes = COALESCE(enrich_notes, '{}'::jsonb) || jsonb_build_object('skip', 'lot_or_sealed')
+            WHERE item_id = $1
           `,
-          [row.item_id],
+          [row.item_id]
         )
         needsReview++
         continue
@@ -1049,28 +960,28 @@ app.post('/api/enrichment/run', async (req, res) => {
       if (cardId) {
         await client.query(
           `
-          UPDATE public.tradera_sales
-          SET card_id = $2,
-              enrich_status = 'linked',
-              enrich_confidence = GREATEST(COALESCE(enrich_confidence, 0), 80)
-          WHERE item_id = $1
-            AND card_id IS NULL
+            UPDATE public.tradera_sales
+            SET card_id = $2,
+                enrich_status = 'linked',
+                enrich_confidence = GREATEST(COALESCE(enrich_confidence, 0), 80)
+            WHERE item_id = $1
+              AND card_id IS NULL
           `,
-          [row.item_id, cardId],
+          [row.item_id, cardId]
         )
         linked++
       } else {
         await client.query(
           `
-          UPDATE public.tradera_sales
-          SET enrich_status = CASE
-              WHEN parsed_card_name IS NOT NULL THEN 'needs_review'
-              ELSE 'unmatched'
-            END,
-            enrich_confidence = COALESCE(enrich_confidence, 0)
-          WHERE item_id = $1
+            UPDATE public.tradera_sales
+            SET enrich_status = CASE
+                WHEN parsed_card_name IS NOT NULL THEN 'needs_review'
+                ELSE 'unmatched'
+              END,
+              enrich_confidence = COALESCE(enrich_confidence, 0)
+            WHERE item_id = $1
           `,
-          [row.item_id],
+          [row.item_id]
         )
 
         if (parsed.parsed_card_name) needsReview++
@@ -1078,12 +989,7 @@ app.post('/api/enrichment/run', async (req, res) => {
       }
     }
 
-    res.json({
-      processed: rows.length,
-      linked,
-      needsReview,
-      unmatched
-    })
+    res.json({ processed: rows.length, linked, needsReview, unmatched })
   } catch (e) {
     console.error(e)
     res.status(500).json({ ok: false, error: String(e) })
@@ -1095,13 +1001,13 @@ app.post('/api/enrichment/run', async (req, res) => {
 app.get('/api/enrichment/summary', async (_req, res) => {
   try {
     const { rows } = await pool.query(`
-        SELECT
-          COUNT(*)::int AS total,
-          COUNT(*) FILTER (WHERE card_id IS NOT NULL)::int AS linked,
-          COUNT(*) FILTER (WHERE enrich_status = 'needs_review')::int AS needs_review,
-          COUNT(*) FILTER (WHERE card_id IS NULL)::int AS unlinked
-        FROM public.tradera_sales
-      `)
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE card_id IS NOT NULL)::int AS linked,
+        COUNT(*) FILTER (WHERE enrich_status = 'needs_review')::int AS needs_review,
+        COUNT(*) FILTER (WHERE card_id IS NULL)::int AS unlinked
+      FROM public.tradera_sales
+    `)
 
     res.json({
       available: true,
@@ -1124,12 +1030,13 @@ app.get('/api/enrichment/unmatched', async (req, res) => {
       WHERE card_id IS NULL
       ORDER BY end_date DESC
       LIMIT $1
-      `,
+    `,
     [limit]
   )
   res.json(rows)
 })
 
+// Bootstrap seed
 if (pool) {
   seedCanonicalExpansionsAndCards().catch((error) => {
     console.error('Failed to bootstrap canonical Pokémon data', error)
@@ -1139,7 +1046,6 @@ if (pool) {
 // --------------------
 // Frontend
 // --------------------
-
 app.use(express.static(distPath))
 
 app.get('*', (_req, res) => {

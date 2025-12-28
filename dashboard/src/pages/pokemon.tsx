@@ -1,3 +1,4 @@
+// src/pages/PokemonPage.tsx
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -36,12 +37,16 @@ function SetCard({ expansion }: { expansion: ExpansionSummary }) {
             {expansion.set_code}
           </Badge>
         </div>
+
         <CardContent className="flex flex-1 flex-col gap-3 p-4">
           <div className="space-y-1">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pokémon set</p>
-            <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">{expansion.name ?? 'Unknown set'}</p>
+            <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+              {expansion.name ?? 'Unknown set'}
+            </p>
             <p className="text-sm text-slate-600 dark:text-slate-400">{releaseLabel}</p>
           </div>
+
           <div className="mt-auto flex flex-wrap items-center gap-3 text-sm text-slate-700 dark:text-slate-200">
             <span className="flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 dark:bg-slate-800 dark:text-slate-200">
               <Layers className="h-3.5 w-3.5" /> {cardsLabel ? `${cardsLabel} cards` : 'Cards pending'}
@@ -92,7 +97,8 @@ export function PokemonPage(): JSX.Element {
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pokémon</p>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Pokémon sets</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Browse every set in the database. Sets and cards are always available; auctions are shown as overlays when linked.
+            Browse every set in the database. Sets and cards are always available; auctions are shown as overlays when
+            linked.
           </p>
         </div>
       </div>
