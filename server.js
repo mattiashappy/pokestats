@@ -489,7 +489,7 @@ app.post('/api/enrichment/run', async (req, res) => {
       `
       SELECT item_id, title
       FROM public.tradera_sales
-      WHERE card_id IS NULL
+      WHERE end_date >= NOW() - INTERVAL '60 days'
       ORDER BY end_date DESC
       LIMIT $1
       `,
@@ -503,42 +503,44 @@ app.post('/api/enrichment/run', async (req, res) => {
     for (const row of rows) {
       const parsed = parseAuctionTitle(row.title ?? '')
 
+      const status = parsed.enrich_status ?? 'unmatched'
+      const confidence = parsed.enrich_confidence ?? null
+
       await client.query(
         `
         UPDATE public.tradera_sales
         SET
-          parsed_card_name = $1,
-          parsed_number_text = $2,
-          parsed_card_no = $3,
-          parsed_total_in_set = $4,
-          parsed_set_guess = $5,
-          parsed_set_confidence = $6,
-          enrich_status = $7,
-          enrich_confidence = $8,
-          enrich_notes = $9
-        WHERE item_id = $10
-          AND card_id IS NULL
+          parsed_card_name = $2,
+          parsed_number_text = $3,
+          parsed_card_no = $4,
+          parsed_total_in_set = $5,
+          parsed_set_guess = $6,
+          parsed_set_confidence = $7,
+          enrich_status = $8,
+          enrich_confidence = $9,
+          enrich_notes = $10
+        WHERE item_id = $1
         `,
         [
-          parsed.parsed_card_name,
-          parsed.parsed_number_text,
-          parsed.parsed_card_no,
-          parsed.parsed_total_in_set,
-          parsed.parsed_set_guess,
-          parsed.parsed_set_confidence,
-          parsed.enrich_status,
-          parsed.enrich_confidence,
-          JSON.stringify({ source: 'title', title: row.title }),
-          row.item_id
+          row.item_id,
+          parsed.parsed_card_name ?? null,
+          parsed.parsed_number_text ?? null,
+          parsed.parsed_card_no ?? null,
+          parsed.parsed_total_in_set ?? null,
+          parsed.parsed_set_guess ?? null,
+          parsed.parsed_set_confidence ?? null,
+          status,
+          confidence,
+          JSON.stringify({ source: 'title', title: row.title })
         ],
       )
 
-      if (parsed.enrich_status === 'unmatched') {
+      if (status === 'unmatched') {
         unmatched++
         continue
       }
 
-      if (parsed.enrich_status === 'needs_review') {
+      if (status === 'needs_review') {
         needsReview++
         continue
       }
