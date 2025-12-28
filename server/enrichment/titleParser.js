@@ -137,6 +137,48 @@ function extractNumberText(title) {
   return { numberText: null, cardNo: null, totalInSet: null }
 }
 
+function canonicalNumberText(parsedNumberText = null, parsedCardNo = null, parsedTotal = null) {
+  if (parsedNumberText) {
+    const m = String(parsedNumberText).match(/(\d{1,4})\s*\/\s*(\d{1,4})/)
+    if (m) return `${parseInt(m[1], 10)}/${parseInt(m[2], 10)}`
+
+    const n = String(parsedNumberText).match(/\b(\d{1,4})\b/)
+    if (n) return String(parseInt(n[1], 10))
+  }
+
+  if (parsedCardNo != null && parsedTotal != null) return `${parsedCardNo}/${parsedTotal}`
+  if (parsedCardNo != null) return String(parsedCardNo)
+
+  return null
+}
+
+function looksLikeLotOrSealed(titleNorm) {
+  const bad = [
+    'samling',
+    'lot',
+    'bundle',
+    'bulk',
+    'paket',
+    'kort samling',
+    'booster',
+    'booster pack',
+    'display',
+    'box',
+    'etb',
+    'elite trainer box',
+    'sealed',
+    'oöppnad',
+    'unopened',
+    '24 st',
+    '10 st',
+    '5 st',
+    '12x'
+  ]
+  if (bad.some((t) => titleNorm.includes(t))) return true
+  if ((titleNorm.match(/,/g) ?? []).length >= 2) return true
+  return false
+}
+
 function extractCardName(title, setAlias) {
   let t = stripNoise(title)
 
@@ -187,4 +229,10 @@ function parseAuctionTitle(title) {
   }
 }
 
-module.exports = { parseAuctionTitle, normalize, looksLikeGenericLot }
+module.exports = {
+  parseAuctionTitle,
+  normalize,
+  looksLikeGenericLot,
+  canonicalNumberText,
+  looksLikeLotOrSealed
+}
