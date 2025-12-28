@@ -43,6 +43,21 @@ const CANONICAL_EXPANSIONS = [
   }
 ]
 
+function getCanonicalExpansionSummaries() {
+  return CANONICAL_EXPANSIONS.map((expansion, index) => ({
+    id: index + 1,
+    set_code: expansion.set_code,
+    name: expansion.name ?? null,
+    era: expansion.era ?? null,
+    language: expansion.language ?? null,
+    set_total: expansion.set_total ?? null,
+    release_date: expansion.release_date ?? null,
+    image_url: expansion.image_url ?? null,
+    cards_total: expansion.cards?.length ?? 0,
+    linked_auctions: 0
+  }))
+}
+
 // --------------------
 // Database
 // --------------------
@@ -743,30 +758,36 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
 }
 
 async function fetchExpansionSummaries() {
-  if (!pool) return []
-  const ok = await ensureCardInfrastructure()
-  if (!ok) return []
+  if (!pool) return getCanonicalExpansionSummaries()
 
-  const query = `
-    SELECT
-      e.id,
-      e.set_code,
-      e.name,
-      e.era,
-      e.language,
-      e.set_total,
-      e.release_date,
-      e.image_url,
-      COUNT(DISTINCT c.id)::int AS cards_total,
-      COUNT(ts.item_id)::int AS linked_auctions
-    FROM public.expansions e
-    LEFT JOIN public.cards c ON c.expansion_id = e.id
-    LEFT JOIN public.tradera_sales ts ON ts.card_id = c.id
-    GROUP BY e.id
-    ORDER BY e.era, e.release_date NULLS LAST, e.set_code
-  `
-  const result = await pool.query(query)
-  return result.rows
+  try {
+    const ok = await ensureCardInfrastructure()
+    if (!ok) return getCanonicalExpansionSummaries()
+
+    const query = `
+      SELECT
+        e.id,
+        e.set_code,
+        e.name,
+        e.era,
+        e.language,
+        e.set_total,
+        e.release_date,
+        e.image_url,
+        COUNT(DISTINCT c.id)::int AS cards_total,
+        COUNT(ts.item_id)::int AS linked_auctions
+      FROM public.expansions e
+      LEFT JOIN public.cards c ON c.expansion_id = e.id
+      LEFT JOIN public.tradera_sales ts ON ts.card_id = c.id
+      GROUP BY e.id
+      ORDER BY e.era, e.release_date NULLS LAST, e.set_code
+    `
+    const result = await pool.query(query)
+    return result.rows
+  } catch (error) {
+    console.error('Falling back to canonical expansions due to DB error', error)
+    return getCanonicalExpansionSummaries()
+  }
 }
 
 // --------------------
