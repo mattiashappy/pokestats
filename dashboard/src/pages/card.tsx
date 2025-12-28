@@ -7,35 +7,57 @@ import { Link, useParams } from 'react-router-dom'
 import { Button } from '../components/ui/button'
 import { Card as UiCard, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
-import { fetchCard } from '../lib/api'
+import { fetchCardAuctions, fetchCardDetails } from '../lib/api'
 
 export function CardPage(): JSX.Element {
   const { id } = useParams()
   const cardId = Number(id)
 
-  const { data, isLoading, error } = useQuery({
+  const {
+    data: card,
+    isLoading: isLoadingCard,
+    error: cardError
+  } = useQuery({
     queryKey: ['card', cardId],
-    queryFn: () => fetchCard(cardId),
+    queryFn: () => fetchCardDetails(cardId),
     enabled: Number.isFinite(cardId)
   })
 
-  const title = useMemo(() => data?.card?.name ?? 'Card', [data?.card?.name])
+  const {
+    data: auctions,
+    isLoading: isLoadingAuctions,
+    error: auctionsError
+  } = useQuery({
+    queryKey: ['card', cardId, 'auctions'],
+    queryFn: () => fetchCardAuctions(cardId),
+    enabled: Number.isFinite(cardId)
+  })
+
+  const title = useMemo(() => card?.name ?? 'Card', [card?.name])
+  const headerLabel = useMemo(() => {
+    if (card?.set_code && card?.card_number) return `${card.set_code} ${card.card_number}`
+    if (card?.card_number) return card.card_number
+    return title
+  }, [card?.set_code, card?.card_number, title])
+
+  const isLoading = isLoadingCard || isLoadingAuctions
+  const error = cardError || auctionsError
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <Button asChild variant="ghost" size="sm">
-          <Link to="/app/auctions">
+          <Link to="/auctions">
             <ArrowLeft className="mr-2 h-4 w-4" /> Back
           </Link>
         </Button>
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Card</p>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">{title}</h1>
-          {data?.card ? (
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">{headerLabel}</h1>
+          {card ? (
             <CardDescription className="text-sm text-slate-600 dark:text-slate-400">
-              Era: {data.card.era || 'Unknown era'} · Set: {data.card.set_name || 'Unknown set'} · Card number:{' '}
-              {data.card.card_number || 'N/A'}
+              Name: {card.name || 'Unknown name'} · Era: {card.era || 'Unknown era'} · Set: {card.set_name || 'Unknown set'} ·
+              Set code: {card.set_code || 'N/A'} · Card number: {card.card_number || 'N/A'}
             </CardDescription>
           ) : null}
         </div>
@@ -53,7 +75,7 @@ export function CardPage(): JSX.Element {
             </div>
           ) : error ? (
             <p className="text-sm text-rose-400">Failed to load card.</p>
-          ) : !data ? (
+          ) : !card ? (
             <p className="text-sm text-slate-400">Card not found.</p>
           ) : (
             <div className="overflow-x-auto">
@@ -70,7 +92,7 @@ export function CardPage(): JSX.Element {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.auctions.map((auction) => {
+                  {auctions?.map((auction) => {
                     const hasKnownSetName = auction.cardSetName && auction.cardSetName.toLowerCase() !== 'unknown'
 
                     return (

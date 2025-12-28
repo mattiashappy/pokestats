@@ -22,10 +22,18 @@ export async function fetchAuctionDiagnostics(): Promise<AuctionDiagnosticResult
   return response.json()
 }
 
-export async function fetchCard(cardId: number): Promise<CardResponse> {
+export async function fetchCardDetails(cardId: number): Promise<CardResponse> {
   const response = await fetch(`/api/cards/${cardId}`)
   if (!response.ok) {
     throw new Error('Failed to fetch card')
+  }
+  return response.json()
+}
+
+export async function fetchCardAuctions(cardId: number): Promise<AuctionRecord[]> {
+  const response = await fetch(`/api/cards/${cardId}/auctions`)
+  if (!response.ok) {
+    throw new Error('Failed to fetch card auctions')
   }
   return response.json()
 }
