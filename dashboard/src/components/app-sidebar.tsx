@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { BadgeCheck, BarChart3, ChevronRight, CreditCard, Globe, Settings, Shield, Star } from 'lucide-react'
+import { BadgeCheck, ChevronRight, CreditCard, Gavel, Globe, Layers, Settings, Shield, Sparkles, Star } from 'lucide-react'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
 import {
@@ -26,7 +26,7 @@ export function AppSidebar(): JSX.Element {
   const { pathname } = useLocation()
   const { user } = useAuth()
 
-  // Keep Pokémon group open when you're anywhere under /auctions
+  // Keep Auctions group open when you're anywhere under /auctions
   const defaultOpen = pathname.startsWith('/auctions')
 
   // Keep your original logic
@@ -39,27 +39,25 @@ export function AppSidebar(): JSX.Element {
           <SidebarGroupLabel>Platform</SidebarGroupLabel>
 
           <SidebarMenu>
-            {/* Pokémon collapsible group */}
+            {/* Auctions collapsible group */}
             <SidebarMenuItem>
               <Collapsible defaultOpen={defaultOpen} className="group/collapsible">
                 <CollapsibleTrigger asChild>
-                  {/* Button toggles collapse (no navigation here) */}
-                  <SidebarMenuButton tooltip="Pokémon" isActive={pathname.startsWith('/auctions')}>
-                    <BarChart3 className="h-4 w-4" />
-                    <span>Pokémon</span>
-                    <ChevronRight className="ml-auto h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                  <SidebarMenuButton
+                    tooltip="Auctions"
+                    isActive={pathname.startsWith('/auctions')}
+                    asChild
+                  >
+                    <Link to="/auctions">
+                      <Gavel className="h-4 w-4" />
+                      <span>Auctions</span>
+                      <ChevronRight className="ml-auto h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                    </Link>
                   </SidebarMenuButton>
                 </CollapsibleTrigger>
 
                 <CollapsibleContent>
                   <SidebarMenuSub>
-                    {/* Auctions (main list) */}
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton asChild isActive={isActive(pathname, '/auctions')}>
-                        <Link to="/auctions">Auctions</Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-
                     {/* Attributes */}
                     <SidebarMenuSubItem>
                       <SidebarMenuSubButton asChild isActive={isActive(pathname, '/auctions/era')}>
@@ -96,6 +94,24 @@ export function AppSidebar(): JSX.Element {
                   </SidebarMenuSub>
                 </CollapsibleContent>
               </Collapsible>
+            </SidebarMenuItem>
+
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isActive(pathname, '/pokemon')}>
+                <Link to="/pokemon">
+                  <Sparkles className="h-4 w-4" />
+                  <span>Pokémon</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isActive(pathname, '/expansions')}>
+                <Link to="/expansions">
+                  <Layers className="h-4 w-4" />
+                  <span>Expansions</span>
+                </Link>
+              </SidebarMenuButton>
             </SidebarMenuItem>
 
             {/* Settings */}
