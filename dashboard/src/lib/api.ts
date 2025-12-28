@@ -1,3 +1,4 @@
+// src/lib/api.ts
 import type { AuctionRecord, CardListItem, CardResponse, ExpansionSummary } from '../types'
 
 export interface AuctionDiagnosticResult {
@@ -46,9 +47,13 @@ export async function fetchExpansions(): Promise<ExpansionSummary[]> {
   return response.json()
 }
 
-export async function fetchCards(expansionId?: number | null): Promise<CardListItem[]> {
-  if (!expansionId && expansionId !== 0) return []
-  const response = await fetch(`/api/expansions/${expansionId}/cards`)
+/**
+ * Recommended: Fetch cards by setCode (matches your UX: Sets grid -> /pokemon/sets/:setCode -> cards)
+ * Backend must support: GET /api/expansions/:setCode/cards
+ */
+export async function fetchCardsForSet(setCode: string): Promise<CardListItem[]> {
+  if (!setCode) return []
+  const response = await fetch(`/api/expansions/${encodeURIComponent(setCode)}/cards`)
   if (!response.ok) {
     throw new Error('Failed to fetch cards')
   }
@@ -62,7 +67,13 @@ export async function runEnrichment(limit = 300, threshold = 80) {
     body: JSON.stringify({ limit, threshold })
   })
   if (!res.ok) throw new Error('Failed to run enrichment')
-  return res.json() as Promise<{ ok: boolean; attempted: number; linked: number; needsReview: number; unmatched: number }>
+  return res.json() as Promise<{
+    ok: boolean
+    attempted: number
+    linked: number
+    needsReview: number
+    unmatched: number
+  }>
 }
 
 export type EnrichmentSummary = {

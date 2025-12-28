@@ -1,3 +1,5 @@
+// src/types.ts
+
 export type AuctionRecord = {
   id: string
   title: string
@@ -38,8 +40,8 @@ export type CardResponse = {
 }
 
 export type CardListItem = CardResponse & {
-  auction_count: number
-  last_sale_at: string | null
+  linked_auctions: number
+  last_seen: string | null
 }
 
 export type ExpansionSummary = {
@@ -50,6 +52,7 @@ export type ExpansionSummary = {
   language: string | null
   set_total: number | null
   release_date: string | null
+  image_url: string | null
   cards_total: number
   linked_auctions: number
 }
