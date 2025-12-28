@@ -19,7 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Button } from '../components/ui/button'
 import { registeredUsers } from '../data/users'
 import { useAdminSettings } from '../providers/admin-settings'
-import { fetchAuctionDiagnostics, fetchAuctions, fetchEnrichmentSummary } from '../lib/api'
+import { fetchAuctionDiagnostics, fetchAuctions, fetchEnrichmentSummary, runEnrichment } from '../lib/api'
 import type { AuctionRecord, EnrichmentSummary } from '../types'
 
 export function AdminPage(): JSX.Element {
@@ -38,6 +38,8 @@ export function AdminPage(): JSX.Element {
   const [lastManualCheckAt, setLastManualCheckAt] = useState<string | null>(null)
   const [manualCheckNote, setManualCheckNote] = useState<string | null>(null)
   const [manualCheckPending, setManualCheckPending] = useState(false)
+  const [enrichmentNote, setEnrichmentNote] = useState<string | null>(null)
+  const [enrichmentPending, setEnrichmentPending] = useState(false)
 
   const totals = useMemo(() => {
     return registeredUsers.reduce(
@@ -357,14 +359,39 @@ export function AdminPage(): JSX.Element {
         <Card>
           <CardHeader className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-emerald-300" />
-                Data enrichment
-              </CardTitle>
-              <CardDescription>
-                Track how many auctions have been linked to card records without altering the original feed.
-              </CardDescription>
-            </div>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-emerald-300" />
+              Data enrichment
+            </CardTitle>
+            <CardDescription>
+              Track how many auctions have been linked to card records without altering the original feed.
+            </CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={async () => {
+                setEnrichmentPending(true)
+                setEnrichmentNote(null)
+                try {
+                  const result = await runEnrichment()
+                  setEnrichmentNote(
+                    `Enrichment ran: linked ${result.linked ?? 0}, needs review ${result.needsReview ?? 0}, unmatched ${
+                      result.unmatched ?? 0
+                    }.`
+                  )
+                  await Promise.all([refetchAuctions(), refetchEnrichment()])
+                } catch (error) {
+                  console.error('Failed to run enrichment', error)
+                  setEnrichmentNote('Enrichment failed to run. Please check the server logs.')
+                }
+                setEnrichmentPending(false)
+              }}
+              size="sm"
+              className="gap-2"
+              disabled={enrichmentPending || isFetching || isFetchingEnrichment}
+            >
+              <Sparkles className="h-4 w-4" /> {enrichmentPending ? 'Running…' : 'Run enrichment'}
+            </Button>
             <Button
               onClick={() => {
                 void refetchAuctions()
@@ -377,6 +404,7 @@ export function AdminPage(): JSX.Element {
             >
               <RefreshCw className="h-4 w-4" /> Refresh
             </Button>
+          </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -424,6 +452,9 @@ export function AdminPage(): JSX.Element {
                 <p className="mt-2 text-xs font-semibold text-amber-600 dark:text-amber-300">
                   Enrichment metrics are unavailable until the database connection succeeds.
                 </p>
+              )}
+              {enrichmentNote && (
+                <p className="mt-2 text-xs text-slate-700 dark:text-slate-200">{enrichmentNote}</p>
               )}
             </div>
           </CardContent>
