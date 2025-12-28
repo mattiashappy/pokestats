@@ -2,7 +2,7 @@ const express = require('express')
 const compression = require('compression')
 const path = require('path')
 const { Pool } = require('pg')
-const { parseAuctionTitle } = require('./server/enrichment/titleParser')
+const { parseAuctionTitle, normalize, looksLikeGenericLot } = require('./server/enrichment/titleParser')
 
 const app = express()
 const PORT = process.env.PORT || 8000
@@ -644,9 +644,11 @@ app.post('/api/enrichment/run', async (req, res) => {
 
     for (const row of rows) {
       const parsed = parseAuctionTitle(row.title ?? '')
+      const titleNorm = normalize(row.title ?? '')
+      const isGenericLot = looksLikeGenericLot(titleNorm)
 
       let status = parsed.enrich_status ?? 'unmatched'
-      const confidence = parsed.enrich_confidence ?? null
+      let confidence = parsed.enrich_confidence ?? null
 
       const hasCardNumbers = parsed.parsed_card_no && parsed.parsed_total_in_set
       const cardNumberText = hasCardNumbers ? `${parsed.parsed_card_no}/${parsed.parsed_total_in_set}` : null
@@ -668,6 +670,10 @@ app.post('/api/enrichment/run', async (req, res) => {
       const canLink = Boolean(canLinkBySetCode || canLinkByName)
 
       if (status === 'linked' && !canLink) status = 'needs_review'
+      if (isGenericLot) {
+        status = 'needs_review'
+        confidence = 10
+      }
 
       await client.query(
         `
@@ -696,9 +702,14 @@ app.post('/api/enrichment/run', async (req, res) => {
           parsed.setCode ?? null,
           status,
           confidence,
-          JSON.stringify({ source: 'title', title: row.title })
+          JSON.stringify({ source: 'title', title: row.title, generic: isGenericLot })
         ],
       )
+
+      if (isGenericLot) {
+        needsReview++
+        continue
+      }
 
       if (status === 'unmatched') {
         unmatched++
