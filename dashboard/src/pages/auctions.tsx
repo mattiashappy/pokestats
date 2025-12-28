@@ -21,7 +21,6 @@ const sortOptions = [
 ] as const
 
 type SortValue = (typeof sortOptions)[number]['value']
-
 type AttributeStat = { label: string; count: number }
 
 export function AuctionsPage(): JSX.Element {
@@ -44,6 +43,7 @@ export function AuctionsPage(): JSX.Element {
   const [showFilters, setShowFilters] = useState(false)
 
   const activeAttribute = (attribute ?? '').toLowerCase()
+  const totalAuctions = data?.length ?? 0
 
   const eras = useMemo(() => {
     const unique = new Set<string>(data?.map((auction) => auction.cardEra || 'Unknown era') ?? [])
@@ -131,23 +131,23 @@ export function AuctionsPage(): JSX.Element {
 
   const attributeView = useMemo(() => {
     if (activeAttribute === 'era') {
-      return { title: 'Eras', description: 'Pokémon TCG era distribution.', items: eraDistribution }
+      return { title: 'Eras', description: 'Auction count by Pokémon TCG era.', items: eraDistribution }
     }
     if (activeAttribute === 'language') {
-      return { title: 'Languages', description: 'Listing language breakdown.', items: languageDistribution }
+      return { title: 'Languages', description: 'Listing language breakdown across auctions.', items: languageDistribution }
     }
     if (activeAttribute === 'grading') {
       return {
         title: 'Grading companies',
-        description: 'Presence of third-party grading services.',
+        description: 'How many auctions include a third-party grade.',
         items: gradingCompanyDistribution
       }
     }
     if (activeAttribute === 'grade') {
-      return { title: 'Grades', description: 'Reported grade levels for graded cards.', items: gradeDistribution }
+      return { title: 'Grades', description: 'Reported grade for graded cards.', items: gradeDistribution }
     }
     return null
-  }, [activeAttribute, eraDistribution, gradingCompanyDistribution, languageDistribution, gradeDistribution])
+  }, [activeAttribute, eraDistribution, languageDistribution, gradingCompanyDistribution, gradeDistribution])
 
   const filteredAndSorted = useMemo(() => {
     if (!data) return []
@@ -191,12 +191,13 @@ export function AuctionsPage(): JSX.Element {
   const lastUpdatedLabel = useMemo(() => {
     if (!importSettings?.lastImportAt) return null
     const lastRun = format(new Date(importSettings.lastImportAt), 'LLL d, HH:mm')
-    const coverage = importSettings.coverageStart ? format(new Date(importSettings.coverageStart), 'PPP') : 'unknown date'
+    const coverage = importSettings.coverageStart
+      ? format(new Date(importSettings.coverageStart), 'PPP')
+      : 'unknown date'
     return `Data last updated: ${lastRun} (ended auctions from ${coverage})`
   }, [importSettings])
 
-  const auctionsCount = data?.length ?? 0
-
+  // ---- Attribute-only pages (no table) ----
   if (attributeView) {
     return (
       <div className="space-y-6">
@@ -225,7 +226,7 @@ export function AuctionsPage(): JSX.Element {
           <CardContent className="space-y-3">
             {attributeView.items.length ? (
               attributeView.items.map((item) => {
-                const percent = auctionsCount ? Math.round((item.count / auctionsCount) * 100) : 0
+                const percent = totalAuctions ? Math.round((item.count / totalAuctions) * 100) : 0
                 return (
                   <div key={item.label} className="rounded-xl border p-3">
                     <div className="flex items-center justify-between">
@@ -251,6 +252,7 @@ export function AuctionsPage(): JSX.Element {
     )
   }
 
+  // ---- Main auctions page ----
   return (
     <div className="space-y-6">
       {/* Header + stats */}
@@ -277,7 +279,7 @@ export function AuctionsPage(): JSX.Element {
             <CardContent className="p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Auctions</p>
               <p className="mt-2 text-xl font-semibold leading-tight text-slate-900 dark:text-slate-50">
-                {auctionsCount.toLocaleString('sv-SE')}
+                {totalAuctions.toLocaleString('sv-SE')}
               </p>
               <p className="text-xs text-slate-500">
                 {filteredAndSorted.length.toLocaleString('sv-SE')} in view after filters
@@ -563,9 +565,7 @@ export function AuctionsPage(): JSX.Element {
                               </Link>
 
                               {auction.cardName !== auction.title ? (
-                                <div className="text-xs font-normal text-slate-600 dark:text-slate-400">
-                                  {auction.title}
-                                </div>
+                                <div className="text-xs font-normal text-slate-600 dark:text-slate-400">{auction.title}</div>
                               ) : null}
 
                               {hasKnownSetName ? (
@@ -584,9 +584,7 @@ export function AuctionsPage(): JSX.Element {
                         <TableCell className="text-center">{auction.bids || 0}</TableCell>
 
                         <TableCell>
-                          <div className="text-slate-900 dark:text-slate-100">
-                            {new Date(auction.endTime).toLocaleString()}
-                          </div>
+                          <div className="text-slate-900 dark:text-slate-100">{new Date(auction.endTime).toLocaleString()}</div>
                           <div className="text-xs text-slate-600 dark:text-slate-400">
                             {formatDistanceToNow(parseISO(auction.endTime), { addSuffix: true })}
                           </div>
