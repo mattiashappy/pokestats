@@ -15,7 +15,7 @@ import { fetchCards, fetchExpansions } from '../lib/api'
 import type { CardListItem, ExpansionSummary } from '../types'
 
 export function PokemonPage(): JSX.Element {
-  const [selectedExpansion, setSelectedExpansion] = useState<string>('')
+  const [selectedExpansion, setSelectedExpansion] = useState<number | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
 
   const {
@@ -30,7 +30,7 @@ export function PokemonPage(): JSX.Element {
   useEffect(() => {
     if (expansions?.length && !selectedExpansion) {
       const first = expansions[0]
-      setSelectedExpansion(first.set_code || first.set_name)
+      setSelectedExpansion(first.id)
     }
   }, [expansions, selectedExpansion])
 
@@ -40,12 +40,12 @@ export function PokemonPage(): JSX.Element {
     error: cardsError
   } = useQuery<CardListItem[]>({
     queryKey: ['cards', selectedExpansion],
-    queryFn: () => fetchCards(selectedExpansion),
-    enabled: Boolean(selectedExpansion)
+    queryFn: () => fetchCards(selectedExpansion ?? undefined),
+    enabled: Number.isFinite(selectedExpansion)
   })
 
   const selectedExpansionMeta = useMemo(
-    () => expansions?.find((exp) => (exp.set_code || exp.set_name) === selectedExpansion) ?? null,
+    () => expansions?.find((exp) => exp.id === selectedExpansion) ?? null,
     [expansions, selectedExpansion]
   )
 
@@ -65,7 +65,7 @@ export function PokemonPage(): JSX.Element {
   }, [cards, searchTerm])
 
   const totalExpansions = expansions?.length ?? 0
-  const totalCardsInSet = selectedExpansionMeta?.card_count ?? cards?.length ?? 0
+  const totalCardsInSet = selectedExpansionMeta?.cards_total ?? cards?.length ?? 0
   const totalLinkedAuctions = (cards ?? []).reduce((acc, card) => acc + (card.auction_count ?? 0), 0)
 
   return (
@@ -137,13 +137,18 @@ export function PokemonPage(): JSX.Element {
                 <p className="text-sm text-rose-400">Failed to load expansions.</p>
               ) : (
                 <Select
-                  value={selectedExpansion}
-                  onChange={(event) => setSelectedExpansion(event.target.value)}
+                  value={selectedExpansion?.toString() ?? ''}
+                  onChange={(event) => {
+                    const value = Number(event.target.value)
+                    setSelectedExpansion(Number.isFinite(value) ? value : null)
+                  }}
                   aria-label="Select expansion"
                 >
                   {expansions?.map((expansion) => {
-                    const value = expansion.set_code || expansion.set_name
-                    const label = expansion.set_code ? `${expansion.set_code} — ${expansion.set_name}` : expansion.set_name
+                    const value = expansion.id
+                    const label = expansion.name
+                      ? `${expansion.set_code} — ${expansion.name}`
+                      : expansion.set_code
                     return (
                       <option key={value} value={value}>
                         {label}
@@ -176,17 +181,20 @@ export function PokemonPage(): JSX.Element {
                 <div className="flex flex-wrap items-center gap-3">
                   <TransportBadge stationCode={selectedExpansionMeta.set_code ?? '—'} highlight={selectedExpansionMeta.era ?? undefined} />
                   <div>
-                    <p className="text-base font-semibold text-slate-900 dark:text-slate-50">{selectedExpansionMeta.set_name}</p>
+                    <p className="text-base font-semibold text-slate-900 dark:text-slate-50">{selectedExpansionMeta.name ?? 'Unknown set'}</p>
                     <p className="text-xs text-slate-600 dark:text-slate-400">
-                      {selectedExpansionMeta.card_count.toLocaleString('sv-SE')} cards · {selectedExpansionMeta.auction_count.toLocaleString('sv-SE')} linked auctions
+                      {selectedExpansionMeta.cards_total.toLocaleString('sv-SE')} cards · {selectedExpansionMeta.linked_auctions.toLocaleString('sv-SE')} linked auctions
                     </p>
                   </div>
                 </div>
-                {selectedExpansionMeta.set_total ? (
-                  <div className="text-xs uppercase tracking-wide text-slate-500">
-                    Set total: {selectedExpansionMeta.set_total.toLocaleString('sv-SE')}
-                  </div>
-                ) : null}
+                <div className="space-y-1 text-right text-xs text-slate-500">
+                  {selectedExpansionMeta.set_total ? (
+                    <div className="uppercase tracking-wide">Set total: {selectedExpansionMeta.set_total.toLocaleString('sv-SE')}</div>
+                  ) : null}
+                  {selectedExpansionMeta.release_date ? (
+                    <div>Released {format(new Date(selectedExpansionMeta.release_date), 'PP')}</div>
+                  ) : null}
+                </div>
               </div>
             </div>
           </CardContent>
