@@ -1,8 +1,7 @@
 import * as React from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { BadgeCheck, ChevronRight, CreditCard, Gavel, Globe, Layers, Settings, Shield, Sparkles, Star } from 'lucide-react'
+import { BadgeCheck, CreditCard, Gavel, Globe, Layers, Settings, Shield, Sparkles, Star } from 'lucide-react'
 
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
 import {
   Sidebar,
   SidebarContent,
@@ -16,21 +15,46 @@ import {
   SidebarMenuSubItem,
   SidebarRail
 } from './ui/sidebar'
+
 import { useAuth } from '../providers/auth'
 
 function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
+type NavItem = {
+  title: string
+  url: string
+  icon?: React.ComponentType<{ className?: string }>
+  items?: Array<{ title: string; url: string }>
+}
+
 export function AppSidebar(): JSX.Element {
   const { pathname } = useLocation()
   const { user } = useAuth()
 
-  // Keep Auctions group open when you're anywhere under /auctions
-  const defaultOpen = pathname.startsWith('/auctions')
-
-  // Keep your original logic
   const showBilling = user?.role !== 'admin'
+
+  const navMain: NavItem[] = [
+    {
+      title: 'Auctions',
+      url: '/auctions',
+      icon: Gavel,
+      items: [
+        { title: 'Auctions', url: '/auctions' },
+        { title: 'Eras', url: '/auctions/era' },
+        { title: 'Languages', url: '/auctions/language' },
+        { title: 'Grading companies', url: '/auctions/grading' },
+        { title: 'Grades', url: '/auctions/grade' }
+      ]
+    }
+  ]
+
+  const navOther: NavItem[] = [
+    { title: 'Pokémon', url: '/pokemon', icon: Sparkles },
+    { title: 'Expansions', url: '/expansions', icon: Layers },
+    { title: 'Settings', url: '/settings', icon: Settings }
+  ]
 
   return (
     <Sidebar collapsible="icon">
@@ -39,95 +63,71 @@ export function AppSidebar(): JSX.Element {
           <SidebarGroupLabel>Platform</SidebarGroupLabel>
 
           <SidebarMenu>
-            {/* Auctions collapsible group */}
-            <SidebarMenuItem>
-              <Collapsible defaultOpen={defaultOpen} className="group/collapsible">
-                <CollapsibleTrigger asChild>
-                  <SidebarMenuButton
-                    tooltip="Auctions"
-                    isActive={pathname.startsWith('/auctions')}
-                    asChild
-                  >
-                    <Link to="/auctions">
-                      <Gavel className="h-4 w-4" />
-                      <span>Auctions</span>
-                      <ChevronRight className="ml-auto h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+            {/* Main section with submenu like shadcn block */}
+            {navMain.map((item) => {
+              const Icon = item.icon
+              const groupActive = isActive(pathname, item.url)
+
+              return (
+                <SidebarMenuItem key={item.title}>
+                  {/* Top-level button is a link (like shadcn sample) */}
+                  <SidebarMenuButton asChild tooltip={item.title} isActive={groupActive}>
+                    <Link to={item.url} className="font-medium">
+                      {Icon ? <Icon className="h-4 w-4" /> : null}
+                      <span>{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
-                </CollapsibleTrigger>
 
-                <CollapsibleContent>
-                  <SidebarMenuSub>
-                    {/* Attributes */}
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton asChild isActive={isActive(pathname, '/auctions/era')}>
-                        <Link to="/auctions/era">
-                          <Star className="mr-2 h-4 w-4" />
-                          Eras
-                        </Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
+                  {/* Submenu */}
+                  {item.items?.length ? (
+                    <SidebarMenuSub>
+                      {item.items.map((sub) => {
+                        const subActive = isActive(pathname, sub.url)
+                        const SubIcon =
+                          sub.url === '/auctions/era'
+                            ? Star
+                            : sub.url === '/auctions/language'
+                              ? Globe
+                              : sub.url === '/auctions/grading'
+                                ? BadgeCheck
+                                : null
 
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton asChild isActive={isActive(pathname, '/auctions/language')}>
-                        <Link to="/auctions/language">
-                          <Globe className="mr-2 h-4 w-4" />
-                          Languages
-                        </Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
+                        return (
+                          <SidebarMenuSubItem key={sub.title}>
+                            <SidebarMenuSubButton asChild isActive={subActive}>
+                              <Link to={sub.url}>
+                                {SubIcon ? <SubIcon className="mr-2 h-4 w-4" /> : null}
+                                <span>{sub.title}</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        )
+                      })}
+                    </SidebarMenuSub>
+                  ) : null}
+                </SidebarMenuItem>
+              )
+            })}
 
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton asChild isActive={isActive(pathname, '/auctions/grading')}>
-                        <Link to="/auctions/grading">
-                          <BadgeCheck className="mr-2 h-4 w-4" />
-                          Grading companies
-                        </Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton asChild isActive={isActive(pathname, '/auctions/grade')}>
-                        <Link to="/auctions/grade">Grades</Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                  </SidebarMenuSub>
-                </CollapsibleContent>
-              </Collapsible>
-            </SidebarMenuItem>
-
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={isActive(pathname, '/pokemon')}>
-                <Link to="/pokemon">
-                  <Sparkles className="h-4 w-4" />
-                  <span>Pokémon</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={isActive(pathname, '/expansions')}>
-                <Link to="/expansions">
-                  <Layers className="h-4 w-4" />
-                  <span>Expansions</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-
-            {/* Settings */}
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={isActive(pathname, '/settings')}>
-                <Link to="/settings">
-                  <Settings className="h-4 w-4" />
-                  <span>Settings</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+            {/* Other single links */}
+            {navOther.map((item) => {
+              const Icon = item.icon
+              return (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild tooltip={item.title} isActive={isActive(pathname, item.url)}>
+                    <Link to={item.url}>
+                      {Icon ? <Icon className="h-4 w-4" /> : null}
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )
+            })}
 
             {/* Admin */}
             {user?.role === 'admin' ? (
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={isActive(pathname, '/admin')}>
+                <SidebarMenuButton asChild tooltip="Admin" isActive={isActive(pathname, '/admin')}>
                   <Link to="/admin">
                     <Shield className="h-4 w-4" />
                     <span>Admin</span>
@@ -139,7 +139,7 @@ export function AppSidebar(): JSX.Element {
             {/* Billing */}
             {showBilling ? (
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={isActive(pathname, '/billing')}>
+                <SidebarMenuButton asChild tooltip="Billing" isActive={isActive(pathname, '/billing')}>
                   <Link to="/billing">
                     <CreditCard className="h-4 w-4" />
                     <span>Billing</span>
