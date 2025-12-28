@@ -19,6 +19,24 @@ app.use(express.json())
 const DATABASE_URL = process.env.DATABASE_URL
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 
+const CANONICAL_EXPANSIONS = [
+  {
+    set_code: 'BASE',
+    name: 'Base Set',
+    era: 'Wizards of the Coast',
+    language: 'EN',
+    set_total: 102,
+    release_date: '1999-01-09',
+    cards: [
+      { card_number: '1/102', name: 'Alakazam' },
+      { card_number: '4/102', name: 'Charizard' },
+      { card_number: '8/102', name: 'Machamp' },
+      { card_number: '15/102', name: 'Venusaur' },
+      { card_number: '25/102', name: 'Pikachu' }
+    ]
+  }
+]
+
 // --------------------
 // Database
 // --------------------
@@ -324,6 +342,80 @@ async function ensureCardInfrastructure() {
   const parsedSetCodeAvailable = await ensureSalesParsedSetCodeColumnAvailable()
   const cardIndexAvailable = await ensureSalesCardIndexAvailable()
   return cardColumnAvailable && parsedSetCodeAvailable && cardIndexAvailable
+}
+
+async function seedCanonicalExpansionsAndCards() {
+  if (!pool) return
+
+  const infrastructureReady = await ensureCardInfrastructure()
+  if (!infrastructureReady) return
+
+  const client = await pool.connect()
+
+  try {
+    await client.query('BEGIN')
+
+    for (const expansion of CANONICAL_EXPANSIONS) {
+      const existingExpansion = await client.query(
+        'SELECT id FROM public.expansions WHERE set_code = $1 LIMIT 1',
+        [expansion.set_code]
+      )
+
+      let expansionId = existingExpansion.rows[0]?.id ?? null
+
+      if (!expansionId) {
+        const insertedExpansion = await client.query(
+          `
+            INSERT INTO public.expansions (set_code, name, era, language, set_total, release_date)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id
+          `,
+          [
+            expansion.set_code,
+            expansion.name ?? null,
+            expansion.era ?? null,
+            expansion.language ?? null,
+            expansion.set_total ?? null,
+            expansion.release_date ?? null
+          ]
+        )
+
+        expansionId = insertedExpansion.rows[0].id
+      }
+
+      for (const card of expansion.cards) {
+        const existingCard = await client.query(
+          `SELECT id FROM public.cards WHERE expansion_id = $1 AND card_number = $2 LIMIT 1`,
+          [expansionId, card.card_number]
+        )
+
+        if (existingCard.rows[0]) continue
+
+        await client.query(
+          `
+            INSERT INTO public.cards (name, era, set_name, set_code, set_total, card_number, expansion_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `,
+          [
+            card.name,
+            expansion.era ?? null,
+            expansion.name ?? expansion.set_code,
+            expansion.set_code,
+            expansion.set_total ?? null,
+            card.card_number,
+            expansionId
+          ]
+        )
+      }
+    }
+
+    await client.query('COMMIT')
+  } catch (error) {
+    await client.query('ROLLBACK')
+    console.error('Failed to seed canonical expansions and cards', error)
+  } finally {
+    client.release()
+  }
 }
 
 async function findOrCreateCardBySetCodeAndNumber(
@@ -1028,6 +1120,12 @@ app.get('/api/enrichment/unmatched', async (req, res) => {
   )
   res.json(rows)
 })
+
+if (pool) {
+  seedCanonicalExpansionsAndCards().catch((error) => {
+    console.error('Failed to bootstrap canonical Pokémon data', error)
+  })
+}
 
 // --------------------
 // Frontend
