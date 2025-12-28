@@ -7,7 +7,9 @@ import { AuctionsPage } from "./pages/auctions"
 import { BillingPage } from "./pages/billing"
 import { CardPage } from "./pages/card"
 import { LandingPage } from "./pages/landing"
+import { ExpansionsPage } from "./pages/expansions"
 import { LoginPage } from "./pages/login"
+import { PokemonPage } from "./pages/pokemon"
 import { SettingsPage } from "./pages/settings"
 import { SignupPage } from "./pages/signup"
 
@@ -24,6 +26,8 @@ function App(): JSX.Element {
           <Route path="/auctions" element={<AuctionsPage />} />
           <Route path="/auctions/:attribute" element={<AuctionsPage />} />
           <Route path="/cards/:id" element={<CardPage />} />
+          <Route path="/pokemon" element={<PokemonPage />} />
+          <Route path="/expansions" element={<ExpansionsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Route>
