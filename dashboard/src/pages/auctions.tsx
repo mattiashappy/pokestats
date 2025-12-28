@@ -11,6 +11,7 @@ import { Input } from '../components/ui/input'
 import { Select } from '../components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../components/ui/chart'
+
 import type { AuctionRecord } from '../types'
 import { fetchAuctions } from '../lib/api'
 import { useAdminSettings } from '../providers/admin-settings'
@@ -19,10 +20,18 @@ const sortOptions = [
   { label: 'Ended most recently', value: 'endDesc' },
   { label: 'Highest final price', value: 'priceDesc' },
   { label: 'Most bids', value: 'bidsDesc' }
-]
+] as const
+
+type SortValue = (typeof sortOptions)[number]['value']
+
+type AttributeStat = { label: string; count: number }
 
 export function AuctionsPage(): JSX.Element {
-  const { data, isLoading, error } = useQuery<AuctionRecord[]>({ queryKey: ['auctions'], queryFn: fetchAuctions })
+  const { data, isLoading, error } = useQuery<AuctionRecord[]>({
+    queryKey: ['auctions'],
+    queryFn: fetchAuctions
+  })
+
   const { importSettings } = useAdminSettings()
 
   const [era, setEra] = useState<string>('all')
@@ -31,7 +40,7 @@ export function AuctionsPage(): JSX.Element {
   const [grade, setGrade] = useState<string>('all')
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
-  const [sortBy, setSortBy] = useState<string>('endDesc')
+  const [sortBy, setSortBy] = useState<SortValue>('endDesc')
   const [searchTerm, setSearchTerm] = useState('')
   const [showFilters, setShowFilters] = useState(false)
 
@@ -74,9 +83,9 @@ export function AuctionsPage(): JSX.Element {
     const aggregates = data.reduce(
       (acc, auction) => {
         return {
-          totalSales: acc.totalSales + auction.finalPrice,
-          totalBids: acc.totalBids + auction.bids,
-          highestSale: Math.max(acc.highestSale, auction.finalPrice)
+          totalSales: acc.totalSales + (auction.finalPrice || 0),
+          totalBids: acc.totalBids + (auction.bids || 0),
+          highestSale: Math.max(acc.highestSale, auction.finalPrice || 0)
         }
       },
       { totalSales: 0, totalBids: 0, highestSale: 0 }
@@ -98,7 +107,7 @@ export function AuctionsPage(): JSX.Element {
       const key = auction.cardEra || 'Unknown era'
       const current = acc.get(key) ?? { total: 0, count: 0 }
 
-      current.total += auction.finalPrice
+      current.total += auction.finalPrice || 0
       current.count += 1
 
       acc.set(key, current)
@@ -106,8 +115,8 @@ export function AuctionsPage(): JSX.Element {
     }, new Map<string, { total: number; count: number }>())
 
     return Array.from(eraTotals.entries())
-      .map(([era, values]) => ({
-        era,
+      .map(([eraKey, values]) => ({
+        era: eraKey,
         averageSale: values.total / values.count,
         auctionCount: values.count
       }))
@@ -125,13 +134,11 @@ export function AuctionsPage(): JSX.Element {
     []
   )
 
-  type AttributeStat = { label: string; count: number }
-
   const buildDistribution = (
     selector: (auction: AuctionRecord) => string | null | undefined,
     fallback: string
-  ) => {
-    if (!data?.length) return [] as AttributeStat[]
+  ): AttributeStat[] => {
+    if (!data?.length) return []
 
     const counts = data.reduce((acc, auction) => {
       const key = selector(auction) || fallback
@@ -144,52 +151,48 @@ export function AuctionsPage(): JSX.Element {
       .sort((a, b) => b.count - a.count)
   }
 
-  const eraDistribution = useMemo(
-    () => buildDistribution((auction) => auction.cardEra, 'Unknown era'),
-    [data]
-  )
-
+  const eraDistribution = useMemo(() => buildDistribution((auction) => auction.cardEra, 'Unknown era'), [data])
   const gradingCompanyDistribution = useMemo(
     () => buildDistribution((auction) => auction.gradingCompany, 'Ungraded'),
     [data]
   )
-
   const languageDistribution = useMemo(
     () => buildDistribution((auction) => auction.language, 'Unknown language'),
     [data]
   )
+  const gradeDistribution = useMemo(() => buildDistribution((auction) => auction.grade, 'Not graded'), [data])
 
-  const gradeDistribution = useMemo(
-    () => buildDistribution((auction) => auction.grade, 'Not graded'),
-    [data]
+  const totalAuctions = data?.length ?? 0
+
+  const attributeSections = useMemo(
+    () => [
+      {
+        id: 'era',
+        title: 'Era',
+        description: 'Auction count by Pokémon TCG era.',
+        items: eraDistribution
+      },
+      {
+        id: 'grading',
+        title: 'Grading company',
+        description: 'How many auctions include a third-party grade.',
+        items: gradingCompanyDistribution
+      },
+      {
+        id: 'language',
+        title: 'Language',
+        description: 'Listing language breakdown across auctions.',
+        items: languageDistribution
+      },
+      {
+        id: 'grade',
+        title: 'Grade',
+        description: 'Reported grade for graded cards.',
+        items: gradeDistribution
+      }
+    ],
+    [eraDistribution, gradingCompanyDistribution, languageDistribution, gradeDistribution]
   )
-
-  const attributeSections = [
-    {
-      id: 'era',
-      title: 'Era',
-      description: 'Auction count by Pokémon TCG era.',
-      items: eraDistribution
-    },
-    {
-      id: 'grading',
-      title: 'Grading company',
-      description: 'How many auctions include a third-party grade.',
-      items: gradingCompanyDistribution
-    },
-    {
-      id: 'language',
-      title: 'Language',
-      description: 'Listing language breakdown across auctions.',
-      items: languageDistribution
-    },
-    {
-      id: 'grade',
-      title: 'Grade',
-      description: 'Reported grade for graded cards.',
-      items: gradeDistribution
-    }
-  ]
 
   const filteredAndSorted = useMemo(() => {
     if (!data) return []
@@ -202,8 +205,10 @@ export function AuctionsPage(): JSX.Element {
         [auction.cardName, auction.title, auction.cardSetName]
           .filter(Boolean)
           .some((value) => value?.toLowerCase().includes(query))
-      const matchesPriceMin = minPrice ? auction.finalPrice >= Number(minPrice) : true
-      const matchesPriceMax = maxPrice ? auction.finalPrice <= Number(maxPrice) : true
+
+      const matchesPriceMin = minPrice ? (auction.finalPrice || 0) >= Number(minPrice) : true
+      const matchesPriceMax = maxPrice ? (auction.finalPrice || 0) <= Number(maxPrice) : true
+
       const matchesEra = era === 'all' || (auction.cardEra || 'Unknown era') === era
       const matchesLanguage = language === 'all' || (auction.language || 'Unknown language') === language
       const matchesGradingCompany =
@@ -222,35 +227,25 @@ export function AuctionsPage(): JSX.Element {
     })
 
     return filtered.sort((a, b) => {
-      if (sortBy === 'priceDesc') return b.finalPrice - a.finalPrice
-      if (sortBy === 'bidsDesc') return b.bids - a.bids
+      if (sortBy === 'priceDesc') return (b.finalPrice || 0) - (a.finalPrice || 0)
+      if (sortBy === 'bidsDesc') return (b.bids || 0) - (a.bids || 0)
       return new Date(b.endTime).getTime() - new Date(a.endTime).getTime()
     })
-  }, [
-    data,
-    searchTerm,
-    maxPrice,
-    minPrice,
-    era,
-    language,
-    gradingCompany,
-    grade,
-    sortBy
-  ])
+  }, [data, searchTerm, maxPrice, minPrice, era, language, gradingCompany, grade, sortBy])
 
   const lastUpdatedLabel = useMemo(() => {
     if (!importSettings?.lastImportAt) return null
     const lastRun = format(new Date(importSettings.lastImportAt), 'LLL d, HH:mm')
-    const coverage = format(new Date(importSettings.coverageStart), 'PPP')
+    const coverage = importSettings.coverageStart ? format(new Date(importSettings.coverageStart), 'PPP') : 'unknown date'
     return `Data last updated: ${lastRun} (ended auctions from ${coverage})`
   }, [importSettings])
 
   const auctionsCount = data?.length ?? 0
   const topEra = eraRadarData[0]
-  const totalAuctions = data?.length ?? 0
 
   return (
     <div className="space-y-6">
+      {/* Header + stats */}
       <div className="rounded-3xl border border-slate-200/70 bg-white/80 p-6 shadow-sm backdrop-blur-md dark:border-slate-900/70 dark:bg-slate-950/60">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2">
@@ -260,6 +255,7 @@ export function AuctionsPage(): JSX.Element {
               Browse and filter ended Tradera auctions imported after completion. Live auctions are not tracked.
             </p>
           </div>
+
           {lastUpdatedLabel ? (
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-900/70 dark:bg-slate-900/60 dark:text-slate-300">
               <CalendarClock className="h-4 w-4 text-sky-600 dark:text-sky-300" />
@@ -275,7 +271,9 @@ export function AuctionsPage(): JSX.Element {
               <p className="mt-2 text-xl font-semibold leading-tight text-slate-900 dark:text-slate-50">
                 {auctionsCount.toLocaleString('sv-SE')}
               </p>
-              <p className="text-xs text-slate-500">{filteredAndSorted.length.toLocaleString('sv-SE')} in view after filters</p>
+              <p className="text-xs text-slate-500">
+                {filteredAndSorted.length.toLocaleString('sv-SE')} in view after filters
+              </p>
             </CardContent>
           </Card>
 
@@ -318,9 +316,10 @@ export function AuctionsPage(): JSX.Element {
               <p className="text-xs text-slate-500">Highest realized price in the archive</p>
             </CardContent>
           </Card>
-
         </div>
       </div>
+
+      {/* Radar chart + attribute distributions */}
       {eraRadarData.length > 0 && (
         <Card>
           <CardHeader className="space-y-4 border-b border-slate-200/70 pb-4 dark:border-slate-900/70">
@@ -328,10 +327,9 @@ export function AuctionsPage(): JSX.Element {
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Attributes</p>
                 <CardTitle className="text-2xl font-semibold text-slate-900 dark:text-slate-50">Era averages</CardTitle>
-                <CardDescription>
-                  Average final price by era for the loaded auctions (top 8 eras shown).
-                </CardDescription>
+                <CardDescription>Average final price by era for the loaded auctions (top 8 eras shown).</CardDescription>
               </div>
+
               {topEra ? (
                 <div className="rounded-xl border border-slate-200 bg-white/70 px-4 py-3 text-right shadow-sm dark:border-slate-900/70 dark:bg-slate-900/60">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Top era</p>
@@ -343,9 +341,7 @@ export function AuctionsPage(): JSX.Element {
               ) : null}
             </div>
           </CardHeader>
-          <CardContent className="pb-6">
-            <div className="mx-auto max-w-3xl">
-              <ChartContainer config={eraChartConfig} className="mx-auto aspect-square max-h-[360px] w-full">
+
           <CardContent className="pb-0">
             <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
               <ChartContainer config={eraChartConfig} className="mx-auto aspect-square max-h-[320px] w-full">
@@ -380,7 +376,9 @@ export function AuctionsPage(): JSX.Element {
                       <span>{section.title}</span>
                       <ChevronDown className="h-4 w-4 transition group-open:rotate-180" />
                     </summary>
+
                     <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{section.description}</p>
+
                     <div className="mt-3 space-y-3">
                       {section.items.length ? (
                         section.items.map((item) => {
@@ -398,6 +396,7 @@ export function AuctionsPage(): JSX.Element {
                                   {item.count.toLocaleString('sv-SE')} ({percent}%)
                                 </span>
                               </div>
+
                               <div className="mt-2 h-2 rounded-full bg-slate-100 dark:bg-slate-800">
                                 <div
                                   className="h-full rounded-full bg-sky-500/80 transition-all dark:bg-sky-400/80"
@@ -417,6 +416,7 @@ export function AuctionsPage(): JSX.Element {
               </div>
             </div>
           </CardContent>
+
           <CardFooter className="flex flex-col gap-2 text-sm text-slate-600 dark:text-slate-400">
             <div className="flex items-center gap-2 font-medium text-slate-900 dark:text-slate-50">
               <TrendingUp className="h-4 w-4 text-sky-500" />
@@ -426,6 +426,8 @@ export function AuctionsPage(): JSX.Element {
           </CardFooter>
         </Card>
       )}
+
+      {/* Table + filters */}
       <Card>
         <CardHeader className="space-y-4 border-b border-slate-200/70 pb-4 dark:border-slate-900/70">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -434,6 +436,7 @@ export function AuctionsPage(): JSX.Element {
               <CardTitle className="text-2xl font-semibold text-slate-900 dark:text-slate-50">Ended auctions</CardTitle>
               <CardDescription>Search the archive and refine by language, grading, era, and price.</CardDescription>
             </div>
+
             <Button
               variant="ghost"
               size="sm"
@@ -465,6 +468,7 @@ export function AuctionsPage(): JSX.Element {
                   className="h-9 border-none bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
                 />
               </div>
+
               <div className="relative sm:w-auto">
                 <Button
                   variant="outline"
@@ -474,11 +478,14 @@ export function AuctionsPage(): JSX.Element {
                   <span>Filters</span>
                   <ChevronDown className="h-4 w-4" />
                 </Button>
+
                 {showFilters && (
                   <div className="absolute right-0 z-20 mt-2 w-[360px] space-y-4 rounded-2xl border border-slate-200 bg-white/95 p-4 text-sm shadow-xl backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Era</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          Era
+                        </p>
                         <Select value={era} onChange={(event) => setEra(event.target.value)}>
                           {eras.map((option) => (
                             <option key={option} value={option}>
@@ -487,8 +494,11 @@ export function AuctionsPage(): JSX.Element {
                           ))}
                         </Select>
                       </div>
+
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Language</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          Language
+                        </p>
                         <Select value={language} onChange={(event) => setLanguage(event.target.value)}>
                           {languages.map((option) => (
                             <option key={option} value={option}>
@@ -497,8 +507,11 @@ export function AuctionsPage(): JSX.Element {
                           ))}
                         </Select>
                       </div>
+
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Grading company</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          Grading company
+                        </p>
                         <Select value={gradingCompany} onChange={(event) => setGradingCompany(event.target.value)}>
                           {gradingCompanies.map((option) => (
                             <option key={option} value={option}>
@@ -507,8 +520,11 @@ export function AuctionsPage(): JSX.Element {
                           ))}
                         </Select>
                       </div>
+
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Grade</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          Grade
+                        </p>
                         <Select value={grade} onChange={(event) => setGrade(event.target.value)}>
                           {grades.map((option) => (
                             <option key={option} value={option}>
@@ -517,8 +533,11 @@ export function AuctionsPage(): JSX.Element {
                           ))}
                         </Select>
                       </div>
+
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Min price</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          Min price
+                        </p>
                         <Input
                           type="number"
                           value={minPrice}
@@ -527,8 +546,11 @@ export function AuctionsPage(): JSX.Element {
                           inputMode="numeric"
                         />
                       </div>
+
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Max price</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          Max price
+                        </p>
                         <Input
                           type="number"
                           value={maxPrice}
@@ -538,9 +560,12 @@ export function AuctionsPage(): JSX.Element {
                         />
                       </div>
                     </div>
+
                     <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Sort by</p>
-                      <Select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Sort by
+                      </p>
+                      <Select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortValue)}>
                         {sortOptions.map((option) => (
                           <option key={option.value} value={option.value}>
                             {option.label}
@@ -548,6 +573,7 @@ export function AuctionsPage(): JSX.Element {
                         ))}
                       </Select>
                     </div>
+
                     <div className="flex justify-end">
                       <Button
                         variant="ghost"
@@ -583,6 +609,7 @@ export function AuctionsPage(): JSX.Element {
               {filteredAndSorted.length.toLocaleString('sv-SE')} auctions in view
             </span>
           </div>
+
           {isLoading ? (
             <div className="flex items-center gap-2 text-sm text-slate-300">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading auctions…
@@ -603,6 +630,7 @@ export function AuctionsPage(): JSX.Element {
                     <TableHead>Link</TableHead>
                   </TableRow>
                 </TableHeader>
+
                 <TableBody>
                   {filteredAndSorted.map((auction) => {
                     const hasKnownSetName = auction.cardSetName && auction.cardSetName.toLowerCase() !== 'unknown'
@@ -610,7 +638,10 @@ export function AuctionsPage(): JSX.Element {
                     return (
                       <TableRow key={auction.id}>
                         <TableCell className="w-24">
-                          <Link to={`/cards/${auction.cardId}`} className="block overflow-hidden rounded-md border border-slate-200 dark:border-slate-800">
+                          <Link
+                            to={`/cards/${auction.cardId}`}
+                            className="block overflow-hidden rounded-md border border-slate-200 dark:border-slate-800"
+                          >
                             {auction.thumbnail ? (
                               <img src={auction.thumbnail} alt={auction.cardName} className="h-16 w-full object-cover" />
                             ) : (
@@ -620,34 +651,51 @@ export function AuctionsPage(): JSX.Element {
                             )}
                           </Link>
                         </TableCell>
+
                         <TableCell className="font-semibold text-slate-900 dark:text-slate-100">
                           <div className="flex items-center gap-2">
                             <div>
-                              <Link to={`/cards/${auction.cardId}`} className="text-slate-900 hover:text-sky-600 dark:text-slate-100 dark:hover:text-sky-300">
+                              <Link
+                                to={`/cards/${auction.cardId}`}
+                                className="text-slate-900 hover:text-sky-600 dark:text-slate-100 dark:hover:text-sky-300"
+                              >
                                 {auction.cardName}
                               </Link>
+
                               {auction.cardName !== auction.title ? (
-                                <div className="text-xs font-normal text-slate-600 dark:text-slate-400">{auction.title}</div>
+                                <div className="text-xs font-normal text-slate-600 dark:text-slate-400">
+                                  {auction.title}
+                                </div>
                               ) : null}
+
                               {hasKnownSetName ? (
                                 <div className="text-xs text-slate-500 dark:text-slate-400">Set: {auction.cardSetName}</div>
                               ) : null}
                             </div>
                           </div>
                         </TableCell>
+
                         <TableCell>{auction.cardEra || 'Unknown era'}</TableCell>
+
                         <TableCell className="text-right text-slate-900 dark:text-slate-100">
-                          {currencyFormatter.format(auction.finalPrice)}
+                          {currencyFormatter.format(auction.finalPrice || 0)}
                         </TableCell>
-                        <TableCell className="text-center">{auction.bids}</TableCell>
+
+                        <TableCell className="text-center">{auction.bids || 0}</TableCell>
+
                         <TableCell>
-                          <div className="text-slate-900 dark:text-slate-100">{new Date(auction.endTime).toLocaleString()}</div>
-                          <div className="text-xs text-slate-600 dark:text-slate-400">{formatDistanceToNow(parseISO(auction.endTime), { addSuffix: true })}</div>
+                          <div className="text-slate-900 dark:text-slate-100">
+                            {new Date(auction.endTime).toLocaleString()}
+                          </div>
+                          <div className="text-xs text-slate-600 dark:text-slate-400">
+                            {formatDistanceToNow(parseISO(auction.endTime), { addSuffix: true })}
+                          </div>
                         </TableCell>
+
                         <TableCell>
                           <a
                             href={auction.url}
-                            className="inline-flex items-center gap-1 text-sky-300 hover:text-sky-200"
+                            className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-700 dark:text-sky-300 dark:hover:text-sky-200"
                             target="_blank"
                             rel="noreferrer"
                           >
