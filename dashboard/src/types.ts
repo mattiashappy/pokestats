@@ -1,3 +1,5 @@
+// src/types.ts
+
 export type AuctionRecord = {
   id: string
   title: string
