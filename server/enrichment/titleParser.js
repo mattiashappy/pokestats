@@ -3,7 +3,8 @@ const SET_ALIASES = [
   { set: 'Base Set', aliases: ['base set', 'baseset'] },
   { set: 'Jungle', aliases: ['jungle'] },
   { set: 'Gym Heroes', aliases: ['gym heroes'] },
-  { set: 'Paldea Evolved', aliases: ['paldea evolved'] }
+  { set: 'Paldea Evolved', aliases: ['paldea evolved'] },
+  { set: 'Celebrations', aliases: ['celebrations'] }
 ]
 
 const STOPWORDS = [
@@ -11,10 +12,14 @@ const STOPWORDS = [
   'pokémonkort',
   'pokemon kort',
   'pokémon kort',
+  'pokemon',
+  'pokémon',
   'ultra rare',
   'rare',
   'holo',
+  'nm',
   'reverse',
+  'tcg',
   'vintage',
   'nintendo',
   'original',
@@ -22,6 +27,10 @@ const STOPWORDS = [
   'first edition',
   'edition'
 ]
+
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
 
 function normalize(s) {
   return String(s || '')
@@ -44,10 +53,10 @@ function detectSet(title) {
   const t = normalize(title)
   for (const entry of SET_ALIASES) {
     for (const a of entry.aliases) {
-      if (t.includes(a)) return { setGuess: entry.set, confidence: 80 }
+      if (t.includes(a)) return { setGuess: entry.set, setAlias: a, confidence: 80 }
     }
   }
-  return { setGuess: null, confidence: 0 }
+  return { setGuess: null, setAlias: null, confidence: 0 }
 }
 
 function extractNumberText(title) {
@@ -60,10 +69,15 @@ function extractNumberText(title) {
     return { numberText: `${cardNo}/${total}`, cardNo, totalInSet: total }
   }
 
+  const promoMatch = title.match(/\b((?:[A-Z]{2,6}SH|SWSH|SM|XY)\d{1,4})\b/i)
+  if (promoMatch) {
+    return { numberText: promoMatch[1].toUpperCase(), cardNo: null, totalInSet: null }
+  }
+
   const hash = t.match(/#\s*(\d{1,3})\b/)
   if (hash) {
     const cardNo = Number(hash[1])
-    return { numberText: `#${cardNo}`, cardNo, totalInSet: null }
+    return { numberText: `${cardNo}`, cardNo, totalInSet: null }
   }
 
   const three = t.match(/\b(\d{3})\b/)
@@ -75,11 +89,15 @@ function extractNumberText(title) {
   return { numberText: null, cardNo: null, totalInSet: null }
 }
 
-function extractCardName(title) {
+function extractCardName(title, setAlias) {
   let t = stripNoise(title)
 
-  t = t.replace(/\b(sv\d+[a-z]?)\b/g, ' ')
-  t = t.replace(/\b(swsh\d+)\b/g, ' ')
+  if (setAlias) {
+    t = t.replace(new RegExp(`\\b${escapeRegExp(setAlias)}\\b`, 'g'), ' ')
+  }
+
+  t = t.replace(/\b(sv\d+[a-z]?)\b/gi, ' ')
+  t = t.replace(/\b(swsh\d+)\b/gi, ' ')
   t = t.replace(/\b\d{1,3}\s*\/\s*\d{1,3}\b/g, ' ')
   t = t.replace(/#\s*\d{1,3}\b/g, ' ')
   t = t.replace(/\b\d{3}\b/g, ' ')
@@ -93,9 +111,9 @@ function extractCardName(title) {
 }
 
 function parseAuctionTitle(title) {
-  const { setGuess, confidence: setConfidence } = detectSet(title)
+  const { setGuess, setAlias, confidence: setConfidence } = detectSet(title)
   const { numberText, cardNo, totalInSet } = extractNumberText(title)
-  const cardName = extractCardName(title)
+  const cardName = extractCardName(title, setAlias)
 
   let enrichConfidence = 0
   if (cardName) enrichConfidence += 40
