@@ -2,10 +2,9 @@ import { Navigate, Route, Routes } from "react-router-dom"
 
 import { AppLayout } from "./components/layout/app-layout"
 import { ProtectedRoute } from "./components/protected-route"
-import { BillingPage } from "./pages/billing"
 import { AdminPage } from "./pages/admin"
 import { AuctionsPage } from "./pages/auctions"
-import { AttributePage } from "./pages/attribute"
+import { BillingPage } from "./pages/billing"
 import { CardPage } from "./pages/card"
 import { LandingPage } from "./pages/landing"
 import { LoginPage } from "./pages/login"
@@ -22,12 +21,11 @@ function App(): JSX.Element {
       {/* Protected app routes – require active subscription */}
       <Route element={<ProtectedRoute requireSubscription />}>
         <Route element={<AppLayout />}>
-          <Route path="/app" element={<Navigate to="/app/auctions" replace />} />
-          <Route path="/app/auctions" element={<AuctionsPage />} />
-          <Route path="/app/attributes/:attributeId" element={<AttributePage />} />
+          <Route path="/auctions" element={<AuctionsPage />} />
+          <Route path="/auctions/:attribute" element={<AuctionsPage />} />
           <Route path="/cards/:id" element={<CardPage />} />
-          <Route path="/app/settings" element={<SettingsPage />} />
-          <Route path="/app/admin" element={<AdminPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/admin" element={<AdminPage />} />
         </Route>
       </Route>
 
@@ -38,6 +36,7 @@ function App(): JSX.Element {
         </Route>
       </Route>
 
+      <Route path="/app/*" element={<Navigate to="/auctions" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
