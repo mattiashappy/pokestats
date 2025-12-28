@@ -474,7 +474,7 @@ export function AuctionsPage(): JSX.Element {
                   <span>Filters</span>
                   <ChevronDown className="h-4 w-4" />
                 </Button>
-                {showFilters ? (
+                {showFilters && (
                   <div className="absolute right-0 z-20 mt-2 w-[360px] space-y-4 rounded-2xl border border-slate-200 bg-white/95 p-4 text-sm shadow-xl backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
@@ -568,7 +568,7 @@ export function AuctionsPage(): JSX.Element {
                       </Button>
                     </div>
                   </div>
-                ) : null}
+                )}
               </div>
             </div>
           </div>
