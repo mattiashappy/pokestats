@@ -21,6 +21,7 @@ export type AuctionRecord = {
   language?: string | null
   gradingCompany?: string | null
   grade?: string | null
+  rawAttributes?: Record<string, unknown>
 }
 
 export type CardResponse = {
@@ -33,4 +34,14 @@ export type CardResponse = {
     created_at: string
   }
   auctions: AuctionRecord[]
+}
+
+export type EnrichmentSummary = {
+  available: boolean
+  totalAuctions?: number
+  linkedAuctions?: number
+  unlinkedAuctions?: number
+  distinctCards?: number
+  lastFetchedAt?: string | null
+  lastEndAt?: string | null
 }

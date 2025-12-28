@@ -349,7 +349,42 @@ function normalizeAuctionRow(row) {
     thumbnail: row.thumbnail_url || null,
     language: language || 'Unknown language',
     gradingCompany: gradingCompany || 'Ungraded',
-    grade: gradingCompany ? grade || 'Not graded' : 'Not graded'
+    grade: gradingCompany ? grade || 'Not graded' : 'Not graded',
+    rawAttributes: attributes
+  }
+}
+
+async function fetchEnrichmentSummary() {
+  if (!pool) return { available: false }
+
+  const infrastructureReady = await ensureCardInfrastructure()
+  if (!infrastructureReady) return { available: false }
+
+  const tableExists = await ensureSalesTableAvailable()
+  if (!tableExists) return { available: false }
+
+  const [{ rows: auctionRows }, { rows: cardRows }, { rows: freshnessRows }] = await Promise.all([
+    pool.query(
+      `
+        SELECT
+          COUNT(*)::int AS total_auctions,
+          COUNT(card_id)::int AS linked_auctions,
+          COUNT(*) FILTER (WHERE card_id IS NULL)::int AS unlinked_auctions
+        FROM tradera_sales
+      `
+    ),
+    pool.query('SELECT COUNT(*)::int AS total_cards FROM cards'),
+    pool.query('SELECT MAX(fetched_at) AS last_fetched_at, MAX(end_date) AS last_end_at FROM tradera_sales')
+  ])
+
+  return {
+    available: true,
+    totalAuctions: auctionRows?.[0]?.total_auctions ?? 0,
+    linkedAuctions: auctionRows?.[0]?.linked_auctions ?? 0,
+    unlinkedAuctions: auctionRows?.[0]?.unlinked_auctions ?? 0,
+    distinctCards: cardRows?.[0]?.total_cards ?? 0,
+    lastFetchedAt: freshnessRows?.[0]?.last_fetched_at ?? null,
+    lastEndAt: freshnessRows?.[0]?.last_end_at ?? null
   }
 }
 
@@ -473,6 +508,16 @@ app.get('/api/sales/diagnostic', async (_req, res) => {
       source: 'database',
       error: error.message
     })
+  }
+})
+
+app.get('/api/enrichment/summary', async (_req, res) => {
+  try {
+    const summary = await fetchEnrichmentSummary()
+    res.json(summary)
+  } catch (error) {
+    console.error('Failed to fetch enrichment summary', error)
+    res.status(500).json({ error: 'Failed to load enrichment summary' })
   }
 })
 
