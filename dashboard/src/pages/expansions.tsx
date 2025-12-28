@@ -1,6 +1,8 @@
-import { Layers, LayoutTemplate } from 'lucide-react'
+import { Layers } from 'lucide-react'
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { TransportBadge } from '@/components/blocks/transport-badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { expansions } from '@/data/expansions'
 
 export function ExpansionsPage(): JSX.Element {
   return (
@@ -14,16 +16,46 @@ export function ExpansionsPage(): JSX.Element {
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Coming soon</CardTitle>
-          <CardDescription>Set-level analytics and release information will appear here.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex items-center gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-          <LayoutTemplate className="h-5 w-5 text-slate-500" />
-          <p className="text-sm text-slate-600 dark:text-slate-300">We will surface expansions once the data model supports them.</p>
-        </CardContent>
-      </Card>
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Set codes</p>
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">Use expansion codes as the primary key</h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Each badge mirrors the set code stored in the database so you can scan, filter, and click through to the matching cards.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {expansions.map((expansion) => (
+            <Card key={expansion.code} className="border-slate-200/80 shadow-none ring-1 ring-slate-200/70 dark:border-slate-800/80 dark:ring-slate-800/80">
+              <CardHeader className="space-y-3 pb-3">
+                <TransportBadge
+                  system="PKMN"
+                  stationCode={expansion.code}
+                  highlight={expansion.highlight}
+                  className="w-fit"
+                />
+                <div>
+                  <CardTitle className="text-xl text-slate-900 dark:text-slate-50">{expansion.name}</CardTitle>
+                  <CardDescription>Released {expansion.release}</CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="flex items-center justify-between border-t border-dashed border-slate-200 pt-3 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-300">
+                <div className="flex flex-col">
+                  <span className="text-xs uppercase tracking-wide text-slate-500">Cards</span>
+                  <span className="font-semibold text-slate-900 dark:text-white">{expansion.totalCards}</span>
+                </div>
+                <div className="flex flex-col text-right">
+                  <span className="text-xs uppercase tracking-wide text-slate-500">Secret rares</span>
+                  <span className="font-semibold text-slate-900 dark:text-white">{expansion.secretRares}</span>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
