@@ -2,6 +2,7 @@ const express = require('express')
 const compression = require('compression')
 const path = require('path')
 const { Pool } = require('pg')
+const { normalize, extractNumber, titleToCardNameGuess } = require('./server/titleParser')
 
 const app = express()
 const PORT = process.env.PORT || 8000
@@ -22,6 +23,26 @@ const pool = DATABASE_URL
       ssl: IS_PRODUCTION ? { rejectUnauthorized: false } : undefined
     })
   : null
+
+const SET_ALIASES = [
+  { set_name: 'Fusion Strike', aliases: ['fusion strike', 'fusionstrike'] }
+  // add more later
+]
+
+function findSetGuess(normTitle) {
+  let best = null
+  let bestLen = 0
+  for (const s of SET_ALIASES) {
+    for (const a of s.aliases) {
+      const na = normalize(a)
+      if (na && normTitle.includes(na) && na.length > bestLen) {
+        best = { set_name: s.set_name, aliasHit: na }
+        bestLen = na.length
+      }
+    }
+  }
+  return best
+}
 
 let hasCheckedSalesTable = false
 let salesTableAvailable = false
@@ -518,6 +539,132 @@ app.get('/api/enrichment/summary', async (_req, res) => {
   } catch (error) {
     console.error('Failed to fetch enrichment summary', error)
     res.status(500).json({ error: 'Failed to load enrichment summary' })
+  }
+})
+
+app.post('/api/enrichment/run', async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
+
+    const limit = Number(req.body?.limit ?? 300)
+    const threshold = Number(req.body?.threshold ?? 80)
+
+    const auctions = await pool.query(
+      `
+      SELECT item_id, title, card_id
+      FROM public.tradera_sales
+      WHERE (enrich_status IS NULL OR enrich_status IN ('unmatched','needs_review'))
+      ORDER BY end_date DESC
+      LIMIT $1
+      `,
+      [limit]
+    )
+
+    let linked = 0
+    let needsReview = 0
+    let unmatched = 0
+
+    for (const a of auctions.rows) {
+      const rawTitle = a.title || ''
+      const norm = normalize(rawTitle)
+
+      const { numberText, cardNo, total } = extractNumber(norm)
+      const setGuess = findSetGuess(norm)
+
+      const cardNameGuess = titleToCardNameGuess(
+        numberText ? norm.replace(numberText, ' ') : norm,
+        setGuess?.aliasHit
+      )
+
+      let status = 'unmatched'
+      let confidence = 0
+      let matchedCardId = null
+      const notes = { rawTitle, normTitle: norm, numberText, cardNo, total, setGuess, cardNameGuess }
+
+      if (setGuess?.set_name && numberText) {
+        const match = await pool.query(
+          `
+          SELECT id, name, set_name, card_number
+          FROM public.cards
+          WHERE set_name = $1 AND card_number = $2
+          LIMIT 2
+          `,
+          [setGuess.set_name, numberText]
+        )
+
+        if (match.rows.length === 1) {
+          matchedCardId = match.rows[0].id
+          confidence = 95
+          status = confidence >= threshold ? 'linked' : 'needs_review'
+        } else if (match.rows.length > 1) {
+          status = 'needs_review'
+          confidence = 60
+          notes.reason = 'multiple_cards_same_set_number'
+        }
+      }
+
+      if (!matchedCardId && setGuess?.set_name && cardNameGuess) {
+        const match = await pool.query(
+          `
+          SELECT id
+          FROM public.cards
+          WHERE set_name = $1 AND LOWER(name) = $2
+          LIMIT 2
+          `,
+          [setGuess.set_name, normalize(cardNameGuess)]
+        )
+
+        if (match.rows.length === 1) {
+          matchedCardId = match.rows[0].id
+          confidence = 80
+          status = confidence >= threshold ? 'linked' : 'needs_review'
+        } else if (match.rows.length > 1) {
+          status = 'needs_review'
+          confidence = 55
+          notes.reason = 'multiple_cards_same_set_name'
+        }
+      }
+
+      if (status === 'linked' && matchedCardId) linked += 1
+      else if (status === 'needs_review') needsReview += 1
+      else unmatched += 1
+
+      await pool.query(
+        `
+        UPDATE public.tradera_sales
+        SET
+          parsed_card_name = $2,
+          parsed_number_text = $3,
+          parsed_card_no = $4,
+          parsed_total_in_set = $5,
+          parsed_set_guess = $6,
+          parsed_set_confidence = $7,
+          enrich_status = $8,
+          enrich_confidence = $9,
+          enrich_notes = $10,
+          card_id = CASE WHEN $8 = 'linked' THEN $11 ELSE card_id END
+        WHERE item_id = $1
+        `,
+        [
+          a.item_id,
+          cardNameGuess,
+          numberText,
+          cardNo,
+          total,
+          setGuess?.set_name ?? null,
+          setGuess ? 90 : 0,
+          status,
+          confidence,
+          JSON.stringify(notes),
+          matchedCardId
+        ]
+      )
+    }
+
+    res.json({ ok: true, attempted: auctions.rows.length, linked, needsReview, unmatched })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ ok: false, error: String(error) })
   }
 })
 
