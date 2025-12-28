@@ -1,16 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format, formatDistanceToNow, parseISO } from 'date-fns'
-import { ArrowUpDown, CalendarClock, ChevronDown, ExternalLink, Loader2, Search, TrendingUp } from 'lucide-react'
-import { Link } from 'react-router-dom'
-import { PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer } from 'recharts'
+import { ArrowUpDown, CalendarClock, ChevronDown, ExternalLink, Loader2, Search } from 'lucide-react'
+import { Link, useParams } from 'react-router-dom'
 
 import { Button } from '../components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
 import { Select } from '../components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '../components/ui/chart'
 
 import type { AuctionRecord } from '../types'
 import { fetchAuctions } from '../lib/api'
@@ -33,6 +31,7 @@ export function AuctionsPage(): JSX.Element {
   })
 
   const { importSettings } = useAdminSettings()
+  const { attribute } = useParams()
 
   const [era, setEra] = useState<string>('all')
   const [language, setLanguage] = useState<string>('all')
@@ -43,6 +42,8 @@ export function AuctionsPage(): JSX.Element {
   const [sortBy, setSortBy] = useState<SortValue>('endDesc')
   const [searchTerm, setSearchTerm] = useState('')
   const [showFilters, setShowFilters] = useState(false)
+
+  const activeAttribute = (attribute ?? '').toLowerCase()
 
   const eras = useMemo(() => {
     const unique = new Set<string>(data?.map((auction) => auction.cardEra || 'Unknown era') ?? [])
@@ -100,40 +101,6 @@ export function AuctionsPage(): JSX.Element {
     }
   }, [data])
 
-  const eraRadarData = useMemo(() => {
-    if (!data?.length) return []
-
-    const eraTotals = data.reduce((acc, auction) => {
-      const key = auction.cardEra || 'Unknown era'
-      const current = acc.get(key) ?? { total: 0, count: 0 }
-
-      current.total += auction.finalPrice || 0
-      current.count += 1
-
-      acc.set(key, current)
-      return acc
-    }, new Map<string, { total: number; count: number }>())
-
-    return Array.from(eraTotals.entries())
-      .map(([eraKey, values]) => ({
-        era: eraKey,
-        averageSale: values.total / values.count,
-        auctionCount: values.count
-      }))
-      .sort((a, b) => b.averageSale - a.averageSale)
-      .slice(0, 8)
-  }, [data])
-
-  const eraChartConfig = useMemo<ChartConfig>(
-    () => ({
-      averageSale: {
-        label: 'Avg. final price',
-        color: 'hsl(var(--chart-1))'
-      }
-    }),
-    []
-  )
-
   const buildDistribution = (
     selector: (auction: AuctionRecord) => string | null | undefined,
     fallback: string
@@ -162,37 +129,25 @@ export function AuctionsPage(): JSX.Element {
   )
   const gradeDistribution = useMemo(() => buildDistribution((auction) => auction.grade, 'Not graded'), [data])
 
-  const totalAuctions = data?.length ?? 0
-
-  const attributeSections = useMemo(
-    () => [
-      {
-        id: 'era',
-        title: 'Era',
-        description: 'Auction count by Pokémon TCG era.',
-        items: eraDistribution
-      },
-      {
-        id: 'grading',
-        title: 'Grading company',
-        description: 'How many auctions include a third-party grade.',
+  const attributeView = useMemo(() => {
+    if (activeAttribute === 'era') {
+      return { title: 'Eras', description: 'Pokémon TCG era distribution.', items: eraDistribution }
+    }
+    if (activeAttribute === 'language') {
+      return { title: 'Languages', description: 'Listing language breakdown.', items: languageDistribution }
+    }
+    if (activeAttribute === 'grading') {
+      return {
+        title: 'Grading companies',
+        description: 'Presence of third-party grading services.',
         items: gradingCompanyDistribution
-      },
-      {
-        id: 'language',
-        title: 'Language',
-        description: 'Listing language breakdown across auctions.',
-        items: languageDistribution
-      },
-      {
-        id: 'grade',
-        title: 'Grade',
-        description: 'Reported grade for graded cards.',
-        items: gradeDistribution
       }
-    ],
-    [eraDistribution, gradingCompanyDistribution, languageDistribution, gradeDistribution]
-  )
+    }
+    if (activeAttribute === 'grade') {
+      return { title: 'Grades', description: 'Reported grade levels for graded cards.', items: gradeDistribution }
+    }
+    return null
+  }, [activeAttribute, eraDistribution, gradingCompanyDistribution, languageDistribution, gradeDistribution])
 
   const filteredAndSorted = useMemo(() => {
     if (!data) return []
@@ -241,7 +196,60 @@ export function AuctionsPage(): JSX.Element {
   }, [importSettings])
 
   const auctionsCount = data?.length ?? 0
-  const topEra = eraRadarData[0]
+
+  if (attributeView) {
+    return (
+      <div className="space-y-6">
+        <div className="rounded-3xl border border-slate-200/70 bg-white/80 p-6 shadow-sm backdrop-blur-md dark:border-slate-900/70 dark:bg-slate-950/60">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pokémon</p>
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">{attributeView.title}</h1>
+              <p className="max-w-2xl text-sm text-slate-600 dark:text-slate-400">{attributeView.description}</p>
+            </div>
+
+            {lastUpdatedLabel ? (
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-900/70 dark:bg-slate-900/60 dark:text-slate-300">
+                <CalendarClock className="h-4 w-4 text-sky-600 dark:text-sky-300" />
+                <span>{lastUpdatedLabel}</span>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{attributeView.title} overview</CardTitle>
+            <CardDescription>{attributeView.description}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {attributeView.items.length ? (
+              attributeView.items.map((item) => {
+                const percent = auctionsCount ? Math.round((item.count / auctionsCount) * 100) : 0
+                return (
+                  <div key={item.label} className="rounded-xl border p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="truncate font-medium" title={item.label}>
+                        {item.label}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {item.count.toLocaleString('sv-SE')} ({percent}%)
+                      </div>
+                    </div>
+                    <div className="mt-2 h-2 rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary/80" style={{ width: `${percent}%` }} />
+                    </div>
+                  </div>
+                )
+              })
+            ) : (
+              <p className="text-sm text-muted-foreground">No data available.</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -318,114 +326,6 @@ export function AuctionsPage(): JSX.Element {
           </Card>
         </div>
       </div>
-
-      {/* Radar chart + attribute distributions */}
-      {eraRadarData.length > 0 && (
-        <Card>
-          <CardHeader className="space-y-4 border-b border-slate-200/70 pb-4 dark:border-slate-900/70">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Attributes</p>
-                <CardTitle className="text-2xl font-semibold text-slate-900 dark:text-slate-50">Era averages</CardTitle>
-                <CardDescription>Average final price by era for the loaded auctions (top 8 eras shown).</CardDescription>
-              </div>
-
-              {topEra ? (
-                <div className="rounded-xl border border-slate-200 bg-white/70 px-4 py-3 text-right shadow-sm dark:border-slate-900/70 dark:bg-slate-900/60">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Top era</p>
-                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">{topEra.era}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {currencyFormatter.format(topEra.averageSale)} avg sale
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          </CardHeader>
-
-          <CardContent className="pb-0">
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
-              <ChartContainer config={eraChartConfig} className="mx-auto aspect-square max-h-[320px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart
-                    data={eraRadarData}
-                    margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
-                    outerRadius="80%"
-                  >
-                    <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-                    <PolarAngleAxis dataKey="era" tick={{ fontSize: 10 }} />
-                    <PolarGrid />
-                    <Radar
-                      dataKey="averageSale"
-                      fill="var(--color-averageSale)"
-                      fillOpacity={0.65}
-                      stroke="var(--color-averageSale)"
-                      strokeWidth={2}
-                    />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-
-              <div className="space-y-3 rounded-2xl border border-slate-200/70 bg-white/70 p-3 shadow-sm dark:border-slate-900/70 dark:bg-slate-950/50">
-                {attributeSections.map((section, index) => (
-                  <details
-                    key={section.id}
-                    className="group rounded-xl border border-slate-200/60 bg-white/70 p-3 shadow-sm dark:border-slate-900/60 dark:bg-slate-900/60"
-                    open={index === 0}
-                  >
-                    <summary className="flex cursor-pointer items-center justify-between gap-2 text-sm font-semibold text-slate-900 transition hover:text-sky-600 dark:text-slate-50">
-                      <span>{section.title}</span>
-                      <ChevronDown className="h-4 w-4 transition group-open:rotate-180" />
-                    </summary>
-
-                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{section.description}</p>
-
-                    <div className="mt-3 space-y-3">
-                      {section.items.length ? (
-                        section.items.map((item) => {
-                          const percent = totalAuctions ? Math.round((item.count / totalAuctions) * 100) : 0
-                          return (
-                            <div
-                              key={item.label}
-                              className="rounded-lg border border-slate-200/60 bg-white/60 p-2 dark:border-slate-800 dark:bg-slate-900/60"
-                            >
-                              <div className="flex items-center justify-between text-sm font-medium text-slate-900 dark:text-slate-50">
-                                <span className="truncate" title={item.label}>
-                                  {item.label}
-                                </span>
-                                <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
-                                  {item.count.toLocaleString('sv-SE')} ({percent}%)
-                                </span>
-                              </div>
-
-                              <div className="mt-2 h-2 rounded-full bg-slate-100 dark:bg-slate-800">
-                                <div
-                                  className="h-full rounded-full bg-sky-500/80 transition-all dark:bg-sky-400/80"
-                                  style={{ width: `${percent}%` }}
-                                  aria-label={`${percent}% of auctions`}
-                                />
-                              </div>
-                            </div>
-                          )
-                        })
-                      ) : (
-                        <p className="text-xs text-slate-500 dark:text-slate-400">No data available.</p>
-                      )}
-                    </div>
-                  </details>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-
-          <CardFooter className="flex flex-col gap-2 text-sm text-slate-600 dark:text-slate-400">
-            <div className="flex items-center gap-2 font-medium text-slate-900 dark:text-slate-50">
-              <TrendingUp className="h-4 w-4 text-sky-500" />
-              Snapshot of average final prices by era ({eraRadarData.length} eras shown)
-            </div>
-            <div className="text-xs">Hover each spoke to explore exact values and compare eras.</div>
-          </CardFooter>
-        </Card>
-      )}
 
       {/* Table + filters */}
       <Card>
