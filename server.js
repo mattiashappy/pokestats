@@ -2,7 +2,12 @@ const express = require('express')
 const compression = require('compression')
 const path = require('path')
 const { Pool } = require('pg')
-const { parseAuctionTitle, normalize, looksLikeGenericLot } = require('./server/enrichment/titleParser')
+const {
+  parseAuctionTitle,
+  normalize,
+  canonicalNumberText,
+  looksLikeLotOrSealed
+} = require('./server/enrichment/titleParser')
 
 const app = express()
 const PORT = process.env.PORT || 8000
@@ -234,6 +239,33 @@ async function ensureCardInfrastructure() {
   const parsedSetCodeAvailable = await ensureSalesParsedSetCodeColumnAvailable()
   const cardIndexAvailable = await ensureSalesCardIndexAvailable()
   return cardColumnAvailable && parsedSetCodeAvailable && cardIndexAvailable
+}
+
+async function findOrCreateCardBySetCodeAndNumber(
+  db,
+  { setCode = null, numberText = null, cardNo = null, totalInSet = null, cardName = null, setGuess = null }
+) {
+  const normalizedSetCode = setCode?.trim() || null
+  const cardNumber = canonicalNumberText(numberText, cardNo ?? null, totalInSet ?? null)
+
+  if (!normalizedSetCode || !cardNumber) return null
+
+  const existing = await db.query(
+    `SELECT id FROM public.cards WHERE set_code = $1 AND card_number = $2 LIMIT 1`,
+    [normalizedSetCode, cardNumber]
+  )
+  if (existing.rows[0]) return existing.rows[0].id
+
+  const inserted = await db.query(
+    `
+    INSERT INTO public.cards (name, set_name, card_number, set_code, set_total)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING id
+    `,
+    [cardName ?? 'unknown', setGuess ?? 'unknown', cardNumber, normalizedSetCode, totalInSet ?? null]
+  )
+
+  return inserted.rows[0].id
 }
 
 function normalizeCardValue(value) {
@@ -625,7 +657,6 @@ app.post('/api/enrichment/run', async (req, res) => {
   const client = await pool.connect()
   try {
     const limit = Number(req.body?.limit ?? 500)
-    const threshold = Number(req.body?.threshold ?? 80)
 
     const { rows } = await client.query(
       `
@@ -645,35 +676,8 @@ app.post('/api/enrichment/run', async (req, res) => {
     for (const row of rows) {
       const parsed = parseAuctionTitle(row.title ?? '')
       const titleNorm = normalize(row.title ?? '')
-      const isGenericLot = looksLikeGenericLot(titleNorm)
-
-      let status = parsed.enrich_status ?? 'unmatched'
-      let confidence = parsed.enrich_confidence ?? null
-
-      const hasCardNumbers = parsed.parsed_card_no && parsed.parsed_total_in_set
-      const cardNumberText = hasCardNumbers ? `${parsed.parsed_card_no}/${parsed.parsed_total_in_set}` : null
-
-      const canLinkBySetCode =
-        !row.card_id &&
-        parsed.setCode &&
-        cardNumberText &&
-        (parsed.enrich_confidence ?? 0) >= threshold
-
-      const canLinkByName =
-        !row.card_id &&
-        !parsed.setCode &&
-        cardNumberText &&
-        parsed.parsed_card_name &&
-        parsed.parsed_set_guess &&
-        (parsed.enrich_confidence ?? 0) >= threshold
-
-      const canLink = Boolean(canLinkBySetCode || canLinkByName)
-
-      if (status === 'linked' && !canLink) status = 'needs_review'
-      if (isGenericLot) {
-        status = 'needs_review'
-        confidence = 10
-      }
+      const status = parsed.enrich_status ?? 'unmatched'
+      const confidence = parsed.enrich_confidence ?? null
 
       await client.query(
         `
@@ -702,111 +706,68 @@ app.post('/api/enrichment/run', async (req, res) => {
           parsed.setCode ?? null,
           status,
           confidence,
-          JSON.stringify({ source: 'title', title: row.title, generic: isGenericLot })
+          JSON.stringify({ source: 'title', title: row.title })
         ],
       )
 
-      if (isGenericLot) {
-        needsReview++
+      if (row.card_id != null) {
         continue
       }
 
-      if (status === 'unmatched') {
-        unmatched++
-        continue
-      }
-
-      if (status === 'needs_review') {
-        needsReview++
-        continue
-      }
-
-      const cardName = parsed.parsed_card_name
-      const setName = parsed.parsed_set_guess ?? 'unknown'
-
-      if (!canLink) {
-        needsReview++
-        continue
-      }
-
-      let cardId
-
-      if (canLinkBySetCode) {
-        const existing = await client.query(
+      if (looksLikeLotOrSealed(titleNorm)) {
+        await client.query(
           `
-          SELECT id
-          FROM public.cards
-          WHERE set_code = $1 AND card_number = $2
-          LIMIT 1
+          UPDATE public.tradera_sales
+          SET enrich_status = 'needs_review',
+              enrich_confidence = LEAST(COALESCE(enrich_confidence, 0), 20),
+              enrich_notes = COALESCE(enrich_notes, '{}'::jsonb) || jsonb_build_object('skip', 'lot_or_sealed')
+          WHERE item_id = $1
           `,
-          [parsed.setCode, cardNumberText],
+          [row.item_id],
         )
+        needsReview++
+        continue
+      }
 
-        if (existing.rows.length) {
-          cardId = existing.rows[0].id
-        } else {
-          const created = await client.query(
-            `
-            INSERT INTO public.cards (name, set_name, era, set_code, set_total, card_number)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (set_code, card_number) DO UPDATE SET
-              name = COALESCE(cards.name, EXCLUDED.name),
-              set_name = COALESCE(cards.set_name, EXCLUDED.set_name),
-              set_total = COALESCE(cards.set_total, EXCLUDED.set_total)
-            RETURNING id
-            `,
-            [
-              cardName ?? 'unknown',
-              setName ?? 'unknown',
-              null,
-              parsed.setCode,
-              parsed.parsed_total_in_set,
-              cardNumberText
-            ],
-          )
-          cardId = created.rows[0].id
-        }
+      const cardId = await findOrCreateCardBySetCodeAndNumber(client, {
+        setCode: parsed.setCode,
+        numberText: parsed.parsed_number_text,
+        cardNo: parsed.parsed_card_no,
+        totalInSet: parsed.parsed_total_in_set,
+        cardName: parsed.parsed_card_name,
+        setGuess: parsed.parsed_set_guess
+      })
+
+      if (cardId) {
+        await client.query(
+          `
+          UPDATE public.tradera_sales
+          SET card_id = $2,
+              enrich_status = 'linked',
+              enrich_confidence = GREATEST(COALESCE(enrich_confidence, 0), 80)
+          WHERE item_id = $1
+            AND card_id IS NULL
+          `,
+          [row.item_id, cardId],
+        )
+        linked++
       } else {
-        const existing = await client.query(
+        await client.query(
           `
-          SELECT id
-          FROM public.cards
-          WHERE name = $1 AND set_name = $2
-          LIMIT 1
+          UPDATE public.tradera_sales
+          SET enrich_status = CASE
+              WHEN parsed_card_name IS NOT NULL THEN 'needs_review'
+              ELSE 'unmatched'
+            END,
+            enrich_confidence = COALESCE(enrich_confidence, 0)
+          WHERE item_id = $1
           `,
-          [cardName ?? 'unknown', setName ?? 'unknown'],
+          [row.item_id],
         )
 
-        if (existing.rows.length) {
-          cardId = existing.rows[0].id
-        } else {
-          const created = await client.query(
-            `
-            INSERT INTO public.cards (name, set_name, era, set_total, card_number)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (name, set_name) DO UPDATE SET
-              set_total = COALESCE(cards.set_total, EXCLUDED.set_total),
-              card_number = COALESCE(cards.card_number, EXCLUDED.card_number)
-            RETURNING id
-            `,
-            [cardName ?? 'unknown', setName ?? 'unknown', null, parsed.parsed_total_in_set, cardNumberText],
-          )
-          cardId = created.rows[0].id
-        }
+        if (parsed.parsed_card_name) needsReview++
+        else unmatched++
       }
-
-      await client.query(
-        `
-        UPDATE public.tradera_sales
-        SET card_id = $1,
-            enrich_status = 'linked'
-        WHERE item_id = $2
-          AND card_id IS NULL
-        `,
-        [cardId, row.item_id],
-      )
-
-      linked++
     }
 
     res.json({
