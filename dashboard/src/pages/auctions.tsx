@@ -321,7 +321,7 @@ export function AuctionsPage(): JSX.Element {
 
         </div>
       </div>
-      {eraRadarData.length ? (
+      {eraRadarData.length > 0 && (
         <Card>
           <CardHeader className="space-y-4 border-b border-slate-200/70 pb-4 dark:border-slate-900/70">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -425,7 +425,7 @@ export function AuctionsPage(): JSX.Element {
             <div className="text-xs">Hover each spoke to explore exact values and compare eras.</div>
           </CardFooter>
         </Card>
-      ) : null}
+      )}
       <Card>
         <CardHeader className="space-y-4 border-b border-slate-200/70 pb-4 dark:border-slate-900/70">
           <div className="flex flex-wrap items-start justify-between gap-3">
