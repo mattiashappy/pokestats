@@ -28,6 +28,27 @@ const STOPWORDS = [
   'edition'
 ]
 
+const GENERIC_TITLE_TOKENS = [
+  'pokémonkort',
+  'pokemonkort',
+  'pokemon kort',
+  'pokémon kort',
+  'samling',
+  'lot',
+  'bundle',
+  '24 st',
+  '10 st',
+  'etb',
+  'elite trainer box',
+  'booster pack',
+  'booster',
+  'sealed',
+  'oöppnad',
+  'paket',
+  'cards',
+  'rea'
+]
+
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -35,7 +56,7 @@ function escapeRegExp(s) {
 function normalize(s) {
   return String(s || '')
     .toLowerCase()
-    .replace(/[’'"]/g, '')
+    .replace(/[’'"#]/g, '')
     .replace(/–|—/g, '-')
     .replace(/\s+/g, ' ')
     .trim()
@@ -49,20 +70,31 @@ function stripNoise(s) {
   return out.replace(/\s+/g, ' ').trim()
 }
 
-function extractSetCode(titleNorm) {
-  // Examples:
-  // "sv4a", "sv04", "sv5a", "sv7a"
-  const sv = titleNorm.match(/\bsv\s*0?(\d{1,2})([a-z])?\b/i)
-  if (sv) {
-    const num = String(Number(sv[1])).padStart(2, "0") // 4 -> "04"
-    const suffix = sv[2] ? sv[2].toUpperCase() : ""
-    return `SV${num}${suffix}`
-  }
+function extractSetCode(rawTitle) {
+  const t = rawTitle.trim()
 
-  // SWSH promo codes: SWSH134 etc (not set_code, but still useful)
-  // You can decide mapping later. For now: return null.
+  const swshPromo = t.match(/\bSWSH\s*#?\s*(\d{1,3})\b/i)
+  if (swshPromo) return `SWSH${swshPromo[1]}`
+
+  const svMain = t.match(/\bSV\s*0?(\d{2})\b/i)
+  if (svMain) return `SV${svMain[1].padStart(2, '0')}`
+
+  const svJp = t.match(/\bsv\s*(\d{1,2}[a-z])\b/i)
+  if (svJp) return `sv${svJp[1].toLowerCase()}`
+
+  const swshSet = t.match(/\bswsh\s*0?(\d{2})\s*:/i)
+  if (swshSet) return `swsh${swshSet[1].padStart(2, '0')}`
 
   return null
+}
+
+function looksLikeGenericLot(titleNorm) {
+  if (GENERIC_TITLE_TOKENS.some((t) => titleNorm.includes(t))) return true
+
+  if (titleNorm.length < 10) return true
+  if ((titleNorm.match(/,/g) ?? []).length >= 2) return true
+
+  return false
 }
 
 function detectSet(title) {
@@ -128,7 +160,7 @@ function extractCardName(title, setAlias) {
 
 function parseAuctionTitle(title) {
   const titleNorm = normalize(title)
-  const setCode = extractSetCode(titleNorm)
+  const setCode = extractSetCode(title)
   const { setGuess, setAlias, confidence: setConfidence } = detectSet(title)
   const { numberText, cardNo, totalInSet } = extractNumberText(title)
   const cardName = extractCardName(title, setAlias)
@@ -155,4 +187,4 @@ function parseAuctionTitle(title) {
   }
 }
 
-module.exports = { parseAuctionTitle }
+module.exports = { parseAuctionTitle, normalize, looksLikeGenericLot }
