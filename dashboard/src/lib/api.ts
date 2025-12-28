@@ -1,4 +1,4 @@
-import type { AuctionRecord, CardResponse } from '../types'
+import type { AuctionRecord, CardResponse, EnrichmentSummary } from '../types'
 
 export interface AuctionDiagnosticResult {
   auctions: AuctionRecord[]
@@ -26,6 +26,14 @@ export async function fetchCard(cardId: number): Promise<CardResponse> {
   const response = await fetch(`/api/cards/${cardId}`)
   if (!response.ok) {
     throw new Error('Failed to fetch card')
+  }
+  return response.json()
+}
+
+export async function fetchEnrichmentSummary(): Promise<EnrichmentSummary> {
+  const response = await fetch('/api/enrichment/summary')
+  if (!response.ok) {
+    throw new Error('Failed to fetch enrichment summary')
   }
   return response.json()
 }
