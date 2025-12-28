@@ -41,7 +41,6 @@ export function AppSidebar(): JSX.Element {
       url: '/auctions',
       icon: Gavel,
       items: [
-        { title: 'Auctions', url: '/auctions' },
         { title: 'Eras', url: '/auctions/era' },
         { title: 'Languages', url: '/auctions/language' },
         { title: 'Grading companies', url: '/auctions/grading' },
