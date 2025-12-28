@@ -5,6 +5,7 @@ import { ProtectedRoute } from "./components/protected-route"
 import { BillingPage } from "./pages/billing"
 import { AdminPage } from "./pages/admin"
 import { AuctionsPage } from "./pages/auctions"
+import { AttributePage } from "./pages/attribute"
 import { CardPage } from "./pages/card"
 import { LandingPage } from "./pages/landing"
 import { LoginPage } from "./pages/login"
@@ -23,6 +24,7 @@ function App(): JSX.Element {
         <Route element={<AppLayout />}>
           <Route path="/app" element={<Navigate to="/app/auctions" replace />} />
           <Route path="/app/auctions" element={<AuctionsPage />} />
+          <Route path="/app/attributes/:attributeId" element={<AttributePage />} />
           <Route path="/cards/:id" element={<CardPage />} />
           <Route path="/app/settings" element={<SettingsPage />} />
           <Route path="/app/admin" element={<AdminPage />} />

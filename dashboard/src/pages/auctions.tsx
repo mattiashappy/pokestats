@@ -343,6 +343,9 @@ export function AuctionsPage(): JSX.Element {
               ) : null}
             </div>
           </CardHeader>
+          <CardContent className="pb-6">
+            <div className="mx-auto max-w-3xl">
+              <ChartContainer config={eraChartConfig} className="mx-auto aspect-square max-h-[360px] w-full">
           <CardContent className="pb-0">
             <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
               <ChartContainer config={eraChartConfig} className="mx-auto aspect-square max-h-[320px] w-full">
@@ -427,7 +430,7 @@ export function AuctionsPage(): JSX.Element {
         <CardHeader className="space-y-4 border-b border-slate-200/70 pb-4 dark:border-slate-900/70">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Auction archive</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pokémon</p>
               <CardTitle className="text-2xl font-semibold text-slate-900 dark:text-slate-50">Ended auctions</CardTitle>
               <CardDescription>Search the archive and refine by language, grading, era, and price.</CardDescription>
             </div>
