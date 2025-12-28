@@ -46,9 +46,9 @@ export async function fetchExpansions(): Promise<ExpansionSummary[]> {
   return response.json()
 }
 
-export async function fetchCards(setCode?: string | null): Promise<CardListItem[]> {
-  const params = setCode ? `?set=${encodeURIComponent(setCode)}` : ''
-  const response = await fetch(`/api/cards${params}`)
+export async function fetchCards(expansionId?: number | null): Promise<CardListItem[]> {
+  if (!expansionId && expansionId !== 0) return []
+  const response = await fetch(`/api/expansions/${expansionId}/cards`)
   if (!response.ok) {
     throw new Error('Failed to fetch cards')
   }
