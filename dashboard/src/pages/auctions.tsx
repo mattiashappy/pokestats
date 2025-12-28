@@ -536,33 +536,43 @@ export function AuctionsPage(): JSX.Element {
                 <TableBody>
                   {filteredAndSorted.map((auction) => {
                     const hasKnownSetName = auction.cardSetName && auction.cardSetName.toLowerCase() !== 'unknown'
+                    const cardHref = auction.cardId ? `/cards/${auction.cardId}` : null
+
+                    const imageContent = (
+                      <div className="overflow-hidden rounded-md border border-slate-200 dark:border-slate-800">
+                        {auction.thumbnail ? (
+                          <img src={auction.thumbnail} alt={auction.cardName} className="h-16 w-full object-cover" />
+                        ) : (
+                          <div className="flex h-16 w-full items-center justify-center bg-slate-100 text-xs text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
+                            No image
+                          </div>
+                        )}
+                      </div>
+                    )
 
                     return (
                       <TableRow key={auction.id}>
                         <TableCell className="w-24">
-                          <Link
-                            to={`/cards/${auction.cardId}`}
-                            className="block overflow-hidden rounded-md border border-slate-200 dark:border-slate-800"
-                          >
-                            {auction.thumbnail ? (
-                              <img src={auction.thumbnail} alt={auction.cardName} className="h-16 w-full object-cover" />
-                            ) : (
-                              <div className="flex h-16 w-full items-center justify-center bg-slate-100 text-xs text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
-                                No image
-                              </div>
-                            )}
-                          </Link>
+                          {cardHref ? (
+                            <Link to={cardHref} className="block">{imageContent}</Link>
+                          ) : (
+                            <div className="block">{imageContent}</div>
+                          )}
                         </TableCell>
 
                         <TableCell className="font-semibold text-slate-900 dark:text-slate-100">
                           <div className="flex items-center gap-2">
                             <div>
-                              <Link
-                                to={`/cards/${auction.cardId}`}
-                                className="text-slate-900 hover:text-sky-600 dark:text-slate-100 dark:hover:text-sky-300"
-                              >
-                                {auction.cardName}
-                              </Link>
+                              {cardHref ? (
+                                <Link
+                                  to={cardHref}
+                                  className="text-slate-900 hover:text-sky-600 dark:text-slate-100 dark:hover:text-sky-300"
+                                >
+                                  {auction.cardName}
+                                </Link>
+                              ) : (
+                                <div className="text-slate-900 dark:text-slate-100">{auction.cardName}</div>
+                              )}
 
                               {auction.cardName !== auction.title ? (
                                 <div className="text-xs font-normal text-slate-600 dark:text-slate-400">{auction.title}</div>

@@ -1,10 +1,11 @@
 export type AuctionRecord = {
   id: string
   title: string
-  cardId: number
+  cardId: number | null
   cardName: string
   cardEra: string
   cardSetName: string
+  cardSetCode?: string | null
   cardNumber: string | null
   seller: string
   sellerType: 'trusted' | 'new'
@@ -25,15 +26,14 @@ export type AuctionRecord = {
 }
 
 export type CardResponse = {
-  card: {
-    id: number
-    name: string
-    era: string | null
-    set_name: string | null
-    card_number: string | null
-    created_at: string
-  }
-  auctions: AuctionRecord[]
+  id: number
+  name: string
+  era: string | null
+  set_name: string | null
+  set_code: string | null
+  set_total: number | null
+  card_number: string | null
+  created_at: string
 }
 
 export type EnrichmentSummary = {

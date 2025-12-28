@@ -33,6 +33,7 @@ let salesCardColumnAvailable = false
 let hasCheckedSalesParsedSetCodeColumn = false
 let salesParsedSetCodeColumnAvailable = false
 let hasBackfilledSalesCards = false
+let hasEnsuredSalesCardIndex = false
 
 async function ensureColumnExists(tableName, columnName, definition) {
   const { rows } = await pool.query(
@@ -47,6 +48,51 @@ async function ensureColumnExists(tableName, columnName, definition) {
     return true
   } catch (error) {
     console.error(`Failed to add ${columnName} column to ${tableName}`, error)
+    return false
+  }
+}
+
+async function ensureUniqueConstraint(tableName, constraintName, definition) {
+  const { rows } = await pool.query(
+    `
+      SELECT 1
+      FROM pg_constraint
+      WHERE conname = $1
+        AND conrelid = $2::regclass
+    `,
+    [constraintName, tableName]
+  )
+
+  if (rows.length > 0) return true
+
+  try {
+    await pool.query(`ALTER TABLE ${tableName} ADD CONSTRAINT ${constraintName} UNIQUE ${definition}`)
+    return true
+  } catch (error) {
+    console.error(`Failed to add ${constraintName} constraint to ${tableName}`, error)
+    return false
+  }
+}
+
+async function ensureIndexExists(tableName, indexName, definition) {
+  const { rows } = await pool.query(
+    `
+      SELECT 1
+      FROM pg_indexes
+      WHERE schemaname = 'public'
+        AND tablename = $1
+        AND indexname = $2
+    `,
+    [tableName, indexName]
+  )
+
+  if (rows.length > 0) return true
+
+  try {
+    await pool.query(`CREATE INDEX IF NOT EXISTS ${indexName} ON ${tableName} ${definition}`)
+    return true
+  } catch (error) {
+    console.error(`Failed to create ${indexName} on ${tableName}`, error)
     return false
   }
 }
@@ -91,7 +137,13 @@ async function ensureCardsTableAvailable() {
     const setCodeColumnReady = await ensureColumnExists('cards', 'set_code', 'TEXT')
     const setTotalColumnReady = await ensureColumnExists('cards', 'set_total', 'INTEGER')
 
-    cardsTableAvailable = setCodeColumnReady && setTotalColumnReady
+    const hasSetCodeCardNumberUnique = await ensureUniqueConstraint(
+      'public.cards',
+      'cards_unique_set_code_number',
+      '(set_code, card_number)'
+    )
+
+    cardsTableAvailable = setCodeColumnReady && setTotalColumnReady && hasSetCodeCardNumberUnique
   } catch (error) {
     console.error('Failed to ensure cards table exists', error)
     cardsTableAvailable = false
@@ -157,6 +209,22 @@ async function ensureSalesParsedSetCodeColumnAvailable() {
   return salesParsedSetCodeColumnAvailable
 }
 
+async function ensureSalesCardIndexAvailable() {
+  if (!pool || hasEnsuredSalesCardIndex) return hasEnsuredSalesCardIndex
+
+  const salesAvailable = await ensureSalesTableAvailable()
+  if (!salesAvailable) return false
+
+  const indexReady = await ensureIndexExists(
+    'tradera_sales',
+    'idx_tradera_sales_card_id_end_date',
+    '(card_id, end_date DESC)'
+  )
+
+  hasEnsuredSalesCardIndex = indexReady
+  return indexReady
+}
+
 async function ensureCardInfrastructure() {
   const salesAvailable = await ensureSalesTableAvailable()
   const cardsAvailable = await ensureCardsTableAvailable()
@@ -164,7 +232,8 @@ async function ensureCardInfrastructure() {
 
   const cardColumnAvailable = await ensureSalesCardColumnAvailable()
   const parsedSetCodeAvailable = await ensureSalesParsedSetCodeColumnAvailable()
-  return cardColumnAvailable && parsedSetCodeAvailable
+  const cardIndexAvailable = await ensureSalesCardIndexAvailable()
+  return cardColumnAvailable && parsedSetCodeAvailable && cardIndexAvailable
 }
 
 function normalizeCardValue(value) {
@@ -302,7 +371,7 @@ async function fetchAuctionsFromDatabase(filters = {}) {
       ts.attributes->'pokemon_grading_issuer'->>0 AS grading_issuer,
       ts.attributes->'pokemon_grade'->>0 AS grading_grade
     FROM tradera_sales ts
-    JOIN cards c ON c.id = ts.card_id
+    LEFT JOIN cards c ON c.id = ts.card_id
     WHERE
       ($1::text IS NULL OR ts.attributes->'pokemon_era' ? $1)
       AND ($2::text IS NULL OR ts.attributes->'pokemon_language' ? $2)
@@ -400,7 +469,7 @@ function normalizeAuctionRow(row) {
   }
 }
 
-async function fetchCardWithAuctions(cardId) {
+async function fetchCard(cardId) {
   if (!pool) return null
 
   const infrastructureReady = await ensureCardInfrastructure()
@@ -418,21 +487,31 @@ async function fetchCardWithAuctions(cardId) {
   const cardResult = await pool.query(cardQuery, [cardId])
   if (cardResult.rows.length === 0) return null
 
-  const card = cardResult.rows[0]
+  return cardResult.rows[0]
+}
+
+async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
+  if (!pool) return []
+
+  const infrastructureReady = await ensureCardInfrastructure()
+  if (!infrastructureReady) return []
+  const tableExists = await ensureSalesTableAvailable()
+  const cardsExist = await ensureCardsTableAvailable()
+  if (!tableExists || !cardsExist) return []
 
   const auctionsQuery = `
     SELECT
-      item_id,
-      title,
-      price,
-      bid_count,
-      end_date,
-      seller_alias,
-      seller_dsr,
-      item_url,
-      thumbnail_url,
-      attributes,
-      fetched_at,
+      ts.item_id,
+      ts.title,
+      ts.price,
+      ts.bid_count,
+      ts.end_date,
+      ts.seller_alias,
+      ts.seller_dsr,
+      ts.item_url,
+      ts.thumbnail_url,
+      ts.attributes,
+      ts.fetched_at,
       ts.card_id,
       c.name AS card_name,
       c.era AS card_era,
@@ -443,15 +522,11 @@ async function fetchCardWithAuctions(cardId) {
     JOIN cards c ON c.id = ts.card_id
     WHERE ts.card_id = $1
     ORDER BY ts.end_date DESC
+    LIMIT $2
   `
 
-  const auctionsResult = await pool.query(auctionsQuery, [cardId])
-  const auctions = auctionsResult.rows.map(normalizeAuctionRow)
-
-  return {
-    card,
-    auctions
-  }
+  const auctionsResult = await pool.query(auctionsQuery, [cardId, limit])
+  return auctionsResult.rows.map(normalizeAuctionRow)
 }
 
 // --------------------
@@ -496,15 +571,30 @@ app.get('/api/cards/:id', async (req, res) => {
       return res.status(400).json({ error: 'Invalid card id' })
     }
 
-    const result = await fetchCardWithAuctions(cardId)
-    if (!result) {
+    const card = await fetchCard(cardId)
+    if (!card) {
       return res.status(404).json({ error: 'Card not found' })
     }
 
-    return res.json(result)
+    return res.json(card)
   } catch (error) {
     console.error('Failed to fetch card', error)
     return res.status(500).json({ error: 'Failed to load card' })
+  }
+})
+
+app.get('/api/cards/:id/auctions', async (req, res) => {
+  try {
+    const cardId = Number(req.params.id)
+    if (Number.isNaN(cardId)) {
+      return res.status(400).json({ error: 'Invalid card id' })
+    }
+
+    const auctions = await fetchCardAuctions(cardId, { limit: 500 })
+    return res.json(auctions)
+  } catch (error) {
+    console.error('Failed to fetch card auctions', error)
+    return res.status(500).json({ error: 'Failed to load card auctions' })
   }
 })
 
@@ -535,6 +625,7 @@ app.post('/api/enrichment/run', async (req, res) => {
   const client = await pool.connect()
   try {
     const limit = Number(req.body?.limit ?? 500)
+    const threshold = Number(req.body?.threshold ?? 80)
 
     const { rows } = await client.query(
       `
@@ -557,12 +648,24 @@ app.post('/api/enrichment/run', async (req, res) => {
       let status = parsed.enrich_status ?? 'unmatched'
       const confidence = parsed.enrich_confidence ?? null
 
-      const canLink =
+      const hasCardNumbers = parsed.parsed_card_no && parsed.parsed_total_in_set
+      const cardNumberText = hasCardNumbers ? `${parsed.parsed_card_no}/${parsed.parsed_total_in_set}` : null
+
+      const canLinkBySetCode =
         !row.card_id &&
         parsed.setCode &&
-        parsed.parsed_card_no &&
-        parsed.parsed_total_in_set &&
-        (parsed.enrich_confidence ?? 0) >= 80
+        cardNumberText &&
+        (parsed.enrich_confidence ?? 0) >= threshold
+
+      const canLinkByName =
+        !row.card_id &&
+        !parsed.setCode &&
+        cardNumberText &&
+        parsed.parsed_card_name &&
+        parsed.parsed_set_guess &&
+        (parsed.enrich_confidence ?? 0) >= threshold
+
+      const canLink = Boolean(canLinkBySetCode || canLinkByName)
 
       if (status === 'linked' && !canLink) status = 'needs_review'
 
@@ -615,39 +718,70 @@ app.post('/api/enrichment/run', async (req, res) => {
         continue
       }
 
-      const cardNumberText = `${parsed.parsed_card_no}/${parsed.parsed_total_in_set}`
-
-      const existing = await client.query(
-        `
-        SELECT id
-        FROM public.cards
-        WHERE set_code = $1 AND card_number = $2
-        LIMIT 1
-        `,
-        [parsed.setCode, cardNumberText],
-      )
-
       let cardId
 
-      if (existing.rows.length) {
-        cardId = existing.rows[0].id
-      } else {
-        const created = await client.query(
+      if (canLinkBySetCode) {
+        const existing = await client.query(
           `
-          INSERT INTO public.cards (name, set_name, era, set_code, set_total, card_number)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          RETURNING id
+          SELECT id
+          FROM public.cards
+          WHERE set_code = $1 AND card_number = $2
+          LIMIT 1
           `,
-          [
-            cardName ?? 'unknown',
-            setName ?? 'unknown',
-            null,
-            parsed.setCode,
-            parsed.parsed_total_in_set,
-            cardNumberText
-          ],
+          [parsed.setCode, cardNumberText],
         )
-        cardId = created.rows[0].id
+
+        if (existing.rows.length) {
+          cardId = existing.rows[0].id
+        } else {
+          const created = await client.query(
+            `
+            INSERT INTO public.cards (name, set_name, era, set_code, set_total, card_number)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (set_code, card_number) DO UPDATE SET
+              name = COALESCE(cards.name, EXCLUDED.name),
+              set_name = COALESCE(cards.set_name, EXCLUDED.set_name),
+              set_total = COALESCE(cards.set_total, EXCLUDED.set_total)
+            RETURNING id
+            `,
+            [
+              cardName ?? 'unknown',
+              setName ?? 'unknown',
+              null,
+              parsed.setCode,
+              parsed.parsed_total_in_set,
+              cardNumberText
+            ],
+          )
+          cardId = created.rows[0].id
+        }
+      } else {
+        const existing = await client.query(
+          `
+          SELECT id
+          FROM public.cards
+          WHERE name = $1 AND set_name = $2
+          LIMIT 1
+          `,
+          [cardName ?? 'unknown', setName ?? 'unknown'],
+        )
+
+        if (existing.rows.length) {
+          cardId = existing.rows[0].id
+        } else {
+          const created = await client.query(
+            `
+            INSERT INTO public.cards (name, set_name, era, set_total, card_number)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (name, set_name) DO UPDATE SET
+              set_total = COALESCE(cards.set_total, EXCLUDED.set_total),
+              card_number = COALESCE(cards.card_number, EXCLUDED.card_number)
+            RETURNING id
+            `,
+            [cardName ?? 'unknown', setName ?? 'unknown', null, parsed.parsed_total_in_set, cardNumberText],
+          )
+          cardId = created.rows[0].id
+        }
       }
 
       await client.query(
