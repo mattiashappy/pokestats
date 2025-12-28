@@ -26,7 +26,10 @@ export function AppSidebar(): JSX.Element {
   const { pathname } = useLocation()
   const { user } = useAuth()
 
+  // Keep Pokémon group open when you're anywhere under /auctions
   const defaultOpen = pathname.startsWith('/auctions')
+
+  // Keep your original logic
   const showBilling = user?.role !== 'admin'
 
   return (
@@ -36,9 +39,11 @@ export function AppSidebar(): JSX.Element {
           <SidebarGroupLabel>Platform</SidebarGroupLabel>
 
           <SidebarMenu>
+            {/* Pokémon collapsible group */}
             <SidebarMenuItem>
               <Collapsible defaultOpen={defaultOpen} className="group/collapsible">
                 <CollapsibleTrigger asChild>
+                  {/* Button toggles collapse (no navigation here) */}
                   <SidebarMenuButton tooltip="Pokémon" isActive={pathname.startsWith('/auctions')}>
                     <BarChart3 className="h-4 w-4" />
                     <span>Pokémon</span>
@@ -48,12 +53,14 @@ export function AppSidebar(): JSX.Element {
 
                 <CollapsibleContent>
                   <SidebarMenuSub>
+                    {/* Auctions (main list) */}
                     <SidebarMenuSubItem>
                       <SidebarMenuSubButton asChild isActive={isActive(pathname, '/auctions')}>
                         <Link to="/auctions">Auctions</Link>
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>
 
+                    {/* Attributes */}
                     <SidebarMenuSubItem>
                       <SidebarMenuSubButton asChild isActive={isActive(pathname, '/auctions/era')}>
                         <Link to="/auctions/era">
@@ -91,6 +98,7 @@ export function AppSidebar(): JSX.Element {
               </Collapsible>
             </SidebarMenuItem>
 
+            {/* Settings */}
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={isActive(pathname, '/settings')}>
                 <Link to="/settings">
@@ -100,6 +108,7 @@ export function AppSidebar(): JSX.Element {
               </SidebarMenuButton>
             </SidebarMenuItem>
 
+            {/* Admin */}
             {user?.role === 'admin' ? (
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={isActive(pathname, '/admin')}>
@@ -111,6 +120,7 @@ export function AppSidebar(): JSX.Element {
               </SidebarMenuItem>
             ) : null}
 
+            {/* Billing */}
             {showBilling ? (
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={isActive(pathname, '/billing')}>

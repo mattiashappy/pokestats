@@ -21,7 +21,6 @@ const sortOptions = [
 ] as const
 
 type SortValue = (typeof sortOptions)[number]['value']
-
 type AttributeStat = { label: string; count: number }
 
 export function AuctionsPage(): JSX.Element {
@@ -44,6 +43,7 @@ export function AuctionsPage(): JSX.Element {
   const [showFilters, setShowFilters] = useState(false)
 
   const activeAttribute = (attribute ?? '').toLowerCase()
+  const totalAuctions = data?.length ?? 0
 
   const eras = useMemo(() => {
     const unique = new Set<string>(data?.map((auction) => auction.cardEra || 'Unknown era') ?? [])
@@ -129,8 +129,6 @@ export function AuctionsPage(): JSX.Element {
   )
   const gradeDistribution = useMemo(() => buildDistribution((auction) => auction.grade, 'Not graded'), [data])
 
-  const totalAuctions = data?.length ?? 0
-
   const attributeView = useMemo(() => {
     if (activeAttribute === 'era') {
       return { title: 'Eras', description: 'Auction count by Pokémon TCG era.', items: eraDistribution }
@@ -149,7 +147,7 @@ export function AuctionsPage(): JSX.Element {
       return { title: 'Grades', description: 'Reported grade for graded cards.', items: gradeDistribution }
     }
     return null
-  }, [activeAttribute, eraDistribution, gradingCompanyDistribution, languageDistribution, gradeDistribution])
+  }, [activeAttribute, eraDistribution, languageDistribution, gradingCompanyDistribution, gradeDistribution])
 
   const filteredAndSorted = useMemo(() => {
     if (!data) return []
@@ -193,12 +191,68 @@ export function AuctionsPage(): JSX.Element {
   const lastUpdatedLabel = useMemo(() => {
     if (!importSettings?.lastImportAt) return null
     const lastRun = format(new Date(importSettings.lastImportAt), 'LLL d, HH:mm')
-    const coverage = importSettings.coverageStart ? format(new Date(importSettings.coverageStart), 'PPP') : 'unknown date'
+    const coverage = importSettings.coverageStart
+      ? format(new Date(importSettings.coverageStart), 'PPP')
+      : 'unknown date'
     return `Data last updated: ${lastRun} (ended auctions from ${coverage})`
   }, [importSettings])
 
-  const auctionsCount = data?.length ?? 0
+  // ---- Attribute-only pages (no table) ----
+  if (attributeView) {
+    return (
+      <div className="space-y-6">
+        <div className="rounded-3xl border border-slate-200/70 bg-white/80 p-6 shadow-sm backdrop-blur-md dark:border-slate-900/70 dark:bg-slate-950/60">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pokémon</p>
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">{attributeView.title}</h1>
+              <p className="max-w-2xl text-sm text-slate-600 dark:text-slate-400">{attributeView.description}</p>
+            </div>
 
+            {lastUpdatedLabel ? (
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-900/70 dark:bg-slate-900/60 dark:text-slate-300">
+                <CalendarClock className="h-4 w-4 text-sky-600 dark:text-sky-300" />
+                <span>{lastUpdatedLabel}</span>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{attributeView.title} overview</CardTitle>
+            <CardDescription>{attributeView.description}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {attributeView.items.length ? (
+              attributeView.items.map((item) => {
+                const percent = totalAuctions ? Math.round((item.count / totalAuctions) * 100) : 0
+                return (
+                  <div key={item.label} className="rounded-xl border p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="truncate font-medium" title={item.label}>
+                        {item.label}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {item.count.toLocaleString('sv-SE')} ({percent}%)
+                      </div>
+                    </div>
+                    <div className="mt-2 h-2 rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary/80" style={{ width: `${percent}%` }} />
+                    </div>
+                  </div>
+                )
+              })
+            ) : (
+              <p className="text-sm text-muted-foreground">No data available.</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // ---- Main auctions page ----
   return (
     <div className="space-y-6">
       {/* Header + stats */}
@@ -225,7 +279,7 @@ export function AuctionsPage(): JSX.Element {
             <CardContent className="p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Auctions</p>
               <p className="mt-2 text-xl font-semibold leading-tight text-slate-900 dark:text-slate-50">
-                {auctionsCount.toLocaleString('sv-SE')}
+                {totalAuctions.toLocaleString('sv-SE')}
               </p>
               <p className="text-xs text-slate-500">
                 {filteredAndSorted.length.toLocaleString('sv-SE')} in view after filters
@@ -274,39 +328,6 @@ export function AuctionsPage(): JSX.Element {
           </Card>
         </div>
       </div>
-
-      {attributeView ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>{attributeView.title}</CardTitle>
-            <CardDescription>{attributeView.description}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {attributeView.items.length ? (
-              attributeView.items.map((item) => {
-                const percent = totalAuctions ? Math.round((item.count / totalAuctions) * 100) : 0
-                return (
-                  <div key={item.label} className="rounded-xl border p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium truncate" title={item.label}>
-                        {item.label}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {item.count.toLocaleString('sv-SE')} ({percent}%)
-                      </div>
-                    </div>
-                    <div className="mt-2 h-2 rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-primary/80" style={{ width: `${percent}%` }} />
-                    </div>
-                  </div>
-                )
-              })
-            ) : (
-              <p className="text-sm text-muted-foreground">No data available.</p>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
 
       {/* Table + filters */}
       <Card>
@@ -544,9 +565,7 @@ export function AuctionsPage(): JSX.Element {
                               </Link>
 
                               {auction.cardName !== auction.title ? (
-                                <div className="text-xs font-normal text-slate-600 dark:text-slate-400">
-                                  {auction.title}
-                                </div>
+                                <div className="text-xs font-normal text-slate-600 dark:text-slate-400">{auction.title}</div>
                               ) : null}
 
                               {hasKnownSetName ? (
@@ -565,9 +584,7 @@ export function AuctionsPage(): JSX.Element {
                         <TableCell className="text-center">{auction.bids || 0}</TableCell>
 
                         <TableCell>
-                          <div className="text-slate-900 dark:text-slate-100">
-                            {new Date(auction.endTime).toLocaleString()}
-                          </div>
+                          <div className="text-slate-900 dark:text-slate-100">{new Date(auction.endTime).toLocaleString()}</div>
                           <div className="text-xs text-slate-600 dark:text-slate-400">
                             {formatDistanceToNow(parseISO(auction.endTime), { addSuffix: true })}
                           </div>
