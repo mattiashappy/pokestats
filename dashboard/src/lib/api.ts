@@ -1,4 +1,4 @@
-import type { AuctionRecord, CardResponse, EnrichmentSummary } from '../types'
+import type { AuctionRecord, CardResponse } from '../types'
 
 export interface AuctionDiagnosticResult {
   auctions: AuctionRecord[]
@@ -30,29 +30,43 @@ export async function fetchCard(cardId: number): Promise<CardResponse> {
   return response.json()
 }
 
-export async function fetchEnrichmentSummary(): Promise<EnrichmentSummary> {
-  const response = await fetch('/api/enrichment/summary')
-  if (!response.ok) {
-    throw new Error('Failed to fetch enrichment summary')
-  }
-  return response.json()
-}
-
-export interface EnrichmentRunResult {
-  ok: boolean
-  attempted: number
-  linked: number
-  needsReview: number
-  unmatched: number
-  error?: string
-}
-
-export async function runEnrichment(limit = 300, threshold = 80): Promise<EnrichmentRunResult> {
+export async function runEnrichment(limit = 300, threshold = 80) {
   const res = await fetch('/api/enrichment/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ limit, threshold })
   })
   if (!res.ok) throw new Error('Failed to run enrichment')
-  return res.json()
+  return res.json() as Promise<{ ok: boolean; attempted: number; linked: number; needsReview: number; unmatched: number }>
+}
+
+export type EnrichmentSummary = {
+  available: boolean
+  totalAuctions?: number
+  linkedAuctions?: number
+  unlinkedAuctions?: number
+  needsReview?: number
+  error?: string
+}
+
+export async function fetchEnrichmentSummary() {
+  const res = await fetch('/api/enrichment/summary')
+  if (!res.ok) throw new Error('Failed to fetch enrichment summary')
+  return res.json() as Promise<EnrichmentSummary>
+}
+
+export type UnmatchedAuction = {
+  item_id: number
+  end_date: string
+  title: string
+  parsed_set_guess: string | null
+  parsed_number_text: string | null
+  enrich_status: string | null
+  enrich_confidence: number | null
+}
+
+export async function fetchUnmatchedAuctions(limit = 25) {
+  const res = await fetch(`/api/enrichment/unmatched?limit=${limit}`)
+  if (!res.ok) throw new Error('Failed to fetch unmatched auctions')
+  return res.json() as Promise<UnmatchedAuction[]>
 }
