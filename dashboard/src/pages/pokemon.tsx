@@ -33,6 +33,7 @@ function SetCard({ expansion }: { expansion: ExpansionSummary }) {
               {expansion.set_code}
             </div>
           )}
+
           <Badge className="absolute left-3 top-3 bg-slate-900/80 text-xs uppercase text-white backdrop-blur-sm transition group-hover:bg-sky-600">
             {expansion.set_code}
           </Badge>
@@ -49,9 +50,12 @@ function SetCard({ expansion }: { expansion: ExpansionSummary }) {
 
           <div className="mt-auto flex flex-wrap items-center gap-3 text-sm text-slate-700 dark:text-slate-200">
             <span className="flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-              <Layers className="h-3.5 w-3.5" /> {cardsLabel ? `${cardsLabel} cards` : 'Cards pending'}
+              <Layers className="h-3.5 w-3.5" />
+              {cardsLabel ? `${cardsLabel} cards` : 'Cards pending'}
             </span>
+
             <span className="text-xs text-slate-500 dark:text-slate-400">·</span>
+
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
               {auctionsLabel.toLocaleString('sv-SE')} auctions linked
             </span>
@@ -74,6 +78,7 @@ export function PokemonPage(): JSX.Element {
 
   const sorted = useMemo(() => {
     if (!expansions) return []
+
     return [...expansions].sort((a, b) => {
       const eraA = a.era || 'ZZZ'
       const eraB = b.era || 'ZZZ'
@@ -87,7 +92,7 @@ export function PokemonPage(): JSX.Element {
     })
   }, [expansions])
 
-  const hasSets = (sorted?.length ?? 0) > 0
+  const hasSets = sorted.length > 0
 
   return (
     <div className="space-y-6">
@@ -95,22 +100,27 @@ export function PokemonPage(): JSX.Element {
         <Sparkles className="h-5 w-5 text-amber-500" />
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pokémon</p>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Pokémon sets</h1>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">
+            Pokémon sets
+          </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Browse every set in the database. Sets and cards are always available; auctions are shown as overlays when
-            linked.
+            Browse every set in the database. Sets and cards are always available;
+            auctions are shown as overlays when linked.
           </p>
         </div>
       </div>
 
       {isLoading ? (
         <div className="flex items-center gap-2 text-sm text-slate-500">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading sets…
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading sets…
         </div>
       ) : error ? (
         <p className="text-sm text-rose-400">Failed to load sets.</p>
       ) : !hasSets ? (
-        <p className="text-sm text-slate-500">No sets found yet. Seed your first set to get started.</p>
+        <p className="text-sm text-slate-500">
+          No sets found yet. Seed your first set to get started.
+        </p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {sorted.map((expansion) => (

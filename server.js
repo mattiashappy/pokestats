@@ -1,5 +1,4 @@
 // server.js
-
 const express = require('express')
 const compression = require('compression')
 const path = require('path')
@@ -22,7 +21,9 @@ app.use(express.json())
 const DATABASE_URL = process.env.DATABASE_URL
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 
-// Optional seed (kept minimal)
+// -----------------------------------
+// Minimal canonical seed data (expand later)
+// -----------------------------------
 const CANONICAL_EXPANSIONS = [
   {
     set_code: 'BASE',
@@ -67,11 +68,13 @@ let hasEnsuredSalesCardIndex = false
 
 async function ensureColumnExists(tableName, columnName, definition) {
   const { rows } = await pool.query(
-    `SELECT column_name
-     FROM information_schema.columns
-     WHERE table_schema='public'
-       AND table_name = $1
-       AND column_name = $2`,
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema='public'
+        AND table_name = $1
+        AND column_name = $2
+    `,
     [tableName, columnName]
   )
 
@@ -102,6 +105,7 @@ async function ensureIndexExists(tableName, indexName, definition) {
   const trimmedDefinition = definition.trim()
   const isUnique = trimmedDefinition.toUpperCase().startsWith('UNIQUE ')
   const indexDefinition = isUnique ? trimmedDefinition.replace(/^UNIQUE\s+/i, '') : trimmedDefinition
+
   const createStatement = isUnique
     ? `CREATE UNIQUE INDEX IF NOT EXISTS ${indexName} ON public.${tableName} ${indexDefinition}`
     : `CREATE INDEX IF NOT EXISTS ${indexName} ON public.${tableName} ${indexDefinition}`
@@ -127,6 +131,7 @@ async function ensureSalesTableAvailable() {
   return salesTableAvailable
 }
 
+// ✅ single, canonical definition (no duplicates)
 async function ensureExpansionsTableAvailable() {
   if (!pool) return false
   if (hasCheckedExpansionsTable) return expansionsTableAvailable
@@ -177,21 +182,25 @@ async function ensureCardsTableAvailable() {
       )
     `)
 
-    // Ensure key columns exist (if table was created earlier without them)
+    // Ensure key columns exist (in case older schema)
     const setCodeOk = await ensureColumnExists('cards', 'set_code', 'TEXT')
     const setTotalOk = await ensureColumnExists('cards', 'set_total', 'INTEGER')
     const expansionOk = await ensureColumnExists('cards', 'expansion_id', 'INTEGER REFERENCES public.expansions(id)')
 
+    // Ensure uniqueness by (expansion_id, card_number) when present
     const uniqueByExpansionNumber = await ensureIndexExists(
       'cards',
       'cards_unique_expansion_number',
       'UNIQUE (expansion_id, card_number) WHERE expansion_id IS NOT NULL AND card_number IS NOT NULL'
     )
 
+    // Helpful indexes
     const setCodeIdx = await ensureIndexExists('cards', 'idx_cards_set_code', '(set_code)')
     const numberIdx = await ensureIndexExists('cards', 'idx_cards_card_number', '(card_number)')
 
-    cardsTableAvailable = Boolean(setCodeOk && setTotalOk && expansionOk && uniqueByExpansionNumber && setCodeIdx && numberIdx)
+    cardsTableAvailable = Boolean(
+      setCodeOk && setTotalOk && expansionOk && uniqueByExpansionNumber && setCodeIdx && numberIdx
+    )
   } catch (error) {
     console.error('Failed to ensure cards table exists', error)
     cardsTableAvailable = false
@@ -207,11 +216,13 @@ async function ensureSalesCardColumnAvailable() {
   if (!salesTableAvailable) return false
 
   const { rows } = await pool.query(
-    `SELECT column_name
-     FROM information_schema.columns
-     WHERE table_schema='public'
-       AND table_name = 'tradera_sales'
-       AND column_name = 'card_id'`
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema='public'
+        AND table_name = 'tradera_sales'
+        AND column_name = 'card_id'
+    `
   )
 
   if (rows.length > 0) {
@@ -238,11 +249,13 @@ async function ensureSalesParsedSetCodeColumnAvailable() {
   if (!salesTableAvailable) return false
 
   const { rows } = await pool.query(
-    `SELECT column_name
-     FROM information_schema.columns
-     WHERE table_schema='public'
-       AND table_name = 'tradera_sales'
-       AND column_name = 'parsed_set_code'`
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema='public'
+        AND table_name = 'tradera_sales'
+        AND column_name = 'parsed_set_code'
+    `
   )
 
   if (rows.length > 0) {
@@ -312,6 +325,7 @@ async function seedCanonicalExpansionsAndCards() {
       )
 
       let expansionId = existingExpansion.rows[0]?.id ?? null
+
       if (!expansionId) {
         const inserted = await client.query(
           `
@@ -367,7 +381,7 @@ async function seedCanonicalExpansionsAndCards() {
 }
 
 // --------------------
-// Cards linking helpers
+// Linking helpers
 // --------------------
 async function findOrCreateCardBySetCodeAndNumber(
   db,
@@ -420,7 +434,9 @@ function extractCardPayload(row) {
   }
 }
 
-// Backfill only if needed (kept, but note: this creates “unknown” cards from Tradera filters)
+// NOTE: this can create “unknown” cards from Tradera filters.
+// Keep for now if you want enrichment to always have a card_id,
+// but you may later restrict this behavior.
 async function ensureMissingSalesAreLinkedToCards() {
   if (!pool || hasBackfilledSalesCards) return
 
@@ -550,7 +566,6 @@ function normalizeAuctionRow(row) {
 
 async function fetchAuctionsFromDatabase(filters = {}) {
   if (!pool) return []
-
   const ok = await ensureCardInfrastructure()
   if (!ok) return []
 
@@ -567,7 +582,7 @@ async function fetchAuctionsFromDatabase(filters = {}) {
     offset = 0
   } = filters
 
-  // Use let so we can append LIMIT/OFFSET
+  // use let so we can append limit/offset
   let query = `
     SELECT
       ts.item_id,
@@ -603,7 +618,6 @@ async function fetchAuctionsFromDatabase(filters = {}) {
       AND ($6::int IS NULL OR ts.price <= $6)
     ORDER BY ts.end_date DESC
   `
-
   const params = [era, language, gradingIssuer, grade, minPrice, maxPrice]
 
   if (typeof limit === 'number' && Number.isFinite(limit)) {
@@ -625,7 +639,7 @@ async function fetchCard(cardId) {
   const ok = await ensureCardInfrastructure()
   if (!ok) return null
 
-  const cardQuery = `
+  const query = `
     SELECT
       c.id,
       c.name,
@@ -640,7 +654,7 @@ async function fetchCard(cardId) {
     LEFT JOIN public.expansions e ON e.id = c.expansion_id
     WHERE c.id = $1
   `
-  const result = await pool.query(cardQuery, [cardId])
+  const result = await pool.query(query, [cardId])
   if (result.rows.length === 0) return null
   return result.rows[0]
 }
@@ -650,7 +664,7 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
   const ok = await ensureCardInfrastructure()
   if (!ok) return []
 
-  const auctionsQuery = `
+  const query = `
     SELECT
       ts.item_id,
       ts.title,
@@ -676,8 +690,8 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
     ORDER BY ts.end_date DESC
     LIMIT $2
   `
-  const auctionsResult = await pool.query(auctionsQuery, [cardId, limit])
-  return auctionsResult.rows.map(normalizeAuctionRow)
+  const result = await pool.query(query, [cardId, limit])
+  return result.rows.map(normalizeAuctionRow)
 }
 
 async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
@@ -692,7 +706,6 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
     whereClause = 'WHERE c.expansion_id = $1'
     params.push(Number(expansionId))
   } else if (setCode) {
-    // flexible matching (set_code OR set name, case-insensitive)
     whereClause = `
       WHERE LOWER(COALESCE(e.set_code, c.set_code)) = LOWER($1)
          OR LOWER(COALESCE(e.name, c.set_name)) = LOWER($1)
@@ -700,7 +713,7 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
     params.push(setCode.trim())
   }
 
-  const cardsQuery = `
+  const query = `
     SELECT
       c.id,
       c.name,
@@ -719,10 +732,13 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
     ${whereClause}
     GROUP BY c.id, e.id
     ORDER BY
-      CASE WHEN c.card_number ~ '^\\d+' THEN (regexp_replace(c.card_number,'[^0-9].*',''))::int ELSE 999999 END,
+      CASE
+        WHEN c.card_number ~ '^\\d+' THEN (regexp_replace(c.card_number,'[^0-9].*',''))::int
+        ELSE 999999
+      END,
       c.card_number
   `
-  const result = await pool.query(cardsQuery, params)
+  const result = await pool.query(query, params)
   return result.rows
 }
 
@@ -797,7 +813,7 @@ app.get('/api/expansions', async (_req, res) => {
   }
 })
 
-// Optional listing endpoint (useful for admin/debug)
+// Optional debug endpoint
 app.get('/api/cards', async (req, res) => {
   try {
     const expansionIdParam = typeof req.query.expansionId === 'string' ? Number(req.query.expansionId) : null
@@ -812,18 +828,36 @@ app.get('/api/cards', async (req, res) => {
   }
 })
 
-// ✅ canonical route used by your merged frontend
-app.get('/api/expansions/:id/cards', async (req, res) => {
+/**
+ * ✅ Canonical route used by the frontend:
+ * GET /api/expansions/:setCode/cards
+ */
+app.get('/api/expansions/:setCode/cards', async (req, res) => {
+  try {
+    const setCode = String(req.params.setCode || '').trim()
+    if (!setCode) return res.status(400).json({ error: 'Invalid set code' })
+
+    const cards = await fetchCardsList({ setCode })
+    return res.json(cards)
+  } catch (error) {
+    console.error('Failed to fetch cards for expansion', error)
+    return res.status(500).json({ error: 'Failed to load cards' })
+  }
+})
+
+/**
+ * Optional alias if you ever want numeric ID routes:
+ * GET /api/expansions/id/:id/cards
+ */
+app.get('/api/expansions/id/:id/cards', async (req, res) => {
   try {
     const expansionId = Number(req.params.id)
-    if (!Number.isFinite(expansionId)) {
-      return res.status(400).json({ error: 'Invalid expansion id' })
-    }
+    if (!Number.isFinite(expansionId)) return res.status(400).json({ error: 'Invalid expansion id' })
 
     const cards = await fetchCardsList({ expansionId })
     return res.json(cards)
   } catch (error) {
-    console.error('Failed to fetch cards for expansion', error)
+    console.error('Failed to fetch cards for expansion id', error)
     return res.status(500).json({ error: 'Failed to load cards' })
   }
 })
@@ -930,7 +964,6 @@ app.post('/api/enrichment/run', async (req, res) => {
         ]
       )
 
-      // keep existing links intact
       if (row.card_id != null) continue
 
       if (looksLikeLotOrSealed(titleNorm)) {

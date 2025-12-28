@@ -9,54 +9,44 @@ export interface AuctionDiagnosticResult {
 
 export async function fetchAuctions(): Promise<AuctionRecord[]> {
   const response = await fetch('/api/sales')
-  if (!response.ok) {
-    throw new Error('Failed to fetch auctions')
-  }
+  if (!response.ok) throw new Error('Failed to fetch auctions')
   return response.json()
 }
 
 export async function fetchAuctionDiagnostics(): Promise<AuctionDiagnosticResult> {
   const response = await fetch('/api/sales/diagnostic')
-  if (!response.ok) {
-    throw new Error('Failed to fetch auction diagnostics')
-  }
+  if (!response.ok) throw new Error('Failed to fetch auction diagnostics')
   return response.json()
 }
 
 export async function fetchCardDetails(cardId: number): Promise<CardResponse> {
   const response = await fetch(`/api/cards/${cardId}`)
-  if (!response.ok) {
-    throw new Error('Failed to fetch card')
-  }
+  if (!response.ok) throw new Error('Failed to fetch card')
   return response.json()
 }
 
 export async function fetchCardAuctions(cardId: number): Promise<AuctionRecord[]> {
   const response = await fetch(`/api/cards/${cardId}/auctions`)
-  if (!response.ok) {
-    throw new Error('Failed to fetch card auctions')
-  }
+  if (!response.ok) throw new Error('Failed to fetch card auctions')
   return response.json()
 }
 
 export async function fetchExpansions(): Promise<ExpansionSummary[]> {
   const response = await fetch('/api/expansions')
-  if (!response.ok) {
-    throw new Error('Failed to fetch expansions')
-  }
+  if (!response.ok) throw new Error('Failed to fetch expansions')
   return response.json()
 }
 
 /**
- * Recommended: Fetch cards by setCode (matches your UX: Sets grid -> /pokemon/sets/:setCode -> cards)
+ * Fetch cards for a set using set_code (matches UX: sets grid -> /pokemon/sets/:setCode -> cards)
  * Backend must support: GET /api/expansions/:setCode/cards
  */
 export async function fetchCardsForSet(setCode: string): Promise<CardListItem[]> {
-  if (!setCode) return []
-  const response = await fetch(`/api/expansions/${encodeURIComponent(setCode)}/cards`)
-  if (!response.ok) {
-    throw new Error('Failed to fetch cards')
-  }
+  const code = (setCode || '').trim()
+  if (!code) return []
+
+  const response = await fetch(`/api/expansions/${encodeURIComponent(code)}/cards`)
+  if (!response.ok) throw new Error('Failed to fetch cards')
   return response.json()
 }
 
@@ -66,7 +56,9 @@ export async function runEnrichment(limit = 300, threshold = 80) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ limit, threshold })
   })
+
   if (!res.ok) throw new Error('Failed to run enrichment')
+
   return res.json() as Promise<{
     ok: boolean
     attempted: number
