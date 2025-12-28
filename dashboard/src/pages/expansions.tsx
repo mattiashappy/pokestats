@@ -2,7 +2,15 @@ import { Layers } from 'lucide-react'
 
 import { TransportBadge } from '@/components/blocks/transport-badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { expansions } from '@/data/expansions'
+import { expansions, type Expansion } from '@/data/expansions'
+
+const eraGroups = expansions.reduce<Record<string, Expansion[]>>((acc, expansion) => {
+  if (!acc[expansion.era]) {
+    acc[expansion.era] = []
+  }
+  acc[expansion.era].push(expansion)
+  return acc
+}, {})
 
 export function ExpansionsPage(): JSX.Element {
   return (
@@ -27,32 +35,45 @@ export function ExpansionsPage(): JSX.Element {
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {expansions.map((expansion) => (
-            <Card key={expansion.code} className="border-slate-200/80 shadow-none ring-1 ring-slate-200/70 dark:border-slate-800/80 dark:ring-slate-800/80">
-              <CardHeader className="space-y-3 pb-3">
-                <TransportBadge
-                  system="PKMN"
-                  stationCode={expansion.code}
-                  highlight={expansion.highlight}
-                  className="w-fit"
-                />
-                <div>
-                  <CardTitle className="text-xl text-slate-900 dark:text-slate-50">{expansion.name}</CardTitle>
-                  <CardDescription>Released {expansion.release}</CardDescription>
-                </div>
-              </CardHeader>
-              <CardContent className="flex items-center justify-between border-t border-dashed border-slate-200 pt-3 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-300">
-                <div className="flex flex-col">
-                  <span className="text-xs uppercase tracking-wide text-slate-500">Cards</span>
-                  <span className="font-semibold text-slate-900 dark:text-white">{expansion.totalCards}</span>
-                </div>
-                <div className="flex flex-col text-right">
-                  <span className="text-xs uppercase tracking-wide text-slate-500">Secret rares</span>
-                  <span className="font-semibold text-slate-900 dark:text-white">{expansion.secretRares}</span>
-                </div>
-              </CardContent>
-            </Card>
+        <div className="space-y-8">
+          {Object.entries(eraGroups).map(([era, eraExpansions]) => (
+            <div key={era} className="space-y-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Era</p>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{era}</h3>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {eraExpansions.map((expansion) => (
+                  <Card
+                    key={`${era}-${expansion.code}`}
+                    className="border-slate-200/80 shadow-none ring-1 ring-slate-200/70 dark:border-slate-800/80 dark:ring-slate-800/80"
+                  >
+                    <CardHeader className="space-y-3 pb-3">
+                      <TransportBadge
+                        system="PKMN"
+                        stationCode={expansion.code}
+                        highlight={expansion.highlight}
+                        className="w-fit"
+                      />
+                      <div>
+                        <CardTitle className="text-xl text-slate-900 dark:text-slate-50">{expansion.name}</CardTitle>
+                        <CardDescription>Released {expansion.release}</CardDescription>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="flex items-center justify-between border-t border-dashed border-slate-200 pt-3 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-300">
+                      <div className="flex flex-col">
+                        <span className="text-xs uppercase tracking-wide text-slate-500">Cards</span>
+                        <span className="font-semibold text-slate-900 dark:text-white">{expansion.totalCards}</span>
+                      </div>
+                      <div className="flex flex-col text-right">
+                        <span className="text-xs uppercase tracking-wide text-slate-500">Secret rares</span>
+                        <span className="font-semibold text-slate-900 dark:text-white">{expansion.secretRares}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </div>
