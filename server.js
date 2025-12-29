@@ -44,6 +44,23 @@ const CANONICAL_EXPANSIONS = [
   }
 ]
 
+const CARD_METADATA_OVERRIDES = new Map([
+  [
+    22888,
+    {
+      image_url: 'https://images.pokemontcg.io/base1/1_hires.png',
+      product_details: `Product Details
+Card Number / Rarity:001/102 / Holo Rare
+Card Type / HP / Stage:Psychic / 80 / Stage 2
+Card Text:Pokémon Power: Damage Swap As often as you like during your turn (before your attack), you may move 1 damage counter from 1 of your Pokémon to another as long as you don't Knock Out that Pokémon. This power can't be used if Alakazam is Asleep, Confused, or Paralyzed.
+Attack 1:[PPP] Confuse Ray (30)
+Flip a coin. If heads, the Defending Pokémon is now Confused.
+Weakness / Resistance / Retreat Cost:P / / 3
+Artist:Ken Sugimori`
+    }
+  ]
+])
+
 function getCanonicalExpansionSummaries() {
   return CANONICAL_EXPANSIONS.map((expansion, index) => ({
     id: index + 1,
@@ -57,6 +74,17 @@ function getCanonicalExpansionSummaries() {
     cards_total: expansion.cards?.length ?? 0,
     linked_auctions: 0
   }))
+}
+
+function applyCardOverrides(card) {
+  if (!card) return null
+  const overrides = CARD_METADATA_OVERRIDES.get(card.id)
+
+  return {
+    ...card,
+    image_url: overrides?.image_url ?? card.image_url ?? null,
+    product_details: overrides?.product_details ?? card.product_details ?? null
+  }
 }
 
 // --------------------
@@ -223,6 +251,8 @@ async function ensureCardsTableAvailable() {
         name TEXT NOT NULL,
         era TEXT,
         set_name TEXT NOT NULL,
+        image_url TEXT,
+        product_details TEXT,
         set_code TEXT,
         set_total INTEGER,
         card_number TEXT,
@@ -236,6 +266,8 @@ async function ensureCardsTableAvailable() {
     const setCodeOk = await ensureColumnExists('cards', 'set_code', 'TEXT')
     const setTotalOk = await ensureColumnExists('cards', 'set_total', 'INTEGER')
     const expansionOk = await ensureColumnExists('cards', 'expansion_id', 'INTEGER REFERENCES public.expansions(id)')
+    const imageUrlOk = await ensureColumnExists('cards', 'image_url', 'TEXT')
+    const productDetailsOk = await ensureColumnExists('cards', 'product_details', 'TEXT')
 
     // Ensure uniqueness by (expansion_id, card_number) when present
     const uniqueByExpansionNumber = await ensureIndexExists(
@@ -249,7 +281,14 @@ async function ensureCardsTableAvailable() {
     const numberIdx = await ensureIndexExists('cards', 'idx_cards_card_number', '(card_number)')
 
     cardsTableAvailable = Boolean(
-      setCodeOk && setTotalOk && expansionOk && uniqueByExpansionNumber && setCodeIdx && numberIdx
+      setCodeOk &&
+        setTotalOk &&
+        expansionOk &&
+        imageUrlOk &&
+        productDetailsOk &&
+        uniqueByExpansionNumber &&
+        setCodeIdx &&
+        numberIdx
     )
   } catch (error) {
     console.error('Failed to ensure cards table exists', error)
@@ -698,6 +737,8 @@ async function fetchCard(cardId) {
       COALESCE(e.set_code, c.set_code) AS set_code,
       COALESCE(e.set_total, c.set_total) AS set_total,
       c.card_number,
+      c.image_url,
+      c.product_details,
       c.created_at,
       c.expansion_id
     FROM public.cards c
@@ -706,7 +747,7 @@ async function fetchCard(cardId) {
   `
   const result = await pool.query(query, [cardId])
   if (result.rows.length === 0) return null
-  return result.rows[0]
+  return applyCardOverrides(result.rows[0])
 }
 
 async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
@@ -796,6 +837,8 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
       COALESCE(e.set_code, c.set_code) AS set_code,
       COALESCE(e.set_total, c.set_total) AS set_total,
       c.card_number,
+      c.image_url,
+      c.product_details,
       c.created_at,
       c.expansion_id,
       COUNT(ts.item_id)::int AS linked_auctions,
@@ -813,7 +856,7 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
       c.card_number
   `
   const result = await pool.query(query, params)
-  return result.rows
+  return result.rows.map(applyCardOverrides)
 }
 
 async function fetchExpansionSummaries() {
