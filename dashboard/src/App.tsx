@@ -13,6 +13,7 @@ import { PokemonPage } from "./pages/pokemon"
 import { PokemonSetPage } from "./pages/pokemon-set"
 import { SettingsPage } from "./pages/settings"
 import { SignupPage } from "./pages/signup"
+import { DataEnrichmentPage } from "./pages/data-enrichment"
 
 function App(): JSX.Element {
   return (
@@ -33,6 +34,7 @@ function App(): JSX.Element {
           <Route path="/expansions" element={<ExpansionsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          <Route path="/enrichment" element={<DataEnrichmentPage />} />
         </Route>
       </Route>
 

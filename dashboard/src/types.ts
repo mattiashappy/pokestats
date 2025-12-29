@@ -59,6 +59,48 @@ export type ExpansionSummary = {
   linked_auctions: number
 }
 
+export type CardPreview = {
+  id: number
+  name: string | null
+  set_code: string | null
+  set_name: string | null
+  card_number: string | null
+  image_url: string | null
+}
+
+export type EnrichmentAuction = {
+  item_id: number
+  category_id?: number
+  end_date: string
+  price: number | null
+  bid_count: number | null
+  seller_alias: string | null
+  seller_dsr?: number | null
+  title: string | null
+  description?: string | null
+  item_url?: string | null
+  thumbnail_url?: string | null
+  image_urls?: string[] | null
+  attributes?: Record<string, unknown>
+  fetched_at?: string
+  card_id: number | null
+  match_confidence: 'high' | 'medium' | 'low' | 'unmatched' | null
+  match_method: string | null
+  parsed_name?: string | null
+  parsed_card_number?: string | null
+  parsed_set_hint?: string | null
+  notes?: string | null
+  updated_at?: string
+  card?: CardPreview | null
+}
+
+export type EnrichmentListResponse = {
+  items: EnrichmentAuction[]
+  total: number
+  page: number
+  pageSize: number
+}
+
 export type EnrichmentSummary = {
   available: boolean
   totalAuctions?: number
