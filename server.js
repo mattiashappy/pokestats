@@ -202,7 +202,15 @@ const pool = DATABASE_URL
   : null
 
 const MATCH_CONFIDENCE_LEVELS = ['high', 'medium', 'low']
-const MATCH_METHODS = ['auto:number+set', 'auto:number+name+era', 'manual', 'image_only', 'unmatched']
+const MATCH_METHODS = [
+  'number_first',
+  'number_first_tiebreak',
+  'auto:number+set',
+  'auto:number+name+era',
+  'manual',
+  'image_only',
+  'unmatched'
+]
 
 let hasCheckedSalesTable = false
 let salesTableAvailable = false
@@ -786,59 +794,10 @@ function extractCardPayload(row) {
 
 // NOTE: this can create “unknown” cards from Tradera filters.
 async function ensureMissingSalesAreLinkedToCards() {
-  if (!pool || hasBackfilledSalesCards) return
-
-  const ok = await ensureCardInfrastructure()
-  if (!ok) return
-
-  const { rows: missingRows } = await pool.query(
-    `SELECT item_id, title, attributes FROM public.tradera_sales WHERE card_id IS NULL LIMIT 5000`
-  )
-
-  if (missingRows.length === 0) {
-    hasBackfilledSalesCards = true
-    return
-  }
-
-  const client = await pool.connect()
-  try {
-    await client.query('BEGIN')
-
-    const cardCache = new Map()
-
-    for (const row of missingRows) {
-      const payload = extractCardPayload(row)
-      const cacheKey = `${payload.name}::${payload.set_name}`
-
-      if (!cardCache.has(cacheKey)) {
-        const cardResult = await client.query(
-          `
-            INSERT INTO public.cards (name, era, set_name, card_number)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (name, set_name) DO UPDATE SET
-              era = COALESCE(public.cards.era, EXCLUDED.era),
-              card_number = COALESCE(public.cards.card_number, EXCLUDED.card_number)
-            RETURNING id
-          `,
-          [payload.name, payload.era, payload.set_name, payload.card_number]
-        )
-        cardCache.set(cacheKey, cardResult.rows[0].id)
-      }
-
-      const cardId = cardCache.get(cacheKey)
-      await client.query('UPDATE public.tradera_sales SET card_id = $1 WHERE item_id = $2', [
-        cardId,
-        row.item_id
-      ])
-    }
-
-    await client.query('COMMIT')
-  } catch (error) {
-    await client.query('ROLLBACK')
-    console.error('Failed to backfill card links', error)
-  } finally {
-    client.release()
-  }
+  // Previous versions auto-created "unknown" cards to backfill missing links. That caused noisy data,
+  // so the enrichment flow now intentionally leaves auctions unmatched unless a real card exists.
+  // This helper is kept as a no-op to avoid reintroducing the old behavior while keeping call sites intact.
+  hasBackfilledSalesCards = true
 }
 
 // --------------------

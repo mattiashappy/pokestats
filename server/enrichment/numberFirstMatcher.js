@@ -42,9 +42,14 @@ function normalizeEraLabel(label) {
   return norm || null
 }
 
+function normalizeLanguage(value) {
+  if (!value) return null
+  return normalizeText(value)
+}
+
 function parseCardNumber(text) {
   const norm = text || ''
-  const match = norm.match(/\b(\d{1,3})\s*\/\s*(\d{1,3})\b/)
+  const match = norm.match(/\b(\d{1,3})\s*[\/\-]\s*(\d{1,3})\b/)
   if (!match) return { cardNumber: null, numerator: null, denominator: null }
   const numerator = parseInt(match[1], 10)
   const denominator = parseInt(match[2], 10)
@@ -64,46 +69,48 @@ function parseSetHint(text) {
 
 function parseCardName(text) {
   if (!text) return null
-  let cleaned = text.replace(/\b\d{1,3}\s*\/\s*\d{1,3}\b/g, ' ')
+  let cleaned = text.replace(/\b\d{1,3}\s*[\/-]\s*\d{1,3}\b/g, ' ')
   cleaned = cleaned.replace(/\s+/g, ' ').trim()
   if (!cleaned) return null
   return cleaned.length > 80 ? cleaned.slice(0, 80) : cleaned
 }
 
-function pickExpansionFromTotal(expansions, eraHint, total, setHint = null) {
+function pickExpansionFromTotal(
+  expansions,
+  eraHint,
+  total,
+  { setHint = null, languageHint = null, textHint = null } = {}
+) {
   const eraNorm = normalizeEraLabel(eraHint)
   const setNorm = setHint ? normalizeText(setHint) : null
+  const languageNorm = normalizeLanguage(languageHint)
+  const textNorm = normalizeText(textHint || '')
 
-  const byTotal = expansions.filter((exp) => {
-    if (total == null) return false
-    if (exp.set_total !== total) return false
-    if (eraNorm) return normalizeEraLabel(exp.era) === eraNorm
-    return true
-  })
+  const byEra = eraNorm
+    ? expansions.filter((exp) => normalizeEraLabel(exp.era) === eraNorm)
+    : expansions
+  const byLanguage = languageNorm
+    ? byEra.filter((exp) => normalizeLanguage(exp.language) === languageNorm)
+    : byEra
+  const byTotal = byLanguage.filter((exp) => total != null && exp.set_total === total)
 
   if (byTotal.length === 1) {
     return { expansion: byTotal[0], confidence: 'high', reason: 'total' }
   }
 
-  if (byTotal.length > 1 && setNorm) {
-    const hinted = byTotal.filter((exp) => {
-      const nameNorm = normalizeText(exp.name)
-      const codeNorm = normalizeText(exp.set_code)
-      return nameNorm.includes(setNorm) || codeNorm.includes(setNorm)
-    })
-    if (hinted.length === 1) {
-      return { expansion: hinted[0], confidence: 'medium', reason: 'total+hint' }
-    }
-  }
+  const hinted = byTotal.filter((exp) => {
+    const nameNorm = normalizeText(exp.name)
+    const codeNorm = normalizeText(exp.set_code)
+    if (setNorm) return nameNorm.includes(setNorm) || codeNorm.includes(setNorm)
+    return textNorm.includes(nameNorm) || textNorm.includes(codeNorm)
+  })
+
+  if (hinted.length === 1) return { expansion: hinted[0], confidence: 'medium', reason: 'total+hint' }
+  if (hinted.length > 1) return { expansion: null, collision: hinted, reason: 'collision' }
 
   if (byTotal.length > 0) {
     return { expansion: null, collision: byTotal, reason: 'collision' }
   }
-
-  // fallback without era
-  const broader = expansions.filter((exp) => exp.set_total === total)
-  if (broader.length === 1) return { expansion: broader[0], confidence: 'low', reason: 'fallback-total' }
-  if (broader.length > 1) return { expansion: null, collision: broader, reason: 'collision' }
 
   return { expansion: null, collision: [], reason: 'none' }
 }
@@ -114,6 +121,12 @@ async function resolveAuctionMatch(db, auction, expansions) {
   const setHint = parseSetHint(text)
   const parsedName = parseCardName(text)
   const era = auction?.attributes?.pokemon_era?.[0] || auction?.pokemon_era || auction?.era || null
+  const language =
+    auction?.language ||
+    auction?.pokemon_language ||
+    auction?.attributes?.pokemon_language ||
+    auction?.attributes?.Language ||
+    null
 
   const baseUpdate = {
     parsed_name: parsedName || null,
@@ -127,13 +140,17 @@ async function resolveAuctionMatch(db, auction, expansions) {
 
   if (!cardNumber) return baseUpdate
 
-  const expansionPick = pickExpansionFromTotal(expansions, era, denominator, setHint)
+  const expansionPick = pickExpansionFromTotal(expansions, era, denominator, {
+    setHint,
+    languageHint: language,
+    textHint: text
+  })
   const candidateExpansions = expansionPick.collision || []
   let chosenExpansion = expansionPick.expansion
   let matchConfidence = expansionPick.confidence || null
-  let matchMethod = expansionPick.reason === 'total+hint' ? 'auto:number+total+hint' : 'auto:number+total'
+  let matchMethod = expansionPick.reason === 'total+hint' ? 'number_first_tiebreak' : 'number_first'
 
-  if (!chosenExpansion && candidateExpansions.length > 0 && parsedName) {
+  if (!chosenExpansion && candidateExpansions.length > 0) {
     const ids = candidateExpansions.map((exp) => exp.id)
     const { rows } = await db.query(
       `
@@ -141,21 +158,39 @@ async function resolveAuctionMatch(db, auction, expansions) {
         FROM public.cards
         WHERE expansion_id = ANY($1)
           AND card_number = $2
-          AND name ILIKE $3
-        LIMIT 1
+        LIMIT 5
       `,
-      [ids, cardNumber, `%${parsedName}%`]
+      [ids, cardNumber]
     )
-    if (rows[0]) {
+
+    if (rows.length === 1) {
       chosenExpansion = candidateExpansions.find((exp) => exp.id === rows[0].expansion_id) || null
       matchConfidence = 'medium'
-      matchMethod = 'auto:number+total+name'
+      matchMethod = 'number_first_tiebreak'
+    } else if (rows.length > 1 && parsedName) {
+      const nameRows = await db.query(
+        `
+          SELECT id, expansion_id
+          FROM public.cards
+          WHERE expansion_id = ANY($1)
+            AND name ILIKE $2
+          LIMIT 1
+        `,
+        [ids, `%${parsedName}%`]
+      )
+      if (nameRows.rows[0]) {
+        chosenExpansion =
+          candidateExpansions.find((exp) => exp.id === nameRows.rows[0].expansion_id) || null
+        matchConfidence = 'low'
+        matchMethod = 'number_first_tiebreak'
+      }
     }
   }
 
   if (!chosenExpansion)
     return {
       ...baseUpdate,
+      match_method: 'unmatched',
       collision_candidates: candidateExpansions
     }
 
@@ -165,10 +200,25 @@ async function resolveAuctionMatch(db, auction, expansions) {
   )
 
   if (!rows[0]) {
+    if (parsedName) {
+      const fallback = await db.query(
+        `SELECT id FROM public.cards WHERE expansion_id = $1 AND name ILIKE $2 LIMIT 1`,
+        [chosenExpansion.id, `%${parsedName}%`]
+      )
+      if (fallback.rows[0]) {
+        return {
+          ...baseUpdate,
+          card_id: fallback.rows[0].id,
+          match_method: matchMethod === 'number_first' ? 'number_first_tiebreak' : matchMethod,
+          match_confidence: 'low'
+        }
+      }
+    }
+
     return {
       ...baseUpdate,
-      match_method: 'needs_review',
-      match_confidence: 'low'
+      match_method: 'unmatched',
+      collision_candidates: candidateExpansions
     }
   }
 
@@ -182,6 +232,7 @@ async function resolveAuctionMatch(db, auction, expansions) {
 
 module.exports = {
   normalizeEraLabel,
+  normalizeLanguage,
   parseCardNumber,
   parseSetHint,
   parseCardName,
