@@ -40,6 +40,14 @@ export function CardPage(): JSX.Element {
     return title
   }, [card?.set_code, card?.card_number, title])
 
+  const productDetails = useMemo(() => {
+    if (!card?.product_details) return []
+    return card.product_details
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+  }, [card?.product_details])
+
   const isLoading = isLoadingCard || isLoadingAuctions
   const error = cardError || auctionsError
 
@@ -65,6 +73,51 @@ export function CardPage(): JSX.Element {
           ) : null}
         </div>
       </div>
+
+      {card ? (
+        <div className="grid gap-4 lg:grid-cols-[280px,1fr]">
+          <UiCard className="overflow-hidden">
+            <CardHeader>
+              <CardTitle>{card.name}</CardTitle>
+              <CardDescription>
+                {card.set_name || 'Unknown set'} · {card.era || 'Unknown era'}
+                {card.card_number ? ` · ${card.card_number}` : ''}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
+                {card.image_url ? (
+                  <img src={card.image_url} alt={card.name} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-64 items-center justify-center bg-slate-100 text-sm text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
+                    No image available
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </UiCard>
+
+          <UiCard>
+            <CardHeader>
+              <CardTitle>Product details</CardTitle>
+              <CardDescription>Reference data for this specific card.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-slate-700 dark:text-slate-200">
+              {productDetails.length > 0 ? (
+                <ul className="space-y-2">
+                  {productDetails.map((line, index) => (
+                    <li key={index} className="leading-relaxed">
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-slate-500 dark:text-slate-400">No product details provided.</p>
+              )}
+            </CardContent>
+          </UiCard>
+        </div>
+      ) : null}
 
       <UiCard>
         <CardHeader>

@@ -35,6 +35,8 @@ export type CardResponse = {
   set_code: string | null
   set_total: number | null
   card_number: string | null
+  image_url: string | null
+  product_details: string | null
   expansion_id: number | null
   created_at: string
 }
