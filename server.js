@@ -636,6 +636,96 @@ async function seedCanonicalExpansionsAndCards() {
 // --------------------
 // Linking helpers
 // --------------------
+function normalizeEra(value) {
+  if (!value) return null
+  return value
+    .toString()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function extractEraHint(row) {
+  const directEra = row?.pokemon_era || row?.era
+  const attributeEra = row?.attributes?.pokemon_era
+
+  if (Array.isArray(attributeEra) && attributeEra.length > 0) return attributeEra[0]
+  if (typeof attributeEra === 'string') return attributeEra
+  return directEra || null
+}
+
+let cachedExpansions = null
+let lastExpansionFetch = 0
+
+async function fetchCachedExpansions(db) {
+  const now = Date.now()
+  if (cachedExpansions && now - lastExpansionFetch < 60_000) return cachedExpansions
+
+  const { rows } = await db.query('SELECT id, set_code, name, era FROM public.expansions')
+  cachedExpansions = rows
+  lastExpansionFetch = now
+  return rows
+}
+
+function filterCandidateExpansions(expansions, { eraHint = null, setHint = null } = {}) {
+  const eraNorm = normalizeEra(eraHint)
+  const setNorm = normalizeEra(setHint)
+
+  return expansions.filter((expansion) => {
+    const expansionEra = normalizeEra(expansion.era)
+    const expansionName = normalizeEra(expansion.name)
+    const expansionCode = normalizeEra(expansion.set_code)
+
+    const eraMatches = !eraNorm || (expansionEra && expansionEra.includes(eraNorm))
+    const setMatches =
+      !setNorm ||
+      (expansionCode && expansionCode.includes(setNorm)) ||
+      (expansionName && expansionName.includes(setNorm))
+
+    return eraMatches && setMatches
+  })
+}
+
+function buildExpansionFilters(candidateExpansions, eraHint, startIndex = 1) {
+  const params = []
+  let index = startIndex
+
+  const expansionIds = candidateExpansions.map((expansion) => expansion.id).filter(Boolean)
+  const expansionCodes = candidateExpansions
+    .map((expansion) => normalizeEra(expansion.set_code))
+    .filter(Boolean)
+
+  const clauses = []
+
+  if (expansionIds.length > 0) {
+    clauses.push(`c.expansion_id = ANY($${index})`)
+    params.push(expansionIds)
+    index++
+  }
+
+  if (expansionCodes.length > 0) {
+    clauses.push(`LOWER(COALESCE(e.set_code, c.set_code)) = ANY($${index})`)
+    params.push(expansionCodes)
+    index++
+  }
+
+  if (clauses.length > 0) {
+    return { sql: ` AND (${clauses.join(' OR ')})`, params, nextIndex: index }
+  }
+
+  const eraNorm = normalizeEra(eraHint)
+  if (eraNorm) {
+    params.push(`%${eraNorm}%`)
+    return {
+      sql: ` AND LOWER(COALESCE(e.era, c.era)) LIKE $${index}`,
+      params,
+      nextIndex: index + 1
+    }
+  }
+
+  return { sql: '', params: [], nextIndex: index }
+}
+
 async function findOrCreateCardBySetCodeAndNumber(
   db,
   { setCode = null, numberText = null, cardNo = null, totalInSet = null, cardName = null, setGuess = null }
@@ -1167,13 +1257,19 @@ async function searchCards(q) {
   return rows
 }
 
-async function tryAutoMatchAuction(client, row) {
-  const parsed = parseAuctionTitle(`${row.title || ''} ${row.description || ''}`)
+async function tryAutoMatchAuction(client, row, parsedOverride = null) {
+  const parsed =
+    parsedOverride || parseAuctionTitle(`${row.title || ''} ${row.description || ''}`)
+
   const parsedNumber =
     parsed.parsed_number_text ||
     canonicalNumberText(parsed.parsed_number_text, parsed.parsed_card_no, parsed.parsed_total_in_set)
   const parsedSet = parsed.setCode || parsed.parsed_set_guess
   const parsedName = parsed.parsed_card_name || parsed.parsed_name || null
+  const eraHint = extractEraHint(row)
+
+  const expansions = await fetchCachedExpansions(client)
+  const candidateExpansions = filterCandidateExpansions(expansions, { eraHint, setHint: parsedSet })
 
   const updateFields = {
     parsed_name: parsedName,
@@ -1188,8 +1284,11 @@ async function tryAutoMatchAuction(client, row) {
   let matchConfidence = null
   let matchMethod = null
 
-  // 1) strong: number + set
+  // 1) Highest confidence: number + explicit set hint
   if (parsedNumber && parsedSet) {
+    const params = [parsedNumber, `%${parsedSet}%`]
+    const filters = buildExpansionFilters(candidateExpansions, eraHint, params.length + 1)
+
     const { rows } = await client.query(
       `
         SELECT c.id, c.name, COALESCE(e.set_code, c.set_code) AS set_code
@@ -1197,9 +1296,10 @@ async function tryAutoMatchAuction(client, row) {
         LEFT JOIN public.expansions e ON e.id = c.expansion_id
         WHERE c.card_number ILIKE $1
           AND (COALESCE(e.set_code, c.set_code) ILIKE $2 OR COALESCE(e.name, c.set_name) ILIKE $2)
+          ${filters.sql}
         LIMIT 1
       `,
-      [parsedNumber, `%${parsedSet}%`]
+      [...params, ...filters.params]
     )
 
     if (rows[0]) {
@@ -1209,18 +1309,23 @@ async function tryAutoMatchAuction(client, row) {
     }
   }
 
-  // 2) medium: number + name
-  if (!candidate && parsedNumber && parsedName) {
+  // 2) Medium confidence: number within the era's candidate expansions
+  if (!candidate && parsedNumber) {
+    const params = [parsedNumber]
+    const filters = buildExpansionFilters(candidateExpansions, eraHint, params.length + 1)
+
     const { rows } = await client.query(
       `
-        SELECT id, name
-        FROM public.cards
-        WHERE card_number ILIKE $1
-          AND name ILIKE $2
+        SELECT c.id, c.name, COALESCE(e.set_code, c.set_code) AS set_code
+        FROM public.cards c
+        LEFT JOIN public.expansions e ON e.id = c.expansion_id
+        WHERE c.card_number ILIKE $1
+          ${filters.sql}
         LIMIT 1
       `,
-      [parsedNumber, `%${parsedName}%`]
+      [...params, ...filters.params]
     )
+
     if (rows[0]) {
       candidate = rows[0]
       matchConfidence = 'medium'
@@ -1228,17 +1333,24 @@ async function tryAutoMatchAuction(client, row) {
     }
   }
 
-  // 3) low: name only
-  if (!candidate && parsedName) {
+  // 3) Fallback: name + number restricted by era candidates
+  if (!candidate && parsedNumber && parsedName) {
+    const params = [parsedNumber, `%${parsedName}%`]
+    const filters = buildExpansionFilters(candidateExpansions, eraHint, params.length + 1)
+
     const { rows } = await client.query(
       `
-        SELECT id, name
-        FROM public.cards
-        WHERE name ILIKE $1
+        SELECT c.id, c.name, COALESCE(e.set_code, c.set_code) AS set_code
+        FROM public.cards c
+        LEFT JOIN public.expansions e ON e.id = c.expansion_id
+        WHERE c.card_number ILIKE $1
+          AND c.name ILIKE $2
+          ${filters.sql}
         LIMIT 1
       `,
-      [`%${parsedName}%`]
+      [...params, ...filters.params]
     )
+
     if (rows[0]) {
       candidate = rows[0]
       matchConfidence = 'low'
@@ -1734,7 +1846,7 @@ app.post('/api/enrichment/auctions/reprocess', async (req, res) => {
   try {
     const { rows } = await client.query(
       `
-        SELECT item_id, title, description
+        SELECT item_id, title, description, attributes
         FROM public.tradera_sales
         WHERE card_id IS NULL ${onlyUnmatched ? "AND (match_method IS NULL OR match_method = 'unmatched')" : ''}
         ORDER BY updated_at DESC NULLS LAST
@@ -1803,7 +1915,7 @@ app.post('/api/enrichment/run', async (req, res) => {
 
     const { rows } = await client.query(
       `
-        SELECT item_id, title, card_id
+        SELECT item_id, title, description, attributes, card_id
         FROM public.tradera_sales
         WHERE end_date >= NOW() - INTERVAL '60 days'
         ORDER BY end_date DESC
@@ -1870,26 +1982,21 @@ app.post('/api/enrichment/run', async (req, res) => {
         continue
       }
 
-      const cardId = await findOrCreateCardBySetCodeAndNumber(client, {
-        setCode: parsed.setCode,
-        numberText: parsed.parsed_number_text,
-        cardNo: parsed.parsed_card_no,
-        totalInSet: parsed.parsed_total_in_set,
-        cardName: parsed.parsed_card_name,
-        setGuess: parsed.parsed_set_guess
-      })
+      const autoMatch = await tryAutoMatchAuction(client, row, parsed)
 
-      if (cardId) {
+      if (autoMatch.card_id) {
         await client.query(
           `
             UPDATE public.tradera_sales
             SET card_id = $2,
+                match_confidence = $3,
+                match_method = $4,
                 enrich_status = 'linked',
                 enrich_confidence = GREATEST(COALESCE(enrich_confidence, 0), 80)
             WHERE item_id = $1
               AND card_id IS NULL
           `,
-          [row.item_id, cardId]
+          [row.item_id, autoMatch.card_id, autoMatch.match_confidence, autoMatch.match_method]
         )
         linked++
       } else {
