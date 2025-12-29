@@ -59,21 +59,15 @@ API_URL = "https://api.tradera.com/v3/SearchService.asmx"
 SOAP_ACTION = "http://api.tradera.com/SearchAdvanced"
 
 CATEGORY_ID = int(os.getenv("TRADERA_CATEGORY_ID", "1001337"))
-
-# LOCKED to 50 rows per response (as requested)
 ITEMS_PER_PAGE = 50
-
-# Refresh should always start from page 1
 START_PAGE = 1
 
-# Budget guard
 MAX_REQUESTS = int(os.getenv("MAX_REQUESTS", "10"))
 SLEEP_MS = int(os.getenv("SLEEP_MS", "150"))
 
 ITEM_STATUS = os.getenv("ITEM_STATUS", "Ended")
 ITEM_TYPE = os.getenv("ITEM_TYPE", "Auction")
 
-# "none" / "" disables the BidsMinimum filter entirely.
 BIDS_MINIMUM_RAW = os.getenv("BIDS_MINIMUM", "1")
 
 ORDER_BY = os.getenv("ORDER_BY", "EndDateDescending")
@@ -120,7 +114,6 @@ def normalize_bids_minimum(raw: str) -> Optional[int]:
     try:
         return int(float(s))
     except Exception:
-        # If it's garbage, disable rather than breaking calls
         return None
 
 
@@ -131,10 +124,7 @@ def build_envelope(app_id: str, app_key: str, page_number: int, order_by: str) -
     item_status_xml = f"<ItemStatus>{ITEM_STATUS}</ItemStatus>" if ITEM_STATUS else ""
     item_type_xml = f"<ItemType>{ITEM_TYPE}</ItemType>" if ITEM_TYPE else ""
 
-    if BIDS_MINIMUM is None:
-        bids_min_xml = ""  # OFF
-    else:
-        bids_min_xml = f"<BidsMinimum>{BIDS_MINIMUM}</BidsMinimum>"
+    bids_min_xml = "" if BIDS_MINIMUM is None else f"<BidsMinimum>{BIDS_MINIMUM}</BidsMinimum>"
 
     return f"""<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -185,7 +175,6 @@ def make_session() -> requests.Session:
 def post_soap(session: requests.Session, xml_body: str) -> str:
     headers = {
         "Content-Type": "text/xml; charset=utf-8",
-        # ASMX SOAP 1.1 often expects quoted SOAPAction
         "SOAPAction": f"\"{SOAP_ACTION}\"",
     }
     r = session.post(
@@ -201,16 +190,10 @@ def post_soap(session: requests.Session, xml_body: str) -> str:
 
 
 def strip_ns(tag: str) -> str:
-    if "}" in tag:
-        return tag.split("}", 1)[1]
-    return tag
+    return tag.split("}", 1)[1] if "}" in tag else tag
 
 
 def find_child_text(parent: ET.Element, local_name: str) -> Optional[str]:
-    """
-    Finds a DIRECT child by local name regardless of namespace.
-    Tradera's <Items> payload often has non-namespaced children like <Id>, <EndDate>, etc.
-    """
     for child in list(parent):
         if strip_ns(child.tag) == local_name:
             if child.text and child.text.strip():
@@ -220,15 +203,18 @@ def find_child_text(parent: ET.Element, local_name: str) -> Optional[str]:
 
 
 def find_any_text(parent: ET.Element, local_name: str) -> Optional[str]:
-    """
-    Finds a descendant element by local name regardless of namespace.
-    Useful for nested paths like ImageLinks.
-    """
     for el in parent.iter():
         if strip_ns(el.tag) == local_name:
             if el.text and el.text.strip():
                 return el.text.strip()
             return None
+    return None
+
+
+def first_found(*els: Optional[ET.Element]) -> Optional[ET.Element]:
+    for el in els:
+        if el is not None:
+            return el
     return None
 
 
@@ -240,13 +226,12 @@ def parse_response(xml_text: str) -> Tuple[int, int, List[ET.Element], str]:
         fault_text = ET.tostring(fault, encoding="unicode")
         raise RuntimeError(f"SOAP Fault: {fault_text[:1200]}")
 
-    total_items_el = root.find(".//t:TotalNumberOfItems", NS) or root.find(".//TotalNumberOfItems")
-    total_pages_el = root.find(".//t:TotalNumberOfPages", NS) or root.find(".//TotalNumberOfPages")
+    total_items_el = first_found(root.find(".//t:TotalNumberOfItems", NS), root.find(".//TotalNumberOfItems"))
+    total_pages_el = first_found(root.find(".//t:TotalNumberOfPages", NS), root.find(".//TotalNumberOfPages"))
 
-    total_items = int(total_items_el.text) if total_items_el is not None and total_items_el.text else 0
-    total_pages = int(total_pages_el.text) if total_pages_el is not None and total_pages_el.text else 0
+    total_items = int(total_items_el.text) if (total_items_el is not None and total_items_el.text) else 0
+    total_pages = int(total_pages_el.text) if (total_pages_el is not None and total_pages_el.text) else 0
 
-    # The real schema you showed: each item is an <Items> node, with children <Id>, <ShortDescription>, etc.
     item_nodes = root.findall(".//t:Items", NS)
     if not item_nodes:
         item_nodes = root.findall(".//Items")
@@ -282,7 +267,6 @@ def parse_bool_text(v: Optional[str]) -> Optional[bool]:
 def parse_dt_text(v: Optional[str]) -> Optional[datetime]:
     if not v:
         return None
-    # Example: 2025-12-29T12:09:45.578+01:00 (already offset)
     try:
         dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
         if dt.tzinfo is None:
@@ -293,34 +277,18 @@ def parse_dt_text(v: Optional[str]) -> Optional[datetime]:
 
 
 def parse_image_links(item_el: ET.Element) -> List[str]:
-    """
-    Handles both:
-      <ImageLinks><ImageLink><Url>...</Url></ImageLink>...</ImageLinks>
-    with and without namespaces.
-    """
     urls: List[str] = []
-
-    # Find ImageLink nodes by local name
     for el in item_el.iter():
         if strip_ns(el.tag) == "ImageLink":
-            url = None
             for child in list(el):
                 if strip_ns(child.tag) == "Url" and child.text:
-                    url = child.text.strip()
+                    urls.append(child.text.strip())
                     break
-            if url:
-                urls.append(url)
-
     return urls
 
 
 def parse_attributes(item_el: ET.Element) -> Dict[str, List[str]]:
-    """
-    Best-effort: Tradera attribute structure varies. We keep this robust:
-    - Looks for any TermAttributeValue blocks and extracts Name + string values.
-    """
     out: Dict[str, List[str]] = {}
-
     for tav in item_el.iter():
         if strip_ns(tav.tag) != "TermAttributeValue":
             continue
@@ -331,7 +299,6 @@ def parse_attributes(item_el: ET.Element) -> Dict[str, List[str]]:
         for child in list(tav):
             if strip_ns(child.tag) == "Name" and child.text:
                 name = child.text.strip()
-            # Values can be nested; collect any <string>
             for desc in child.iter():
                 if strip_ns(desc.tag) == "string" and desc.text:
                     values.append(desc.text.strip())
@@ -353,9 +320,7 @@ def build_attributes_payload(item_el: ET.Element) -> Dict[str, Any]:
         "is_ended": is_ended,
         "item_type": find_child_text(item_el, "ItemType") or find_any_text(item_el, "ItemType"),
         "next_bid": parse_int_text(find_child_text(item_el, "NextBid") or find_any_text(item_el, "NextBid")),
-        "buy_it_now_price": parse_float_text(
-            find_child_text(item_el, "BuyItNowPrice") or find_any_text(item_el, "BuyItNowPrice")
-        ),
+        "buy_it_now_price": parse_float_text(find_child_text(item_el, "BuyItNowPrice") or find_any_text(item_el, "BuyItNowPrice")),
     }
     meta = {k: v for k, v in meta.items() if v is not None}
     if meta:
@@ -411,14 +376,11 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
         return None
 
     category_id = parse_int_text(find_child_text(item_el, "CategoryId") or find_any_text(item_el, "CategoryId")) or CATEGORY_ID
-
     price = parse_int_text(find_child_text(item_el, "MaxBid") or find_any_text(item_el, "MaxBid"))
     bid_count = parse_int_text(find_child_text(item_el, "BidCount") or find_any_text(item_el, "BidCount"))
-
     seller_id = parse_int_text(find_child_text(item_el, "SellerId") or find_any_text(item_el, "SellerId"))
     seller_alias = find_child_text(item_el, "SellerAlias") or find_any_text(item_el, "SellerAlias")
     seller_dsr = parse_float_text(find_child_text(item_el, "SellerDsrAverage") or find_any_text(item_el, "SellerDsrAverage"))
-
     title = find_child_text(item_el, "ShortDescription") or find_any_text(item_el, "ShortDescription")
     description = find_child_text(item_el, "LongDescription") or find_any_text(item_el, "LongDescription")
     item_url = find_child_text(item_el, "ItemUrl") or find_any_text(item_el, "ItemUrl")
@@ -610,7 +572,6 @@ def main() -> None:
     app_key = require_env("TRADERA_APP_KEY")
     db_url = require_env("DATABASE_URL")
 
-    # Local copy (no global mutation)
     order_by = ORDER_BY
     if MODE == "INCREMENTAL" and order_by != "EndDateDescending":
         log("MODE=INCREMENTAL requires ORDER_BY=EndDateDescending for early-stop. Overriding.")
@@ -632,7 +593,6 @@ def main() -> None:
         imported_total = 0
         pages_fetched = 0
         requests_used = 0
-        status_message = None
 
         try:
             watermark_end_date = get_db_watermark_end_date(conn)
@@ -676,7 +636,6 @@ def main() -> None:
                     if oldest_on_page is None or row.end_date < oldest_on_page:
                         oldest_on_page = row.end_date
 
-                    # Incremental filter: keep only items newer than cutoff
                     if watermark_cutoff is not None and row.end_date <= watermark_cutoff:
                         continue
 
@@ -692,7 +651,6 @@ def main() -> None:
                     + (f" oldest_end_date_on_page={oldest_on_page.isoformat()}" if oldest_on_page else "")
                 )
 
-                # Early stop: if entire page is older than cutoff, next pages will be even older
                 if watermark_cutoff is not None and oldest_on_page is not None and oldest_on_page <= watermark_cutoff:
                     log("REFRESH: reached already-imported cutoff; stopping early.")
                     break
@@ -705,9 +663,6 @@ def main() -> None:
                 if SLEEP_MS > 0:
                     time.sleep(SLEEP_MS / 1000.0)
 
-            status_message = (
-                f"requests_used={requests_used}, pages_fetched={pages_fetched}, total_imported={imported_total}"
-            )
             finalize_import_run(
                 conn,
                 run_id,
@@ -715,11 +670,10 @@ def main() -> None:
                 new_rows=imported_total,
                 pages_fetched=pages_fetched,
                 requests_used=requests_used,
-                message=status_message,
+                message=f"requests_used={requests_used}, pages_fetched={pages_fetched}, total_imported={imported_total}",
             )
 
         except Exception as exc:
-            error_message = str(exc)
             finalize_import_run(
                 conn,
                 run_id,
@@ -727,7 +681,7 @@ def main() -> None:
                 new_rows=imported_total,
                 pages_fetched=pages_fetched,
                 requests_used=requests_used,
-                message=error_message,
+                message=str(exc),
             )
             raise
 
