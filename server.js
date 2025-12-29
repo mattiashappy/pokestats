@@ -11,6 +11,13 @@ const {
   canonicalNumberText,
   looksLikeLotOrSealed
 } = require('./server/enrichment/titleParser')
+const {
+  resolveAuctionMatch,
+  normalizeEraLabel,
+  parseCardNumber,
+  parseSetHint,
+  parseCardName
+} = require('./server/enrichment/numberFirstMatcher')
 
 const app = express()
 const PORT = process.env.PORT || 8000
@@ -661,7 +668,7 @@ async function fetchCachedExpansions(db) {
   const now = Date.now()
   if (cachedExpansions && now - lastExpansionFetch < 60_000) return cachedExpansions
 
-  const { rows } = await db.query('SELECT id, set_code, name, era FROM public.expansions')
+  const { rows } = await db.query('SELECT id, set_code, name, era, set_total, language FROM public.expansions')
   cachedExpansions = rows
   lastExpansionFetch = now
   return rows
@@ -1114,7 +1121,7 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
 }
 
 async function fetchEnrichmentAuctions({
-  linkedOnly = false,
+  linkedOnly = null,
   confidence = null,
   q = null,
   hasImage = null,
@@ -1130,9 +1137,9 @@ async function fetchEnrichmentAuctions({
   const where = []
   const params = []
 
-  // IMPORTANT: linkedOnly means "only linked". Otherwise show "only unlinked".
-  if (linkedOnly) where.push('ts.card_id IS NOT NULL')
-  else where.push('ts.card_id IS NULL')
+  // linkedOnly: true -> only linked, false -> only unlinked, null -> all
+  if (linkedOnly === true) where.push('ts.card_id IS NOT NULL')
+  else if (linkedOnly === false) where.push('ts.card_id IS NULL')
 
   const normalizedConfidence = normalizeMatchConfidence(confidence)
   if (normalizedConfidence === 'unmatched') {
@@ -1258,113 +1265,30 @@ async function searchCards(q) {
 }
 
 async function tryAutoMatchAuction(client, row, parsedOverride = null) {
-  const parsed =
-    parsedOverride || parseAuctionTitle(`${row.title || ''} ${row.description || ''}`)
-
-  const parsedNumber =
-    parsed.parsed_number_text ||
-    canonicalNumberText(parsed.parsed_number_text, parsed.parsed_card_no, parsed.parsed_total_in_set)
-  const parsedSet = parsed.setCode || parsed.parsed_set_guess
-  const parsedName = parsed.parsed_card_name || parsed.parsed_name || null
-  const eraHint = extractEraHint(row)
+  const text = `${row.title || ''} ${row.description || ''}`
+  const parsed = parsedOverride || {
+    parsed_name: parseCardName(text),
+    parsed_card_number: parseCardNumber(text).cardNumber,
+    parsed_set_hint: parseSetHint(text)
+  }
 
   const expansions = await fetchCachedExpansions(client)
-  const candidateExpansions = filterCandidateExpansions(expansions, { eraHint, setHint: parsedSet })
+  const normalizedExpansions = expansions.map((exp) => ({
+    ...exp,
+    era: normalizeEraLabel(exp.era)
+  }))
 
-  const updateFields = {
-    parsed_name: parsedName,
-    parsed_card_number: parsedNumber,
-    parsed_set_hint: parsedSet,
-    match_method: 'unmatched',
-    match_confidence: null,
-    card_id: null
+  const updateFields = await resolveAuctionMatch(client, row, normalizedExpansions)
+
+  return {
+    parsed_name: updateFields.parsed_name ?? parsed.parsed_name ?? null,
+    parsed_card_number: updateFields.parsed_card_number ?? parsed.parsed_card_number ?? null,
+    parsed_set_hint: updateFields.parsed_set_hint ?? parsed.parsed_set_hint ?? null,
+    match_method: updateFields.match_method,
+    match_confidence: updateFields.match_confidence,
+    card_id: updateFields.card_id,
+    collision_candidates: updateFields.collision_candidates || []
   }
-
-  let candidate = null
-  let matchConfidence = null
-  let matchMethod = null
-
-  // 1) Highest confidence: number + explicit set hint
-  if (parsedNumber && parsedSet) {
-    const params = [parsedNumber, `%${parsedSet}%`]
-    const filters = buildExpansionFilters(candidateExpansions, eraHint, params.length + 1)
-
-    const { rows } = await client.query(
-      `
-        SELECT c.id, c.name, COALESCE(e.set_code, c.set_code) AS set_code
-        FROM public.cards c
-        LEFT JOIN public.expansions e ON e.id = c.expansion_id
-        WHERE c.card_number ILIKE $1
-          AND (COALESCE(e.set_code, c.set_code) ILIKE $2 OR COALESCE(e.name, c.set_name) ILIKE $2)
-          ${filters.sql}
-        LIMIT 1
-      `,
-      [...params, ...filters.params]
-    )
-
-    if (rows[0]) {
-      candidate = rows[0]
-      matchConfidence = 'high'
-      matchMethod = 'auto:number+set'
-    }
-  }
-
-  // 2) Medium confidence: number within the era's candidate expansions
-  if (!candidate && parsedNumber) {
-    const params = [parsedNumber]
-    const filters = buildExpansionFilters(candidateExpansions, eraHint, params.length + 1)
-
-    const { rows } = await client.query(
-      `
-        SELECT c.id, c.name, COALESCE(e.set_code, c.set_code) AS set_code
-        FROM public.cards c
-        LEFT JOIN public.expansions e ON e.id = c.expansion_id
-        WHERE c.card_number ILIKE $1
-          ${filters.sql}
-        LIMIT 1
-      `,
-      [...params, ...filters.params]
-    )
-
-    if (rows[0]) {
-      candidate = rows[0]
-      matchConfidence = 'medium'
-      matchMethod = 'auto:number+name+era'
-    }
-  }
-
-  // 3) Fallback: name + number restricted by era candidates
-  if (!candidate && parsedNumber && parsedName) {
-    const params = [parsedNumber, `%${parsedName}%`]
-    const filters = buildExpansionFilters(candidateExpansions, eraHint, params.length + 1)
-
-    const { rows } = await client.query(
-      `
-        SELECT c.id, c.name, COALESCE(e.set_code, c.set_code) AS set_code
-        FROM public.cards c
-        LEFT JOIN public.expansions e ON e.id = c.expansion_id
-        WHERE c.card_number ILIKE $1
-          AND c.name ILIKE $2
-          ${filters.sql}
-        LIMIT 1
-      `,
-      [...params, ...filters.params]
-    )
-
-    if (rows[0]) {
-      candidate = rows[0]
-      matchConfidence = 'low'
-      matchMethod = 'auto:number+name+era'
-    }
-  }
-
-  if (candidate) {
-    updateFields.card_id = candidate.id
-    updateFields.match_confidence = matchConfidence
-    updateFields.match_method = matchMethod
-  }
-
-  return updateFields
 }
 
 function runImporterScript() {
@@ -1674,7 +1598,8 @@ app.post('/api/import/run', async (_req, res) => {
 // --------------------
 app.get('/api/enrichment/auctions', async (req, res) => {
   try {
-    const linked = req.query.linked === '1'
+    const linkedParam = req.query.linked
+    const linked = linkedParam === '1' ? true : linkedParam === '0' ? false : null
     const confidence = req.query.confidence ? String(req.query.confidence) : null
     const q = req.query.q ? String(req.query.q) : null
     const hasImage = req.query.hasImage === '1'
@@ -1858,9 +1783,15 @@ app.post('/api/enrichment/auctions/reprocess', async (req, res) => {
     let linked = 0
     let unmatched = 0
     let reviewed = 0
+    let collisions = 0
+    const totalBuckets = new Map()
 
     for (const row of rows) {
       const updates = await tryAutoMatchAuction(client, row)
+      const parsedCard = parseCardNumber(`${row.title || ''} ${row.description || ''}`)
+      if (parsedCard.denominator) {
+        totalBuckets.set(parsedCard.denominator, (totalBuckets.get(parsedCard.denominator) || 0) + 1)
+      }
 
       await client.query(
         `
@@ -1885,16 +1816,23 @@ app.post('/api/enrichment/auctions/reprocess', async (req, res) => {
         ]
       )
 
+      if (updates.collision_candidates?.length) collisions++
+
       if (updates.card_id) linked++
       else if (updates.parsed_name || updates.parsed_card_number) reviewed++
       else unmatched++
     }
 
     console.log(
-      `[enrichment] ${new Date().toISOString()} reprocessed ${rows.length} auctions -> linked:${linked} review:${reviewed} unmatched:${unmatched}`
+      `[enrichment] ${new Date().toISOString()} reprocessed ${rows.length} auctions -> linked:${linked} review:${reviewed} unmatched:${unmatched} collisions:${collisions}`
     )
 
-    res.json({ processed: rows.length, linked, reviewed, unmatched })
+    const mostCommonTotals = Array.from(totalBuckets.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+    console.log('[enrichment] common totals', mostCommonTotals)
+
+    res.json({ processed: rows.length, linked, reviewed, unmatched, collisions })
   } catch (error) {
     console.error('Failed to reprocess auctions', error)
     res.status(500).json({ error: 'Failed to reprocess auctions' })
