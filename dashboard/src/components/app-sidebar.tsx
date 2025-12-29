@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { BadgeCheck, CreditCard, Gavel, Globe, Layers, Settings, Shield, Sparkles, Star } from 'lucide-react'
+import { BadgeCheck, CreditCard, Database, Gavel, Globe, Layers, Settings, Shield, Sparkles, Star } from 'lucide-react'
 
 import {
   Sidebar,
@@ -125,14 +125,24 @@ export function AppSidebar(): JSX.Element {
 
             {/* Admin */}
             {user?.role === 'admin' ? (
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Admin" isActive={isActive(pathname, '/admin')}>
-                  <Link to="/admin">
-                    <Shield className="h-4 w-4" />
-                    <span>Admin</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              <>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Admin" isActive={isActive(pathname, '/admin')}>
+                    <Link to="/admin">
+                      <Shield className="h-4 w-4" />
+                      <span>Admin</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Data enrichment" isActive={isActive(pathname, '/enrichment')}>
+                    <Link to="/enrichment">
+                      <Database className="h-4 w-4" />
+                      <span>Data Enrichment</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </>
             ) : null}
 
             {/* Billing */}
