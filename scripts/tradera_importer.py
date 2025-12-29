@@ -1,8 +1,9 @@
 """
 Tradera importer (REFRESH ONLY, SOAP) -> PostgreSQL
+
 - Purpose: keep DB up-to-date with newest ended auctions (incremental).
 - Locked: ItemsPerPage = 50 (small responses).
-- Budget-safe: MAX_REQUESTS caps daily usage.
+- Budget-safe: MAX_REQUESTS caps usage.
 - Early-stop: stops when it hits already-imported data (watermark + overlap).
 
 Required ENV:
@@ -19,17 +20,17 @@ Optional ENV:
 Filters (optional):
 - ITEM_STATUS (default Ended)
 - ITEM_TYPE (default Auction)
-- BIDS_MINIMUM (default 1)
-- ORDER_BY (default EndDateDescending)      # will be forced if wrong
+- BIDS_MINIMUM (default 1)                  # set to "none"/"0"/"" to OMIT the tag entirely
+- ORDER_BY (default EndDateDescending)      # will be forced if wrong in incremental
 
 Incremental tuning:
 - INCREMENTAL_OVERLAP_MINUTES (default 10)
 
 Network tuning:
-- TRADERA_CONNECT_TIMEOUT (default 10)
-- TRADERA_READ_TIMEOUT (default 60)
-- TRADERA_RETRIES (default 6)
-- TRADERA_BACKOFF (default 0.8)
+- TRADERA_CONNECT_TIMEOUT (default 20)
+- TRADERA_READ_TIMEOUT (default 120)
+- TRADERA_RETRIES (default 10)
+- TRADERA_BACKOFF (default 1.2)
 
 DB assumptions:
 - tradera_sales has unique constraint on item_id
@@ -55,43 +56,17 @@ from psycopg2.extras import Json, execute_batch
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-
 API_URL = "https://api.tradera.com/v3/SearchService.asmx"
 SOAP_ACTION = "http://api.tradera.com/SearchAdvanced"
-
-CATEGORY_ID = int(os.getenv("TRADERA_CATEGORY_ID", "1001337"))
-
-# LOCKED to 50 rows per response (as requested)
-ITEMS_PER_PAGE = 50
-
-# Refresh should always start from page 1
-START_PAGE = 1
-
-# Budget guard
-MAX_REQUESTS = int(os.getenv("MAX_REQUESTS", "10"))
-
-SLEEP_MS = int(os.getenv("SLEEP_MS", "150"))
-
-ITEM_STATUS = os.getenv("ITEM_STATUS", "Ended")
-ITEM_TYPE = os.getenv("ITEM_TYPE", "Auction")
-BIDS_MINIMUM = os.getenv("BIDS_MINIMUM", "None")
-ORDER_BY = os.getenv("ORDER_BY", "EndDateDescending")
-MODE = os.getenv("MODE", "INCREMENTAL")
-
-TZ_NAME = os.getenv("TZ") or os.getenv("LOCAL_TIMEZONE") or "Europe/Stockholm"
-INCREMENTAL_OVERLAP_MINUTES = int(os.getenv("INCREMENTAL_OVERLAP_MINUTES", "10"))
-
-CONNECT_TIMEOUT = float(os.getenv("TRADERA_CONNECT_TIMEOUT", "10"))
-READ_TIMEOUT = float(os.getenv("TRADERA_READ_TIMEOUT", "60"))
-TOTAL_RETRIES = int(os.getenv("TRADERA_RETRIES", "6"))
-BACKOFF = float(os.getenv("TRADERA_BACKOFF", "0.8"))
 
 NS = {
     "soap": "http://schemas.xmlsoap.org/soap/envelope/",
     "t": "http://api.tradera.com",
 }
 
-
+# -----------------------------
+# Helpers
+# -----------------------------
 def log(msg: str) -> None:
     sys.stdout.write(msg + "\n")
     sys.stdout.flush()
@@ -104,6 +79,64 @@ def require_env(name: str) -> str:
     return v.strip()
 
 
+def env_int_or_none(name: str, default: Optional[int] = None) -> Optional[int]:
+    """
+    Reads an env var and returns:
+      - None if env is missing and default=None, or if env value is: "", "none", "null", "0"
+      - int otherwise
+    """
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    raw2 = raw.strip().lower()
+    if raw2 in {"", "none", "null", "0"}:
+        return None
+    try:
+        return int(raw2)
+    except ValueError:
+        raise RuntimeError(f"Invalid integer for {name}: {raw!r}")
+
+
+def env_str_or_none(name: str, default: Optional[str] = None) -> Optional[str]:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    raw2 = raw.strip()
+    if raw2 == "" or raw2.lower() in {"none", "null"}:
+        return None
+    return raw2
+
+
+# -----------------------------
+# Config
+# -----------------------------
+CATEGORY_ID = int(os.getenv("TRADERA_CATEGORY_ID", "1001337"))
+
+# LOCKED to 50 rows per response (as requested)
+ITEMS_PER_PAGE = 50
+START_PAGE = 1
+
+MAX_REQUESTS = int(os.getenv("MAX_REQUESTS", "10"))
+SLEEP_MS = int(os.getenv("SLEEP_MS", "150"))
+
+ITEM_STATUS = env_str_or_none("ITEM_STATUS", "Ended")  # if set to none -> omitted
+ITEM_TYPE = env_str_or_none("ITEM_TYPE", "Auction")    # if set to none -> omitted
+BIDS_MINIMUM = env_int_or_none("BIDS_MINIMUM", 1)      # if set to none/0 -> omitted
+ORDER_BY = os.getenv("ORDER_BY", "EndDateDescending").strip() or "EndDateDescending"
+MODE = os.getenv("MODE", "INCREMENTAL").strip() or "INCREMENTAL"
+
+TZ_NAME = os.getenv("TZ") or os.getenv("LOCAL_TIMEZONE") or "Europe/Stockholm"
+INCREMENTAL_OVERLAP_MINUTES = int(os.getenv("INCREMENTAL_OVERLAP_MINUTES", "10"))
+
+CONNECT_TIMEOUT = float(os.getenv("TRADERA_CONNECT_TIMEOUT", "20"))
+READ_TIMEOUT = float(os.getenv("TRADERA_READ_TIMEOUT", "120"))
+TOTAL_RETRIES = int(os.getenv("TRADERA_RETRIES", "10"))
+BACKOFF = float(os.getenv("TRADERA_BACKOFF", "1.2"))
+
+
+# -----------------------------
+# SOAP
+# -----------------------------
 def build_envelope(app_id: str, app_key: str, page_number: int, order_by: str) -> str:
     item_status_xml = f"<ItemStatus>{ITEM_STATUS}</ItemStatus>" if ITEM_STATUS else ""
     item_type_xml = f"<ItemType>{ITEM_TYPE}</ItemType>" if ITEM_TYPE else ""
@@ -151,7 +184,7 @@ def make_session() -> requests.Session:
     adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=10)
     s.mount("https://", adapter)
     s.mount("http://", adapter)
-    s.headers.update({"User-Agent": "pokestats-importer-refresh-50/1.0"})
+    s.headers.update({"User-Agent": "pokestats-importer-refresh-50/1.1"})
     return s
 
 
@@ -167,31 +200,42 @@ def post_soap(session: requests.Session, xml_body: str) -> str:
         headers=headers,
         timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
     )
+
+    # Tradera sometimes returns SOAP faults as 500 or sometimes 200 with fault content.
+    # We'll handle 4xx/5xx with a snippet, but also allow parsing below.
     if r.status_code >= 400:
-        snippet = (r.text or "")[:800].replace("\n", " ")
+        snippet = (r.text or "")[:1200].replace("\n", " ")
         raise RuntimeError(f"HTTP {r.status_code} from Tradera. Body: {snippet}")
+
     return r.text
 
 
 def parse_response(xml_text: str) -> Tuple[int, int, List[ET.Element]]:
     root = ET.fromstring(xml_text)
+
+    # Detect SOAP Fault quickly
+    fault = root.find(".//soap:Fault", NS)
+    if fault is not None:
+        # Keep it short in logs but enough to debug
+        fault_text = ET.tostring(fault, encoding="unicode")
+        raise RuntimeError(f"SOAP Fault: {fault_text[:1000]}")
+
     total_items_el = root.find(".//t:TotalNumberOfItems", NS)
     total_pages_el = root.find(".//t:TotalNumberOfPages", NS)
 
     total_items = int(total_items_el.text) if total_items_el is not None and total_items_el.text else 0
     total_pages = int(total_pages_el.text) if total_pages_el is not None and total_pages_el.text else 0
 
-    # Your original code used ".//t:Items" which likely returns the list container(s).
-    # Many Tradera responses include t:Items containing repeated t:Item nodes.
-    # We'll return t:Item nodes to simplify downstream parsing.
     item_nodes = root.findall(".//t:Items/t:Item", NS)
     if not item_nodes:
-        # fallback for any variant schema
         item_nodes = root.findall(".//t:Item", NS)
 
     return total_items, total_pages, item_nodes
 
 
+# -----------------------------
+# Parsing
+# -----------------------------
 def get_text(el: Optional[ET.Element]) -> Optional[str]:
     return el.text.strip() if el is not None and el.text else None
 
@@ -336,6 +380,9 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
     )
 
 
+# -----------------------------
+# Card mapping (basic)
+# -----------------------------
 def normalize_card_value(value: Optional[str]) -> str:
     if not value:
         return "unknown"
@@ -381,6 +428,9 @@ def ensure_card(conn, payload: Dict[str, Optional[str]]) -> int:
     return int(row[0])
 
 
+# -----------------------------
+# DB upserts
+# -----------------------------
 def upsert(conn, rows: List[Row]) -> None:
     if not rows:
         return
@@ -499,14 +549,17 @@ def get_db_watermark_end_date(conn) -> Optional[datetime]:
     return val
 
 
+# -----------------------------
+# Main
+# -----------------------------
 def main() -> None:
     app_id = require_env("TRADERA_APP_ID")
     app_key = require_env("TRADERA_APP_KEY")
     db_url = require_env("DATABASE_URL")
 
-    # Local copy (no global mutation => no SyntaxError)
+    # Local copy (no global mutation)
     order_by = ORDER_BY
-    if MODE == "INCREMENTAL" and order_by != "EndDateDescending":
+    if MODE.upper() == "INCREMENTAL" and order_by != "EndDateDescending":
         log("MODE=INCREMENTAL requires ORDER_BY=EndDateDescending for early-stop. Overriding.")
         order_by = "EndDateDescending"
 
@@ -515,16 +568,18 @@ def main() -> None:
         f"max_requests={MAX_REQUESTS} bids_min={BIDS_MINIMUM} status={ITEM_STATUS!r} type={ITEM_TYPE!r} "
         f"timeouts=({CONNECT_TIMEOUT},{READ_TIMEOUT}) retries={TOTAL_RETRIES} backoff={BACKOFF}"
     )
+    log(f"SOAP bids_min_xml={'ON' if BIDS_MINIMUM is not None else 'OFF'}")
 
     session = make_session()
 
     with psycopg2.connect(db_url) as conn:
         ensure_import_runs_table(conn)
         run_id = start_import_run(conn)
-        status_message = None
+
         imported_total = 0
         pages_fetched = 0
         requests_used = 0
+
         try:
             watermark_end_date = get_db_watermark_end_date(conn)
             watermark_cutoff: Optional[datetime] = None
@@ -541,7 +596,7 @@ def main() -> None:
             page = START_PAGE
 
             while requests_used < MAX_REQUESTS:
-                log(f"Fetching page {page}... ({requests_used+1}/{MAX_REQUESTS})")
+                log(f"Fetching page {page}... ({requests_used + 1}/{MAX_REQUESTS})")
 
                 envelope = build_envelope(app_id, app_key, page, order_by)
                 xml_resp = post_soap(session, envelope)
@@ -553,7 +608,8 @@ def main() -> None:
                     log(f"API totals (snapshot): total_items={total_items}, total_pages={total_pages}")
 
                 if not item_nodes:
-                    log("No items returned; stopping.")
+                    snippet = (xml_resp or "")[:1000].replace("\n", " ")
+                    log(f"No items returned; stopping. response_snippet={snippet}")
                     break
 
                 rows: List[Row] = []
@@ -563,6 +619,7 @@ def main() -> None:
                     row = parse_item(el)
                     if not row:
                         continue
+
                     if oldest_on_page is None or row.end_date < oldest_on_page:
                         oldest_on_page = row.end_date
 
@@ -595,9 +652,7 @@ def main() -> None:
                 if SLEEP_MS > 0:
                     time.sleep(SLEEP_MS / 1000.0)
 
-            status_message = (
-                f"requests_used={requests_used}, pages_fetched={pages_fetched}, total_imported={imported_total}"
-            )
+            msg = f"requests_used={requests_used}, pages_fetched={pages_fetched}, total_imported={imported_total}"
             finalize_import_run(
                 conn,
                 run_id,
@@ -605,10 +660,10 @@ def main() -> None:
                 new_rows=imported_total,
                 pages_fetched=pages_fetched,
                 requests_used=requests_used,
-                message=status_message,
+                message=msg,
             )
+
         except Exception as exc:
-            error_message = str(exc)
             finalize_import_run(
                 conn,
                 run_id,
@@ -616,7 +671,7 @@ def main() -> None:
                 new_rows=imported_total,
                 pages_fetched=pages_fetched,
                 requests_used=requests_used,
-                message=error_message,
+                message=str(exc),
             )
             raise
 
