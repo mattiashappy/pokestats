@@ -1,39 +1,29 @@
 """
-Tradera importer (RAW SOAP) -> PostgreSQL
+Tradera importer (REFRESH ONLY, SOAP) -> PostgreSQL
+- Purpose: keep DB up-to-date with newest ended auctions (incremental).
+- Locked: ItemsPerPage = 50 (small responses).
+- Budget-safe: MAX_REQUESTS caps daily usage.
+- Early-stop: stops when it hits already-imported data (watermark + overlap).
 
-Network-robust: timeouts + retries with backoff.
-Pagination-robust: retries + skip empty pages (prevents early stop).
-Card linking: creates/updates cards table and stores card_id on tradera_sales.
-
-MODES:
-- FULL          : imports pages from START_PAGE..MAX_PAGES (until last page/empty)
-- YESTERDAY     : imports only auctions ended "yesterday" in TZ (still fetches pages)
-- INCREMENTAL   : imports only auctions with end_date > max(end_date) already in DB
-                 (stops early when it reaches already imported data)
-
-ENV (Heroku config vars):
-Required:
+Required ENV:
 - DATABASE_URL
 - TRADERA_APP_ID
 - TRADERA_APP_KEY
 
-Optional:
+Optional ENV:
 - TRADERA_CATEGORY_ID (default 1001337)
-- ITEMS_PER_PAGE (default 500)
-- START_PAGE (default 1)
-- MAX_PAGES (default 10000)
+- MAX_REQUESTS (default 10)                 # hard cap requests per run
 - SLEEP_MS (default 150)
+- TZ (default Europe/Stockholm)
 
+Filters (optional):
 - ITEM_STATUS (default Ended)
 - ITEM_TYPE (default Auction)
 - BIDS_MINIMUM (default 1)
-- ORDER_BY (default EndDateDescending)
-
-- MODE (default FULL)          # FULL, YESTERDAY, INCREMENTAL
-- TZ   (default Europe/Stockholm)
+- ORDER_BY (default EndDateDescending)      # will be forced if wrong
 
 Incremental tuning:
-- INCREMENTAL_OVERLAP_MINUTES (default 10)  # subtract overlap from watermark to avoid missing edge cases
+- INCREMENTAL_OVERLAP_MINUTES (default 10)
 
 Network tuning:
 - TRADERA_CONNECT_TIMEOUT (default 10)
@@ -41,12 +31,10 @@ Network tuning:
 - TRADERA_RETRIES (default 6)
 - TRADERA_BACKOFF (default 0.8)
 
-Empty page handling:
-- EMPTY_PAGE_RETRIES (default 3)
-- EMPTY_PAGE_SKIP_LIMIT (default 10)
-
 DB assumptions:
-- tradera_sales has column card_id (nullable int, FK optional)
+- tradera_sales has unique constraint on item_id
+- columns: item_id, category_id, end_date, price, bid_count, seller_id, seller_alias,
+          seller_dsr, title, description, item_url, thumbnail_url, image_urls, attributes, card_id (nullable)
 - cards has unique constraint on (name, set_name) for ON CONFLICT
 """
 
@@ -72,9 +60,16 @@ API_URL = "https://api.tradera.com/v3/SearchService.asmx"
 SOAP_ACTION = "http://api.tradera.com/SearchAdvanced"
 
 CATEGORY_ID = int(os.getenv("TRADERA_CATEGORY_ID", "1001337"))
-ITEMS_PER_PAGE = int(os.getenv("ITEMS_PER_PAGE", "500"))
-START_PAGE = int(os.getenv("START_PAGE", "1"))
-MAX_PAGES = int(os.getenv("MAX_PAGES", "10000"))
+
+# LOCKED to 50 rows per response (as requested)
+ITEMS_PER_PAGE = 50
+
+# Refresh should always start from page 1
+START_PAGE = 1
+
+# Budget guard
+MAX_REQUESTS = int(os.getenv("MAX_REQUESTS", "10"))
+
 SLEEP_MS = int(os.getenv("SLEEP_MS", "150"))
 
 ITEM_STATUS = os.getenv("ITEM_STATUS", "Ended")
@@ -82,21 +77,13 @@ ITEM_TYPE = os.getenv("ITEM_TYPE", "Auction")
 BIDS_MINIMUM = os.getenv("BIDS_MINIMUM", "1")
 ORDER_BY = os.getenv("ORDER_BY", "EndDateDescending")
 
-MODE = (os.getenv("MODE", "FULL") or "FULL").upper()
 TZ_NAME = os.getenv("TZ") or os.getenv("LOCAL_TIMEZONE") or "Europe/Stockholm"
-
-# Incremental tuning
 INCREMENTAL_OVERLAP_MINUTES = int(os.getenv("INCREMENTAL_OVERLAP_MINUTES", "10"))
 
-# Network tuning (Heroku-friendly)
 CONNECT_TIMEOUT = float(os.getenv("TRADERA_CONNECT_TIMEOUT", "10"))
 READ_TIMEOUT = float(os.getenv("TRADERA_READ_TIMEOUT", "60"))
 TOTAL_RETRIES = int(os.getenv("TRADERA_RETRIES", "6"))
 BACKOFF = float(os.getenv("TRADERA_BACKOFF", "0.8"))
-
-# Empty page handling
-EMPTY_PAGE_RETRIES = int(os.getenv("EMPTY_PAGE_RETRIES", "3"))
-EMPTY_PAGE_SKIP_LIMIT = int(os.getenv("EMPTY_PAGE_SKIP_LIMIT", "10"))
 
 NS = {
     "soap": "http://schemas.xmlsoap.org/soap/envelope/",
@@ -116,31 +103,19 @@ def require_env(name: str) -> str:
     return v.strip()
 
 
-def calc_yesterday_window(tz_name: str) -> Tuple[datetime, datetime]:
-    tz = pytz.timezone(tz_name)
-    now_local = datetime.now(tz)
-    today_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-    yesterday_start = today_start - timedelta(days=1)
-    return yesterday_start, today_start
-
-
 def build_envelope(app_id: str, app_key: str, page_number: int) -> str:
     item_status_xml = f"<ItemStatus>{ITEM_STATUS}</ItemStatus>" if ITEM_STATUS else ""
     item_type_xml = f"<ItemType>{ITEM_TYPE}</ItemType>" if ITEM_TYPE else ""
     bids_min_xml = f"<BidsMinimum>{BIDS_MINIMUM}</BidsMinimum>" if BIDS_MINIMUM is not None else ""
 
-    # ORDER_BY is respected by the API (you already saw it working)
     return f"""<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-               xmlns:xsd="http://www.w3.org/2001/XMLSchema"
-               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Header>
     <AuthenticationHeader xmlns="http://api.tradera.com">
       <AppId>{app_id}</AppId>
       <AppKey>{app_key}</AppKey>
     </AuthenticationHeader>
   </soap:Header>
-
   <soap:Body>
     <SearchAdvanced xmlns="http://api.tradera.com">
       <request>
@@ -159,7 +134,6 @@ def build_envelope(app_id: str, app_key: str, page_number: int) -> str:
 
 def make_session() -> requests.Session:
     s = requests.Session()
-
     retry = Retry(
         total=TOTAL_RETRIES,
         connect=TOTAL_RETRIES,
@@ -173,15 +147,15 @@ def make_session() -> requests.Session:
     adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=10)
     s.mount("https://", adapter)
     s.mount("http://", adapter)
-
-    s.headers.update({"User-Agent": "pokestats-importer-raw/1.0"})
+    s.headers.update({"User-Agent": "pokestats-importer-refresh-50/1.0"})
     return s
 
 
 def post_soap(session: requests.Session, xml_body: str) -> str:
     headers = {
         "Content-Type": "text/xml; charset=utf-8",
-        "SOAPAction": SOAP_ACTION,
+        # ASMX SOAP 1.1 often expects quoted SOAPAction
+        "SOAPAction": f"\"{SOAP_ACTION}\"",
     }
     r = session.post(
         API_URL,
@@ -189,25 +163,29 @@ def post_soap(session: requests.Session, xml_body: str) -> str:
         headers=headers,
         timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
     )
-
     if r.status_code >= 400:
-        snippet = (r.text or "")[:500].replace("\n", " ")
+        snippet = (r.text or "")[:800].replace("\n", " ")
         raise RuntimeError(f"HTTP {r.status_code} from Tradera. Body: {snippet}")
-
     return r.text
 
 
 def parse_response(xml_text: str) -> Tuple[int, int, List[ET.Element]]:
     root = ET.fromstring(xml_text)
-
     total_items_el = root.find(".//t:TotalNumberOfItems", NS)
     total_pages_el = root.find(".//t:TotalNumberOfPages", NS)
 
     total_items = int(total_items_el.text) if total_items_el is not None and total_items_el.text else 0
     total_pages = int(total_pages_el.text) if total_pages_el is not None and total_pages_el.text else 0
 
-    items = root.findall(".//t:Items", NS)
-    return total_items, total_pages, items
+    # Your original code used ".//t:Items" which likely returns the list container(s).
+    # Many Tradera responses include t:Items containing repeated t:Item nodes.
+    # We'll return t:Item nodes to simplify downstream parsing.
+    item_nodes = root.findall(".//t:Items/t:Item", NS)
+    if not item_nodes:
+        # fallback for any variant schema
+        item_nodes = root.findall(".//t:Item", NS)
+
+    return total_items, total_pages, item_nodes
 
 
 def get_text(el: Optional[ET.Element]) -> Optional[str]:
@@ -259,7 +237,6 @@ def parse_image_links(item_el: ET.Element) -> List[str]:
 
 
 def parse_attributes(item_el: ET.Element) -> Dict[str, List[str]]:
-    """Return Tradera term attributes as name -> list of string values."""
     out: Dict[str, List[str]] = {}
     for tav in item_el.findall(".//t:AttributeValues/t:TermAttributeValues/t:TermAttributeValue", NS):
         name = get_text(tav.find("t:Name", NS))
@@ -274,9 +251,7 @@ def parse_attributes(item_el: ET.Element) -> Dict[str, List[str]]:
 
 
 def build_attributes_payload(item_el: ET.Element) -> Dict[str, Any]:
-    """Compose JSON payload with term attributes plus a _meta bucket for scalars."""
     attributes: Dict[str, Any] = parse_attributes(item_el)
-
     meta = {
         "has_bids": parse_bool(item_el.find("t:HasBids", NS)),
         "is_ended": parse_bool(item_el.find("t:IsEnded", NS)),
@@ -285,10 +260,8 @@ def build_attributes_payload(item_el: ET.Element) -> Dict[str, Any]:
         "buy_it_now_price": parse_float(item_el.find("t:BuyItNowPrice", NS)),
     }
     meta = {k: v for k, v in meta.items() if v is not None}
-
     if meta:
         attributes["_meta"] = meta
-
     return attributes
 
 
@@ -408,7 +381,6 @@ def upsert(conn, rows: List[Row]) -> None:
     if not rows:
         return
 
-    # Create/resolve cards and set card_id
     card_cache: Dict[Tuple[str, str], int] = {}
     for r in rows:
         payload = extract_card_payload(r)
@@ -448,7 +420,6 @@ def upsert(conn, rows: List[Row]) -> None:
 
 
 def get_db_watermark_end_date(conn) -> Optional[datetime]:
-    """Latest end_date we already have (UTC)."""
     with conn.cursor() as cur:
         cur.execute("SELECT max(end_date) FROM tradera_sales;")
         val = cur.fetchone()[0]
@@ -460,136 +431,83 @@ def main() -> None:
     app_key = require_env("TRADERA_APP_KEY")
     db_url = require_env("DATABASE_URL")
 
-    # Important for INCREMENTAL: make sure we are sorting newest first
-    # so we can stop as soon as we hit already-imported auctions.
-    if MODE == "INCREMENTAL" and ORDER_BY != "EndDateDescending":
-        log("MODE=INCREMENTAL requires ORDER_BY=EndDateDescending for early-stop. Overriding.")
-        # We can't reassign env var safely, but can overwrite the variable.
-        global ORDER_BY
+    global ORDER_BY
+    if ORDER_BY != "EndDateDescending":
+        log("REFRESH requires ORDER_BY=EndDateDescending for early-stop. Overriding.")
         ORDER_BY = "EndDateDescending"
 
     log(
-        f"IMPORT mode={MODE}, category={CATEGORY_ID}, items_per_page={ITEMS_PER_PAGE}, "
-        f"start_page={START_PAGE}, max_pages={MAX_PAGES}, bids_min={BIDS_MINIMUM}, "
-        f"status={ITEM_STATUS!r}, type={ITEM_TYPE!r}, order_by={ORDER_BY!r}, "
-        f"timeouts=({CONNECT_TIMEOUT},{READ_TIMEOUT}), retries={TOTAL_RETRIES}, backoff={BACKOFF}"
+        f"REFRESH(50) category={CATEGORY_ID} items_per_page={ITEMS_PER_PAGE} "
+        f"max_requests={MAX_REQUESTS} bids_min={BIDS_MINIMUM} status={ITEM_STATUS!r} type={ITEM_TYPE!r} "
+        f"timeouts=({CONNECT_TIMEOUT},{READ_TIMEOUT}) retries={TOTAL_RETRIES} backoff={BACKOFF}"
     )
 
     session = make_session()
 
-    y_start: Optional[datetime] = None
-    y_end: Optional[datetime] = None
-    if MODE == "YESTERDAY":
-        y_start, y_end = calc_yesterday_window(TZ_NAME)
-        log(f"Yesterday window: {y_start.isoformat()} -> {y_end.isoformat()} ({TZ_NAME})")
-
-    total_pages: Optional[int] = None
-    total_items: Optional[int] = None
-    imported_total = 0
-    pages_fetched = 0
-    empty_pages_skipped = 0
-
-    watermark_end_date: Optional[datetime] = None
-    watermark_cutoff: Optional[datetime] = None
-
     with psycopg2.connect(db_url) as conn:
-        if MODE == "INCREMENTAL":
-            watermark_end_date = get_db_watermark_end_date(conn)
-            if watermark_end_date is None:
-                log("INCREMENTAL: DB is empty; falling back to FULL behavior.")
-            else:
-                watermark_cutoff = watermark_end_date - timedelta(minutes=INCREMENTAL_OVERLAP_MINUTES)
-                log(
-                    f"INCREMENTAL watermark: max(end_date)={watermark_end_date.isoformat()} UTC, "
-                    f"cutoff(with overlap {INCREMENTAL_OVERLAP_MINUTES}m)={watermark_cutoff.isoformat()} UTC"
-                )
+        watermark_end_date = get_db_watermark_end_date(conn)
+        watermark_cutoff: Optional[datetime] = None
+
+        if watermark_end_date is None:
+            log("REFRESH: DB empty -> will import up to MAX_REQUESTS pages starting from newest.")
+        else:
+            watermark_cutoff = watermark_end_date - timedelta(minutes=INCREMENTAL_OVERLAP_MINUTES)
+            log(
+                f"REFRESH watermark: max(end_date)={watermark_end_date.isoformat()} UTC, "
+                f"cutoff(with overlap {INCREMENTAL_OVERLAP_MINUTES}m)={watermark_cutoff.isoformat()} UTC"
+            )
 
         page = START_PAGE
-        stop_incremental = False
+        imported_total = 0
+        pages_fetched = 0
+        requests_used = 0
 
-        while page <= MAX_PAGES:
-            log(f"Fetching page {page}...")
+        while requests_used < MAX_REQUESTS:
+            log(f"Fetching page {page}... ({requests_used+1}/{MAX_REQUESTS})")
+
             envelope = build_envelope(app_id, app_key, page)
+            xml_resp = post_soap(session, envelope)
+            requests_used += 1
 
-            # retry empty pages a few times
-            item_elements: List[ET.Element] = []
-            t_items = 0
-            t_pages = 0
+            total_items, total_pages, item_nodes = parse_response(xml_resp)
 
-            for attempt in range(1, EMPTY_PAGE_RETRIES + 1):
-                xml_resp = post_soap(session, envelope)
-                t_items, t_pages, item_elements = parse_response(xml_resp)
+            if page == 1:
+                log(f"API totals (snapshot): total_items={total_items}, total_pages={total_pages}")
 
-                if item_elements:
-                    break
-
-                log(f"Page {page}: empty response (attempt {attempt}/{EMPTY_PAGE_RETRIES})")
-                time.sleep(1.0 * attempt)
-
-            if total_pages is None and t_pages:
-                total_pages = t_pages
-                total_items = t_items
-                log(f"API totals: total_items={total_items}, total_pages={total_pages}")
-
-            # If still empty -> skip (do not stop early)
-            if not item_elements:
-                empty_pages_skipped += 1
-                log(
-                    f"Page {page}: still empty after retries; skipping "
-                    f"(skipped={empty_pages_skipped}/{EMPTY_PAGE_SKIP_LIMIT})"
-                )
-                if empty_pages_skipped >= EMPTY_PAGE_SKIP_LIMIT:
-                    log("Too many empty pages; stopping to avoid endless run.")
-                    break
-                page += 1
-                continue
-
-            empty_pages_skipped = 0
+            if not item_nodes:
+                log("No items returned; stopping.")
+                break
 
             rows: List[Row] = []
-            oldest_end_date_on_page: Optional[datetime] = None
+            oldest_on_page: Optional[datetime] = None
 
-            for el in item_elements:
+            for el in item_nodes:
                 row = parse_item(el)
                 if not row:
                     continue
+                if oldest_on_page is None or row.end_date < oldest_on_page:
+                    oldest_on_page = row.end_date
 
-                # Track oldest end_date for optional logging
-                if oldest_end_date_on_page is None or row.end_date < oldest_end_date_on_page:
-                    oldest_end_date_on_page = row.end_date
-
-                # MODE filters
-                if MODE == "YESTERDAY":
-                    assert y_start is not None and y_end is not None
-                    tz = pytz.timezone(TZ_NAME)
-                    end_local = row.end_date.astimezone(tz)
-                    if not (y_start <= end_local < y_end):
-                        continue
-
-                if MODE == "INCREMENTAL" and watermark_cutoff is not None:
-                    # Because we fetch newest first, once we hit <= cutoff we can stop the whole import.
-                    if row.end_date <= watermark_cutoff:
-                        stop_incremental = True
-                        continue
+                # Incremental filter: keep only items newer than cutoff
+                if watermark_cutoff is not None and row.end_date <= watermark_cutoff:
+                    continue
 
                 rows.append(row)
 
-            # If INCREMENTAL and we've reached old data, we can stop after writing what we have.
             upsert(conn, rows)
             imported_total += len(rows)
             pages_fetched += 1
 
             log(
-                f"Page {page}/{total_pages or '?'}: received={len(item_elements)}, imported={len(rows)}, "
+                f"Page {page}/{total_pages or '?'} received={len(item_nodes)} imported={len(rows)} "
                 f"total_imported={imported_total}"
-                + (f", oldest_end_date_on_page={oldest_end_date_on_page.isoformat()}" if oldest_end_date_on_page else "")
+                + (f" oldest_end_date_on_page={oldest_on_page.isoformat()}" if oldest_on_page else "")
             )
 
-            if MODE == "INCREMENTAL" and watermark_cutoff is not None:
-                # Early stop once we started encountering already imported data
-                if stop_incremental:
-                    log("INCREMENTAL: reached already-imported cutoff; stopping early.")
-                    break
+            # Early stop: if entire page is older than cutoff, next pages will be even older
+            if watermark_cutoff is not None and oldest_on_page is not None and oldest_on_page <= watermark_cutoff:
+                log("REFRESH: reached already-imported cutoff; stopping early.")
+                break
 
             if total_pages and page >= total_pages:
                 log("Reached last page.")
@@ -599,8 +517,7 @@ def main() -> None:
             if SLEEP_MS > 0:
                 time.sleep(SLEEP_MS / 1000.0)
 
-    log(f"DONE: pages_fetched={pages_fetched}, total_imported={imported_total}")
-    sys.exit(0)
+    log(f"DONE: requests_used={requests_used}, pages_fetched={pages_fetched}, total_imported={imported_total}")
 
 
 if __name__ == "__main__":
