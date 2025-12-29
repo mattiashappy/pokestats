@@ -74,7 +74,7 @@ SLEEP_MS = int(os.getenv("SLEEP_MS", "150"))
 
 ITEM_STATUS = os.getenv("ITEM_STATUS", "Ended")
 ITEM_TYPE = os.getenv("ITEM_TYPE", "Auction")
-BIDS_MINIMUM = os.getenv("BIDS_MINIMUM", "1")
+BIDS_MINIMUM = os.getenv("BIDS_MINIMUM", "None")
 ORDER_BY = os.getenv("ORDER_BY", "EndDateDescending")
 MODE = os.getenv("MODE", "INCREMENTAL")
 
