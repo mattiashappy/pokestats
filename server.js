@@ -194,6 +194,9 @@ const pool = DATABASE_URL
     })
   : null
 
+const MATCH_CONFIDENCE_LEVELS = ['high', 'medium', 'low']
+const MATCH_METHODS = ['auto:number+set', 'auto:number+name+era', 'manual', 'image_only', 'unmatched']
+
 let hasCheckedSalesTable = false
 let salesTableAvailable = false
 let hasCheckedCardsTable = false
@@ -206,8 +209,21 @@ let hasCheckedSalesParsedSetCodeColumn = false
 let salesParsedSetCodeColumnAvailable = false
 let hasBackfilledSalesCards = false
 let hasEnsuredSalesCardIndex = false
+let hasEnsuredEnrichmentColumns = false
+let hasEnsuredEnrichmentIndexes = false
 let hasCheckedImportRunsTable = false
 let importRunsTableAvailable = false
+
+async function findExpansionByCode(setCode) {
+  if (!pool) return null
+  if (!setCode) return null
+
+  const trimmed = String(setCode || '').trim()
+  if (!trimmed) return null
+
+  const { rows } = await pool.query('SELECT id, name, era, set_code FROM public.expansions WHERE set_code = $1', [trimmed])
+  return rows[0] || null
+}
 
 async function ensureColumnExists(tableName, columnName, definition) {
   const { rows } = await pool.query(
@@ -462,6 +478,54 @@ async function ensureSalesParsedSetCodeColumnAvailable() {
   return salesParsedSetCodeColumnAvailable
 }
 
+async function ensureSalesEnrichmentColumnsAvailable() {
+  if (!pool) return false
+  if (hasEnsuredEnrichmentColumns) return hasEnsuredEnrichmentColumns
+  if (!salesTableAvailable) return false
+
+  try {
+    const results = await Promise.all([
+      ensureColumnExists('tradera_sales', 'match_confidence', "TEXT"),
+      ensureColumnExists('tradera_sales', 'match_method', "TEXT"),
+      ensureColumnExists('tradera_sales', 'parsed_name', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'parsed_card_number', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'parsed_set_hint', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'notes', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'updated_at', 'TIMESTAMPTZ NOT NULL DEFAULT NOW()')
+    ])
+
+    hasEnsuredEnrichmentColumns = results.every(Boolean)
+  } catch (error) {
+    console.error('Failed to ensure enrichment columns on tradera_sales', error)
+    hasEnsuredEnrichmentColumns = false
+  }
+
+  return hasEnsuredEnrichmentColumns
+}
+
+async function ensureSalesEnrichmentIndexes() {
+  if (!pool) return false
+  if (hasEnsuredEnrichmentIndexes) return hasEnsuredEnrichmentIndexes
+
+  const salesAvailable = await ensureSalesTableAvailable()
+  if (!salesAvailable) return false
+
+  try {
+    const results = await Promise.all([
+      ensureIndexExists('tradera_sales', 'idx_tradera_sales_card_id', '(card_id)'),
+      ensureIndexExists('tradera_sales', 'idx_tradera_sales_match_confidence', '(match_confidence)'),
+      ensureIndexExists('tradera_sales', 'idx_tradera_sales_updated_at', '(updated_at DESC)')
+    ])
+
+    hasEnsuredEnrichmentIndexes = results.every(Boolean)
+  } catch (error) {
+    console.error('Failed to ensure enrichment indexes on tradera_sales', error)
+    hasEnsuredEnrichmentIndexes = false
+  }
+
+  return hasEnsuredEnrichmentIndexes
+}
+
 async function ensureSalesCardIndexAvailable() {
   if (!pool || hasEnsuredSalesCardIndex) return hasEnsuredSalesCardIndex
 
@@ -487,8 +551,16 @@ async function ensureCardInfrastructure() {
   const cardColumnAvailable = await ensureSalesCardColumnAvailable()
   const parsedSetCodeAvailable = await ensureSalesParsedSetCodeColumnAvailable()
   const cardIndexAvailable = await ensureSalesCardIndexAvailable()
+  const enrichmentColumnsAvailable = await ensureSalesEnrichmentColumnsAvailable()
+  const enrichmentIndexesAvailable = await ensureSalesEnrichmentIndexes()
 
-  return Boolean(cardColumnAvailable && parsedSetCodeAvailable && cardIndexAvailable)
+  return Boolean(
+    cardColumnAvailable &&
+      parsedSetCodeAvailable &&
+      cardIndexAvailable &&
+      enrichmentColumnsAvailable &&
+      enrichmentIndexesAvailable
+  )
 }
 
 // --------------------
@@ -682,6 +754,47 @@ async function ensureMissingSalesAreLinkedToCards() {
 // --------------------
 // Query helpers
 // --------------------
+function normalizeMatchConfidence(value) {
+  if (!value) return null
+  const v = String(value).toLowerCase()
+  if (MATCH_CONFIDENCE_LEVELS.includes(v)) return v
+  if (v === 'unmatched') return 'unmatched'
+  return null
+}
+
+function normalizeMatchMethod(value) {
+  if (!value) return null
+  const v = String(value).toLowerCase()
+  const found = MATCH_METHODS.find((m) => m.toLowerCase() === v)
+  return found ?? null
+}
+
+function buildCardPreview(row) {
+  if (!row.card_id) return null
+  return {
+    id: row.card_id,
+    name: row.card_name,
+    set_code: row.card_set_code,
+    set_name: row.card_set_name,
+    card_number: row.card_number,
+    image_url: row.card_image_url
+  }
+}
+
+function buildAuctionWithCard(row) {
+  const card = buildCardPreview(row)
+  const {
+    card_name,
+    card_set_code,
+    card_set_name,
+    card_number,
+    card_image_url,
+    ...rest
+  } = row
+
+  return { ...rest, card }
+}
+
 function normalizeAuctionRow(row) {
   const attributes = row.attributes || {}
 
@@ -847,6 +960,45 @@ async function fetchCard(cardId) {
   return applyCardOverrides(result.rows[0])
 }
 
+async function createCard({ name, set_name, set_code = null, card_number = null, image_url = null, era = null }) {
+  if (!pool) return null
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return null
+
+  const trimmedName = String(name || '').trim()
+  const trimmedSetName = String(set_name || '').trim()
+  const trimmedSetCode = set_code ? String(set_code).trim() : null
+  const trimmedCardNumber = card_number ? String(card_number).trim() : null
+  const trimmedEra = era ? String(era).trim() : null
+  const safeImageUrl = image_url ? String(image_url).trim() : null
+
+  if (!trimmedName || !trimmedSetName) {
+    throw new Error('name and set_name are required')
+  }
+
+  const expansion = trimmedSetCode ? await findExpansionByCode(trimmedSetCode) : null
+
+  const insertSql = `
+    INSERT INTO public.cards (name, set_name, set_code, card_number, image_url, era, expansion_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING id
+  `
+
+  const { rows } = await pool.query(insertSql, [
+    trimmedName,
+    trimmedSetName,
+    trimmedSetCode,
+    trimmedCardNumber,
+    safeImageUrl,
+    trimmedEra || expansion?.era || null,
+    expansion?.id || null
+  ])
+
+  if (!rows.length) return null
+
+  return fetchCard(rows[0].id)
+}
+
 async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
   if (!pool) return []
   const ok = await ensureCardInfrastructure()
@@ -880,6 +1032,224 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
   `
   const result = await pool.query(query, [cardId, limit])
   return result.rows.map(normalizeAuctionRow)
+}
+
+async function fetchEnrichmentAuctions({
+  linkedOnly = false,
+  confidence = null,
+  q = null,
+  hasImage = null,
+  page = 1,
+  pageSize = 50,
+  startDate = null,
+  endDate = null
+} = {}) {
+  if (!pool) return { items: [], total: 0 }
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return { items: [], total: 0 }
+
+  const where = []
+  const params = []
+
+  if (linkedOnly) {
+    where.push('ts.card_id IS NOT NULL')
+  } else {
+    where.push('ts.card_id IS NULL')
+  }
+
+  const normalizedConfidence = normalizeMatchConfidence(confidence)
+  if (normalizedConfidence === 'unmatched') {
+    where.push('(ts.match_method = $1 OR (ts.card_id IS NULL AND ts.match_confidence IS NULL))')
+    params.push('unmatched')
+  } else if (normalizedConfidence) {
+    params.push(normalizedConfidence)
+    where.push(`ts.match_confidence = $${params.length}`)
+  }
+
+  if (q) {
+    params.push(`%${q}%`)
+    const idx = params.length
+    where.push(
+      `(ts.title ILIKE $${idx} OR ts.description ILIKE $${idx} OR ts.item_url ILIKE $${idx} OR ts.seller_alias ILIKE $${idx})`
+    )
+  }
+
+  if (hasImage === true) {
+    where.push('(ts.thumbnail_url IS NOT NULL OR (ts.image_urls IS NOT NULL AND jsonb_array_length(ts.image_urls) > 0))')
+  }
+
+  if (startDate) {
+    params.push(startDate)
+    where.push(`ts.end_date >= $${params.length}`)
+  }
+
+  if (endDate) {
+    params.push(endDate)
+    where.push(`ts.end_date <= $${params.length}`)
+  }
+
+  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const limit = Math.max(1, Math.min(Number(pageSize) || 50, 200))
+  const offset = Math.max(0, (Number(page) - 1 || 0) * limit)
+
+  const baseSelect = `
+    FROM public.tradera_sales ts
+    LEFT JOIN public.cards c ON c.id = ts.card_id
+    LEFT JOIN public.expansions e ON e.id = c.expansion_id
+    ${whereClause}
+  `
+
+  const { rows: countRows } = await pool.query(`SELECT COUNT(*)::int AS total ${baseSelect}`, params)
+  const total = countRows[0]?.total ?? 0
+
+  params.push(limit)
+  params.push(offset)
+  const itemsQuery = `
+    SELECT
+      ts.*, c.name AS card_name, c.card_number AS card_number, c.image_url AS card_image_url,
+      COALESCE(e.set_code, c.set_code) AS card_set_code,
+      COALESCE(e.name, c.set_name) AS card_set_name
+    ${baseSelect}
+    ORDER BY ts.end_date DESC, ts.updated_at DESC
+    LIMIT $${params.length - 1}
+    OFFSET $${params.length}
+  `
+
+  const { rows } = await pool.query(itemsQuery, params)
+  return { items: rows.map(buildAuctionWithCard), total, page: Number(page) || 1, pageSize: limit }
+}
+
+async function fetchEnrichmentAuctionById(id) {
+  if (!pool) return null
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return null
+
+  const { rows } = await pool.query(
+    `
+      SELECT
+        ts.*, c.name AS card_name, c.card_number AS card_number, c.image_url AS card_image_url,
+        COALESCE(e.set_code, c.set_code) AS card_set_code,
+        COALESCE(e.name, c.set_name) AS card_set_name
+      FROM public.tradera_sales ts
+      LEFT JOIN public.cards c ON c.id = ts.card_id
+      LEFT JOIN public.expansions e ON e.id = c.expansion_id
+      WHERE ts.item_id = $1
+      LIMIT 1
+    `,
+    [id]
+  )
+
+  if (!rows.length) return null
+  return buildAuctionWithCard(rows[0])
+}
+
+async function searchCards(q) {
+  if (!pool) return []
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return []
+
+  const term = `%${q}%`
+  const params = [term, term, term, term]
+
+  const { rows } = await pool.query(
+    `
+      SELECT c.id, c.name, COALESCE(e.set_code, c.set_code) AS set_code, COALESCE(e.name, c.set_name) AS set_name,
+             c.card_number, c.image_url
+      FROM public.cards c
+      LEFT JOIN public.expansions e ON e.id = c.expansion_id
+      WHERE c.name ILIKE $1
+        OR c.card_number ILIKE $2
+        OR COALESCE(e.set_name, c.set_name) ILIKE $3
+        OR COALESCE(e.set_code, c.set_code) ILIKE $4
+      ORDER BY c.name ASC
+      LIMIT 50
+    `,
+    params
+  )
+
+  return rows
+}
+
+async function tryAutoMatchAuction(client, row) {
+  const parsed = parseAuctionTitle(`${row.title || ''} ${row.description || ''}`)
+  const parsedNumber =
+    parsed.parsed_number_text || canonicalNumberText(parsed.parsed_number_text, parsed.parsed_card_no, parsed.parsed_total_in_set)
+  const parsedSet = parsed.setCode || parsed.parsed_set_guess
+  const parsedName = parsed.parsed_card_name || parsed.parsed_name || null
+
+  const updateFields = {
+    parsed_name: parsedName,
+    parsed_card_number: parsedNumber,
+    parsed_set_hint: parsedSet,
+    match_method: 'unmatched',
+    match_confidence: null,
+    card_id: null
+  }
+
+  const params = []
+  let candidate = null
+  let matchConfidence = null
+  let matchMethod = null
+
+  if (parsedNumber && parsedSet) {
+    params.push(parsedNumber, parsedSet)
+    const { rows } = await client.query(
+      `
+        SELECT c.id, c.name, COALESCE(e.set_code, c.set_code) AS set_code
+        FROM public.cards c
+        LEFT JOIN public.expansions e ON e.id = c.expansion_id
+        WHERE c.card_number ILIKE $1 AND (COALESCE(e.set_code, c.set_code) ILIKE $2 OR COALESCE(e.name, c.set_name) ILIKE $2)
+        LIMIT 1
+      `,
+      params
+    )
+
+    if (rows[0]) {
+      candidate = rows[0]
+      matchConfidence = 'high'
+      matchMethod = 'auto:number+set'
+    }
+  }
+
+  if (!candidate && parsedNumber && parsedName) {
+    const { rows } = await client.query(
+      `
+        SELECT id, name FROM public.cards
+        WHERE card_number ILIKE $1 AND name ILIKE $2
+        LIMIT 1
+      `,
+      [parsedNumber, `%${parsedName}%`]
+    )
+    if (rows[0]) {
+      candidate = rows[0]
+      matchConfidence = 'medium'
+      matchMethod = 'auto:number+name+era'
+    }
+  }
+
+  if (!candidate && parsedName) {
+    const { rows } = await client.query(
+      `
+        SELECT id, name FROM public.cards
+        WHERE name ILIKE $1
+        LIMIT 1
+      `,
+      [`%${parsedName}%`]
+    )
+    if (rows[0]) {
+      candidate = rows[0]
+      matchConfidence = 'low'
+      matchMethod = 'auto:number+name+era'
+    }
+  }
+
+  if (candidate) {
+    updateFields.card_id = candidate.id
+    updateFields.match_confidence = matchConfidence
+    updateFields.match_method = matchMethod
+  }
+
+  return updateFields
 }
 
 function runImporterScript() {
@@ -1187,6 +1557,233 @@ app.post('/api/import/run', async (_req, res) => {
 // --------------------
 // Enrichment
 // --------------------
+app.get('/api/enrichment/auctions', async (req, res) => {
+  try {
+    const linked = req.query.linked === '1'
+    const confidence = req.query.confidence ? String(req.query.confidence) : null
+    const q = req.query.q ? String(req.query.q) : null
+    const hasImage = req.query.hasImage === '1'
+    const page = Number(req.query.page || 1)
+    const pageSize = Number(req.query.pageSize || 50)
+    const startDate = req.query.startDate ? String(req.query.startDate) : null
+    const endDate = req.query.endDate ? String(req.query.endDate) : null
+
+    const data = await fetchEnrichmentAuctions({
+      linkedOnly: linked,
+      confidence,
+      q,
+      hasImage,
+      page,
+      pageSize,
+      startDate,
+      endDate
+    })
+
+    res.json(data)
+  } catch (error) {
+    console.error('Failed to fetch enrichment auctions', error)
+    res.status(500).json({ error: 'Failed to load enrichment auctions' })
+  }
+})
+
+app.get('/api/enrichment/auctions/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid auction id' })
+
+    const auction = await fetchEnrichmentAuctionById(id)
+    if (!auction) return res.status(404).json({ error: 'Auction not found' })
+
+    res.json(auction)
+  } catch (error) {
+    console.error('Failed to fetch enrichment auction', error)
+    res.status(500).json({ error: 'Failed to load auction' })
+  }
+})
+
+app.get('/api/enrichment/cards/search', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim()
+    if (!q) return res.json([])
+
+    const cards = await searchCards(q)
+    res.json(cards)
+  } catch (error) {
+    console.error('Failed to search cards', error)
+    res.status(500).json({ error: 'Failed to search cards' })
+  }
+})
+
+app.post('/api/enrichment/cards', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  try {
+    const payload = {
+      name: req.body?.name,
+      set_name: req.body?.set_name,
+      set_code: req.body?.set_code,
+      card_number: req.body?.card_number,
+      image_url: req.body?.image_url,
+      era: req.body?.era
+    }
+
+    const card = await createCard(payload)
+    if (!card) return res.status(400).json({ error: 'Failed to create card' })
+
+    console.log(`[enrichment] ${new Date().toISOString()} created card ${card.id} (${card.name} / ${card.set_name})`)
+    res.status(201).json(card)
+  } catch (error) {
+    console.error('Failed to create card', error)
+    res.status(500).json({ error: 'Failed to create card' })
+  }
+})
+
+app.post('/api/enrichment/auctions/:id/link', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  try {
+    const id = Number(req.params.id)
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid auction id' })
+
+    const cardId = Number(req.body?.card_id)
+    if (!Number.isFinite(cardId)) return res.status(400).json({ error: 'Invalid card id' })
+
+    const { rows: cardExists } = await pool.query('SELECT 1 FROM public.cards WHERE id = $1', [cardId])
+    if (!cardExists.length) return res.status(400).json({ error: 'Card does not exist' })
+
+    const confidence = normalizeMatchConfidence(req.body?.match_confidence) || 'medium'
+    const method = normalizeMatchMethod(req.body?.match_method) || 'manual'
+    const notes = req.body?.notes ?? null
+
+    const { rows } = await pool.query(
+      `
+        UPDATE public.tradera_sales
+        SET card_id = $2,
+            match_confidence = $3,
+            match_method = $4,
+            notes = COALESCE($5, notes),
+            updated_at = NOW()
+        WHERE item_id = $1
+        RETURNING *
+      `,
+      [id, cardId, confidence, method, notes]
+    )
+
+    if (!rows.length) return res.status(404).json({ error: 'Auction not found' })
+
+    console.log(`[enrichment] ${new Date().toISOString()} linked auction ${id} -> card ${cardId} (${method}/${confidence})`)
+    const auction = await fetchEnrichmentAuctionById(id)
+    res.json(auction)
+  } catch (error) {
+    console.error('Failed to link auction', error)
+    res.status(500).json({ error: 'Failed to link auction' })
+  }
+})
+
+app.post('/api/enrichment/auctions/:id/unlink', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  try {
+    const id = Number(req.params.id)
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid auction id' })
+
+    const notes = req.body?.notes ?? null
+
+    const { rows } = await pool.query(
+      `
+        UPDATE public.tradera_sales
+        SET card_id = NULL,
+            match_confidence = NULL,
+            match_method = 'unmatched',
+            notes = COALESCE($2, notes),
+            updated_at = NOW()
+        WHERE item_id = $1
+        RETURNING *
+      `,
+      [id, notes]
+    )
+
+    if (!rows.length) return res.status(404).json({ error: 'Auction not found' })
+
+    console.log(`[enrichment] ${new Date().toISOString()} unlinked auction ${id}`)
+    const auction = await fetchEnrichmentAuctionById(id)
+    res.json(auction)
+  } catch (error) {
+    console.error('Failed to unlink auction', error)
+    res.status(500).json({ error: 'Failed to unlink auction' })
+  }
+})
+
+app.post('/api/enrichment/auctions/reprocess', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return res.status(500).json({ error: 'Card infrastructure unavailable' })
+
+  const limit = Math.min(Math.max(Number(req.body?.limit) || 200, 1), 500)
+  const onlyUnmatched = req.body?.onlyUnmatched !== false
+
+  const client = await pool.connect()
+  try {
+    const { rows } = await client.query(
+      `
+        SELECT item_id, title, description
+        FROM public.tradera_sales
+        WHERE card_id IS NULL ${onlyUnmatched ? "AND (match_method IS NULL OR match_method = 'unmatched')" : ''}
+        ORDER BY updated_at DESC NULLS LAST
+        LIMIT $1
+      `,
+      [limit]
+    )
+
+    let linked = 0
+    let unmatched = 0
+    let reviewed = 0
+
+    for (const row of rows) {
+      const updates = await tryAutoMatchAuction(client, row)
+
+      await client.query(
+        `
+          UPDATE public.tradera_sales
+          SET card_id = $2,
+              match_confidence = $3,
+              match_method = $4,
+              parsed_name = COALESCE($5, parsed_name),
+              parsed_card_number = COALESCE($6, parsed_card_number),
+              parsed_set_hint = COALESCE($7, parsed_set_hint),
+              updated_at = NOW()
+          WHERE item_id = $1
+        `,
+        [
+          row.item_id,
+          updates.card_id,
+          updates.match_confidence,
+          updates.match_method,
+          updates.parsed_name,
+          updates.parsed_card_number,
+          updates.parsed_set_hint
+        ]
+      )
+
+      if (updates.card_id) linked++
+      else if (updates.parsed_name || updates.parsed_card_number) reviewed++
+      else unmatched++
+    }
+
+    console.log(
+      `[enrichment] ${new Date().toISOString()} reprocessed ${rows.length} auctions -> linked:${linked} review:${reviewed} unmatched:${unmatched}`
+    )
+
+    res.json({ processed: rows.length, linked, reviewed, unmatched })
+  } catch (error) {
+    console.error('Failed to reprocess auctions', error)
+    res.status(500).json({ error: 'Failed to reprocess auctions' })
+  } finally {
+    client.release()
+  }
+})
+
 app.post('/api/enrichment/run', async (req, res) => {
   if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
 

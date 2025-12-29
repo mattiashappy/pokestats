@@ -1,5 +1,6 @@
 // src/lib/api.ts
 import type { AuctionRecord, CardListItem, CardResponse, ExpansionSummary } from '../types'
+import type { EnrichmentAuction, EnrichmentListResponse } from '../types'
 
 export interface AuctionDiagnosticResult {
   auctions: AuctionRecord[]
@@ -11,6 +12,95 @@ export async function fetchAuctions(): Promise<AuctionRecord[]> {
   const response = await fetch('/api/sales')
   if (!response.ok) throw new Error('Failed to fetch auctions')
   return response.json()
+}
+
+export async function fetchEnrichmentAuctions(params: {
+  linked?: boolean
+  confidence?: string | null
+  q?: string | null
+  hasImage?: boolean
+  page?: number
+  pageSize?: number
+  startDate?: string | null
+  endDate?: string | null
+}): Promise<EnrichmentListResponse> {
+  const search = new URLSearchParams()
+  if (params.linked) search.set('linked', '1')
+  if (!params.linked) search.set('linked', '0')
+  if (params.confidence) search.set('confidence', params.confidence)
+  if (params.q) search.set('q', params.q)
+  if (params.hasImage) search.set('hasImage', '1')
+  if (params.page) search.set('page', String(params.page))
+  if (params.pageSize) search.set('pageSize', String(params.pageSize))
+  if (params.startDate) search.set('startDate', params.startDate)
+  if (params.endDate) search.set('endDate', params.endDate)
+
+  const response = await fetch(`/api/enrichment/auctions?${search.toString()}`)
+  if (!response.ok) throw new Error('Failed to fetch enrichment auctions')
+  return response.json()
+}
+
+export async function fetchEnrichmentAuction(id: number): Promise<EnrichmentAuction> {
+  const response = await fetch(`/api/enrichment/auctions/${id}`)
+  if (!response.ok) throw new Error('Failed to fetch auction')
+  return response.json()
+}
+
+export async function searchEnrichmentCards(q: string) {
+  const response = await fetch(`/api/enrichment/cards/search?q=${encodeURIComponent(q)}`)
+  if (!response.ok) throw new Error('Failed to search cards')
+  return response.json() as Promise<Array<{ id: number; name: string; set_code: string | null; set_name: string | null; card_number: string | null; image_url: string | null }>>
+}
+
+export async function createEnrichmentCard(payload: {
+  name: string
+  set_name: string
+  set_code?: string | null
+  card_number?: string | null
+  image_url?: string | null
+  era?: string | null
+}) {
+  const response = await fetch('/api/enrichment/cards', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+
+  if (!response.ok) throw new Error('Failed to create card')
+  return response.json() as Promise<{ id: number; name: string; set_name: string | null; set_code: string | null; card_number: string | null; image_url: string | null }>
+}
+
+export async function linkEnrichmentAuction(
+  id: number,
+  payload: { card_id: number; match_confidence?: string; match_method?: string; notes?: string | null }
+): Promise<EnrichmentAuction> {
+  const response = await fetch(`/api/enrichment/auctions/${id}/link`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  if (!response.ok) throw new Error('Failed to link auction')
+  return response.json()
+}
+
+export async function unlinkEnrichmentAuction(id: number, notes?: string | null): Promise<EnrichmentAuction> {
+  const response = await fetch(`/api/enrichment/auctions/${id}/unlink`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notes: notes ?? null })
+  })
+  if (!response.ok) throw new Error('Failed to unlink auction')
+  return response.json()
+}
+
+export async function reprocessEnrichmentAuctions(limit = 200, onlyUnmatched = true) {
+  const response = await fetch('/api/enrichment/auctions/reprocess', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ limit, onlyUnmatched })
+  })
+  if (!response.ok) throw new Error('Failed to reprocess auctions')
+  return response.json() as Promise<{ processed: number; linked: number; reviewed: number; unmatched: number }>
 }
 
 export async function fetchAuctionDiagnostics(): Promise<AuctionDiagnosticResult> {
