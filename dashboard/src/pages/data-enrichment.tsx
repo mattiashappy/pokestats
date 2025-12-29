@@ -146,7 +146,9 @@ function AuctionDetail({ auction, onSelectCard, selectedCardId }: AuctionDetailP
       </div>
 
       <div>
-        <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">Search card to link</label>
+        <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Search card to link
+        </label>
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
@@ -205,7 +207,11 @@ function AuctionDetail({ auction, onSelectCard, selectedCardId }: AuctionDetailP
           {showCreateForm ? (
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
               <Input placeholder="Card name" value={newCardName} onChange={(e) => setNewCardName(e.target.value)} />
-              <Input placeholder="Set name" value={newCardSetName} onChange={(e) => setNewCardSetName(e.target.value)} />
+              <Input
+                placeholder="Set name"
+                value={newCardSetName}
+                onChange={(e) => setNewCardSetName(e.target.value)}
+              />
               <Input
                 placeholder="Set code (optional)"
                 value={newCardSetCode}
@@ -226,11 +232,7 @@ function AuctionDetail({ auction, onSelectCard, selectedCardId }: AuctionDetailP
                 disabled={createCard.isPending || !newCardName || !newCardSetName}
                 variant="secondary"
               >
-                {createCard.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Plus className="mr-2 h-4 w-4" />
-                )}
+                {createCard.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
                 Create card
               </Button>
             </div>
@@ -380,15 +382,16 @@ export function DataEnrichmentPage(): JSX.Element {
                 <input
                   type="checkbox"
                   checked={filters.linked === false}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, linked: e.target.checked ? false : null, page: 1 }))
-                  }
+                  onChange={(e) => setFilters((f) => ({ ...f, linked: e.target.checked ? false : null, page: 1 }))}
                   className="h-4 w-4"
                 />
                 Unlinked only
               </label>
 
-              <Select value={filters.confidence} onChange={(e) => setFilters((f) => ({ ...f, confidence: e.target.value, page: 1 }))}>
+              <Select
+                value={filters.confidence}
+                onChange={(e) => setFilters((f) => ({ ...f, confidence: e.target.value, page: 1 }))}
+              >
                 <option value="">Any confidence</option>
                 <option value="high">High</option>
                 <option value="medium">Medium</option>
@@ -441,7 +444,11 @@ export function DataEnrichmentPage(): JSX.Element {
                       <TableRow key={auction.item_id} className="align-top">
                         <TableCell className="w-20">
                           {auction.thumbnail_url ? (
-                            <img src={auction.thumbnail_url} alt={auction.title ?? ''} className="h-16 w-16 rounded object-cover" />
+                            <img
+                              src={auction.thumbnail_url}
+                              alt={auction.title ?? ''}
+                              className="h-16 w-16 rounded object-cover"
+                            />
                           ) : (
                             <div className="flex h-16 w-16 items-center justify-center rounded bg-slate-100 text-slate-400">
                               <ImageIcon className="h-4 w-4" />
@@ -449,7 +456,9 @@ export function DataEnrichmentPage(): JSX.Element {
                           )}
                         </TableCell>
                         <TableCell>
-                          <div className="font-medium text-slate-900 dark:text-slate-100">{auction.title ?? 'Untitled'}</div>
+                          <div className="font-medium text-slate-900 dark:text-slate-100">
+                            {auction.title ?? 'Untitled'}
+                          </div>
                           <div className="text-xs text-slate-500">{auction.item_id}</div>
                         </TableCell>
                         <TableCell className="text-sm text-slate-600">{auction.attributes?.pokemon_era?.[0] ?? '—'}</TableCell>
@@ -553,11 +562,18 @@ export function DataEnrichmentPage(): JSX.Element {
                   <div className="space-y-3">
                     <AuctionDetail auction={auction} onSelectCard={setSelectedCardId} selectedCardId={selectedCardId} />
                     <div className="flex gap-2">
-                      <Button onClick={() => handleLink(auction.item_id, selectedCardId ?? 0)} disabled={!selectedCardId || linkMutation.isPending}>
+                      <Button
+                        onClick={() => handleLink(auction.item_id, selectedCardId ?? 0)}
+                        disabled={!selectedCardId || linkMutation.isPending}
+                      >
                         {linkMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
                         Link selected
                       </Button>
-                      <Button variant="secondary" onClick={() => unlinkMutation.mutate(auction.item_id)} disabled={unlinkMutation.isPending}>
+                      <Button
+                        variant="secondary"
+                        onClick={() => unlinkMutation.mutate(auction.item_id)}
+                        disabled={unlinkMutation.isPending}
+                      >
                         <Unlink2 className="mr-2 h-4 w-4" />
                         Mark unmatched
                       </Button>
@@ -577,7 +593,9 @@ export function DataEnrichmentPage(): JSX.Element {
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500">Auction detail</p>
-                <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">{selectedAuction.data?.title ?? 'Untitled'}</p>
+                <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  {selectedAuction.data?.title ?? 'Untitled'}
+                </p>
               </div>
               <Button
                 variant="secondary"
@@ -596,7 +614,11 @@ export function DataEnrichmentPage(): JSX.Element {
                 {selectedAuction.isFetching ? (
                   <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
                 ) : (
-                  <AuctionDetail auction={selectedAuction.data ?? null} onSelectCard={setSelectedCardId} selectedCardId={selectedCardId} />
+                  <AuctionDetail
+                    auction={selectedAuction.data ?? null}
+                    onSelectCard={setSelectedCardId}
+                    selectedCardId={selectedCardId}
+                  />
                 )}
               </div>
               <div className="space-y-3">
