@@ -103,7 +103,7 @@ def require_env(name: str) -> str:
     return v.strip()
 
 
-def build_envelope(app_id: str, app_key: str, page_number: int) -> str:
+def build_envelope(app_id: str, app_key: str, page_number: int, order_by: str) -> str:
     item_status_xml = f"<ItemStatus>{ITEM_STATUS}</ItemStatus>" if ITEM_STATUS else ""
     item_type_xml = f"<ItemType>{ITEM_TYPE}</ItemType>" if ITEM_TYPE else ""
     bids_min_xml = f"<BidsMinimum>{BIDS_MINIMUM}</BidsMinimum>" if BIDS_MINIMUM is not None else ""
@@ -123,7 +123,7 @@ def build_envelope(app_id: str, app_key: str, page_number: int) -> str:
         {item_type_xml}
         {item_status_xml}
         {bids_min_xml}
-        <OrderBy>{ORDER_BY}</OrderBy>
+        <OrderBy>{order_by}</OrderBy>
         <ItemsPerPage>{ITEMS_PER_PAGE}</ItemsPerPage>
         <PageNumber>{page_number}</PageNumber>
       </request>
@@ -500,10 +500,10 @@ def main() -> None:
     app_key = require_env("TRADERA_APP_KEY")
     db_url = require_env("DATABASE_URL")
 
-    global ORDER_BY
-    if ORDER_BY != "EndDateDescending":
+    order_by = ORDER_BY
+    if order_by != "EndDateDescending":
         log("REFRESH requires ORDER_BY=EndDateDescending for early-stop. Overriding.")
-        ORDER_BY = "EndDateDescending"
+        order_by = "EndDateDescending"
 
     log(
         f"REFRESH(50) category={CATEGORY_ID} items_per_page={ITEMS_PER_PAGE} "
@@ -538,7 +538,7 @@ def main() -> None:
             while requests_used < MAX_REQUESTS:
                 log(f"Fetching page {page}... ({requests_used+1}/{MAX_REQUESTS})")
 
-                envelope = build_envelope(app_id, app_key, page)
+                envelope = build_envelope(app_id, app_key, page, order_by)
                 xml_resp = post_soap(session, envelope)
                 requests_used += 1
 

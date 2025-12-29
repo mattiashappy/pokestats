@@ -830,7 +830,7 @@ async function fetchExpansionSummaries() {
         e.language,
         e.set_total,
         e.release_date,
-        e.image_url,
+        NULL::text AS image_url,
         COUNT(DISTINCT c.id)::int AS cards_total,
         COUNT(ts.item_id)::int AS linked_auctions
       FROM public.expansions e
