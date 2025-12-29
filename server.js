@@ -214,6 +214,17 @@ let hasEnsuredEnrichmentIndexes = false
 let hasCheckedImportRunsTable = false
 let importRunsTableAvailable = false
 
+async function findExpansionByCode(setCode) {
+  if (!pool) return null
+  if (!setCode) return null
+
+  const trimmed = String(setCode || '').trim()
+  if (!trimmed) return null
+
+  const { rows } = await pool.query('SELECT id, name, era, set_code FROM public.expansions WHERE set_code = $1', [trimmed])
+  return rows[0] || null
+}
+
 async function ensureColumnExists(tableName, columnName, definition) {
   const { rows } = await pool.query(
     `
@@ -330,7 +341,6 @@ async function ensureExpansionsTableAvailable() {
     `)
 
     const hasImageUrl = await ensureColumnExists('expansions', 'image_url', 'TEXT')
-
     const hasEraIndex = await ensureIndexExists('expansions', 'idx_expansions_era', '(era)')
     expansionsTableAvailable = Boolean(hasEraIndex && hasImageUrl)
   } catch (error) {
@@ -474,8 +484,8 @@ async function ensureSalesEnrichmentColumnsAvailable() {
 
   try {
     const results = await Promise.all([
-      ensureColumnExists('tradera_sales', 'match_confidence', "TEXT"),
-      ensureColumnExists('tradera_sales', 'match_method', "TEXT"),
+      ensureColumnExists('tradera_sales', 'match_confidence', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'match_method', 'TEXT'),
       ensureColumnExists('tradera_sales', 'parsed_name', 'TEXT'),
       ensureColumnExists('tradera_sales', 'parsed_card_number', 'TEXT'),
       ensureColumnExists('tradera_sales', 'parsed_set_hint', 'TEXT'),
@@ -521,11 +531,7 @@ async function ensureSalesCardIndexAvailable() {
   const salesAvailable = await ensureSalesTableAvailable()
   if (!salesAvailable) return false
 
-  const indexReady = await ensureIndexExists(
-    'tradera_sales',
-    'idx_tradera_sales_card_id_end_date',
-    '(card_id, end_date DESC)'
-  )
+  const indexReady = await ensureIndexExists('tradera_sales', 'idx_tradera_sales_card_id_end_date', '(card_id, end_date DESC)')
 
   hasEnsuredSalesCardIndex = indexReady
   return indexReady
@@ -682,8 +688,6 @@ function extractCardPayload(row) {
 }
 
 // NOTE: this can create “unknown” cards from Tradera filters.
-// Keep for now if you want enrichment to always have a card_id,
-// but you may later restrict this behavior.
 async function ensureMissingSalesAreLinkedToCards() {
   if (!pool || hasBackfilledSalesCards) return
 
@@ -870,7 +874,6 @@ async function fetchAuctionsFromDatabase(filters = {}) {
     offset = 0
   } = filters
 
-  // use let so we can append limit/offset
   let query = `
     SELECT
       ts.item_id,
@@ -949,6 +952,42 @@ async function fetchCard(cardId) {
   return applyCardOverrides(result.rows[0])
 }
 
+async function createCard({ name, set_name, set_code = null, card_number = null, image_url = null, era = null }) {
+  if (!pool) return null
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return null
+
+  const trimmedName = String(name || '').trim()
+  const trimmedSetName = String(set_name || '').trim()
+  const trimmedSetCode = set_code ? String(set_code).trim() : null
+  const trimmedCardNumber = card_number ? String(card_number).trim() : null
+  const trimmedEra = era ? String(era).trim() : null
+  const safeImageUrl = image_url ? String(image_url).trim() : null
+
+  if (!trimmedName || !trimmedSetName) throw new Error('name and set_name are required')
+
+  const expansion = trimmedSetCode ? await findExpansionByCode(trimmedSetCode) : null
+
+  const insertSql = `
+    INSERT INTO public.cards (name, set_name, set_code, card_number, image_url, era, expansion_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING id
+  `
+
+  const { rows } = await pool.query(insertSql, [
+    trimmedName,
+    trimmedSetName,
+    trimmedSetCode,
+    trimmedCardNumber,
+    safeImageUrl,
+    trimmedEra || expansion?.era || null,
+    expansion?.id || null
+  ])
+
+  if (!rows.length) return null
+  return fetchCard(rows[0].id)
+}
+
 async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
   if (!pool) return []
   const ok = await ensureCardInfrastructure()
@@ -994,22 +1033,20 @@ async function fetchEnrichmentAuctions({
   startDate = null,
   endDate = null
 } = {}) {
-  if (!pool) return { items: [], total: 0 }
+  if (!pool) return { items: [], total: 0, page: 1, pageSize: 50 }
   const ok = await ensureCardInfrastructure()
-  if (!ok) return { items: [], total: 0 }
+  if (!ok) return { items: [], total: 0, page: 1, pageSize: 50 }
 
   const where = []
   const params = []
 
-  if (linkedOnly) {
-    where.push('ts.card_id IS NOT NULL')
-  } else {
-    where.push('ts.card_id IS NULL')
-  }
+  // IMPORTANT: linkedOnly means "only linked". Otherwise show "only unlinked".
+  if (linkedOnly) where.push('ts.card_id IS NOT NULL')
+  else where.push('ts.card_id IS NULL')
 
   const normalizedConfidence = normalizeMatchConfidence(confidence)
   if (normalizedConfidence === 'unmatched') {
-    where.push('(ts.match_method = $1 OR (ts.card_id IS NULL AND ts.match_confidence IS NULL))')
+    where.push(`(ts.match_method = $1 OR (ts.card_id IS NULL AND ts.match_confidence IS NULL))`)
     params.push('unmatched')
   } else if (normalizedConfidence) {
     params.push(normalizedConfidence)
@@ -1019,9 +1056,7 @@ async function fetchEnrichmentAuctions({
   if (q) {
     params.push(`%${q}%`)
     const idx = params.length
-    where.push(
-      `(ts.title ILIKE $${idx} OR ts.description ILIKE $${idx} OR ts.item_url ILIKE $${idx} OR ts.seller_alias ILIKE $${idx})`
-    )
+    where.push(`(ts.title ILIKE $${idx} OR ts.description ILIKE $${idx} OR ts.item_url ILIKE $${idx} OR ts.seller_alias ILIKE $${idx})`)
   }
 
   if (hasImage === true) {
@@ -1054,9 +1089,13 @@ async function fetchEnrichmentAuctions({
 
   params.push(limit)
   params.push(offset)
+
   const itemsQuery = `
     SELECT
-      ts.*, c.name AS card_name, c.card_number AS card_number, c.image_url AS card_image_url,
+      ts.*,
+      c.name AS card_name,
+      c.card_number AS card_number,
+      c.image_url AS card_image_url,
       COALESCE(e.set_code, c.set_code) AS card_set_code,
       COALESCE(e.name, c.set_name) AS card_set_name
     ${baseSelect}
@@ -1077,7 +1116,10 @@ async function fetchEnrichmentAuctionById(id) {
   const { rows } = await pool.query(
     `
       SELECT
-        ts.*, c.name AS card_name, c.card_number AS card_number, c.image_url AS card_image_url,
+        ts.*,
+        c.name AS card_name,
+        c.card_number AS card_number,
+        c.image_url AS card_image_url,
         COALESCE(e.set_code, c.set_code) AS card_set_code,
         COALESCE(e.name, c.set_name) AS card_set_name
       FROM public.tradera_sales ts
@@ -1103,13 +1145,18 @@ async function searchCards(q) {
 
   const { rows } = await pool.query(
     `
-      SELECT c.id, c.name, COALESCE(e.set_code, c.set_code) AS set_code, COALESCE(e.name, c.set_name) AS set_name,
-             c.card_number, c.image_url
+      SELECT
+        c.id,
+        c.name,
+        COALESCE(e.set_code, c.set_code) AS set_code,
+        COALESCE(e.name, c.set_name) AS set_name,
+        c.card_number,
+        c.image_url
       FROM public.cards c
       LEFT JOIN public.expansions e ON e.id = c.expansion_id
       WHERE c.name ILIKE $1
         OR c.card_number ILIKE $2
-        OR COALESCE(e.set_name, c.set_name) ILIKE $3
+        OR COALESCE(e.name, c.set_name) ILIKE $3
         OR COALESCE(e.set_code, c.set_code) ILIKE $4
       ORDER BY c.name ASC
       LIMIT 50
@@ -1123,7 +1170,8 @@ async function searchCards(q) {
 async function tryAutoMatchAuction(client, row) {
   const parsed = parseAuctionTitle(`${row.title || ''} ${row.description || ''}`)
   const parsedNumber =
-    parsed.parsed_number_text || canonicalNumberText(parsed.parsed_number_text, parsed.parsed_card_no, parsed.parsed_total_in_set)
+    parsed.parsed_number_text ||
+    canonicalNumberText(parsed.parsed_number_text, parsed.parsed_card_no, parsed.parsed_total_in_set)
   const parsedSet = parsed.setCode || parsed.parsed_set_guess
   const parsedName = parsed.parsed_card_name || parsed.parsed_name || null
 
@@ -1136,22 +1184,22 @@ async function tryAutoMatchAuction(client, row) {
     card_id: null
   }
 
-  const params = []
   let candidate = null
   let matchConfidence = null
   let matchMethod = null
 
+  // 1) strong: number + set
   if (parsedNumber && parsedSet) {
-    params.push(parsedNumber, parsedSet)
     const { rows } = await client.query(
       `
         SELECT c.id, c.name, COALESCE(e.set_code, c.set_code) AS set_code
         FROM public.cards c
         LEFT JOIN public.expansions e ON e.id = c.expansion_id
-        WHERE c.card_number ILIKE $1 AND (COALESCE(e.set_code, c.set_code) ILIKE $2 OR COALESCE(e.name, c.set_name) ILIKE $2)
+        WHERE c.card_number ILIKE $1
+          AND (COALESCE(e.set_code, c.set_code) ILIKE $2 OR COALESCE(e.name, c.set_name) ILIKE $2)
         LIMIT 1
       `,
-      params
+      [parsedNumber, `%${parsedSet}%`]
     )
 
     if (rows[0]) {
@@ -1161,11 +1209,14 @@ async function tryAutoMatchAuction(client, row) {
     }
   }
 
+  // 2) medium: number + name
   if (!candidate && parsedNumber && parsedName) {
     const { rows } = await client.query(
       `
-        SELECT id, name FROM public.cards
-        WHERE card_number ILIKE $1 AND name ILIKE $2
+        SELECT id, name
+        FROM public.cards
+        WHERE card_number ILIKE $1
+          AND name ILIKE $2
         LIMIT 1
       `,
       [parsedNumber, `%${parsedName}%`]
@@ -1177,10 +1228,12 @@ async function tryAutoMatchAuction(client, row) {
     }
   }
 
+  // 3) low: name only
   if (!candidate && parsedName) {
     const { rows } = await client.query(
       `
-        SELECT id, name FROM public.cards
+        SELECT id, name
+        FROM public.cards
         WHERE name ILIKE $1
         LIMIT 1
       `,
@@ -1292,7 +1345,7 @@ async function fetchExpansionSummaries() {
         e.language,
         e.set_total,
         e.release_date,
-        NULL::text AS image_url,
+        e.image_url,
         COUNT(DISTINCT c.id)::int AS cards_total,
         COUNT(ts.item_id)::int AS linked_auctions
       FROM public.expansions e
@@ -1386,7 +1439,7 @@ app.get('/api/expansions/:setCode/cards', async (req, res) => {
 })
 
 /**
- * Optional alias if you ever want numeric ID routes:
+ * Optional alias:
  * GET /api/expansions/id/:id/cards
  */
 app.get('/api/expansions/id/:id/cards', async (req, res) => {
@@ -1561,6 +1614,34 @@ app.get('/api/enrichment/cards/search', async (req, res) => {
   } catch (error) {
     console.error('Failed to search cards', error)
     res.status(500).json({ error: 'Failed to search cards' })
+  }
+})
+
+/**
+ * ✅ Kept from Codex branch (used by the UI “Add new card manually”)
+ * POST /api/enrichment/cards
+ */
+app.post('/api/enrichment/cards', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  try {
+    const payload = {
+      name: req.body?.name,
+      set_name: req.body?.set_name,
+      set_code: req.body?.set_code,
+      card_number: req.body?.card_number,
+      image_url: req.body?.image_url,
+      era: req.body?.era
+    }
+
+    const card = await createCard(payload)
+    if (!card) return res.status(400).json({ error: 'Failed to create card' })
+
+    console.log(`[enrichment] ${new Date().toISOString()} created card ${card.id} (${card.name} / ${card.set_name})`)
+    res.status(201).json(card)
+  } catch (error) {
+    console.error('Failed to create card', error)
+    res.status(500).json({ error: 'Failed to create card' })
   }
 })
 
@@ -1840,6 +1921,8 @@ app.post('/api/enrichment/run', async (req, res) => {
 })
 
 app.get('/api/enrichment/summary', async (_req, res) => {
+  if (!pool) return res.status(500).json({ available: false, error: 'DATABASE_URL not set' })
+
   try {
     const { rows } = await pool.query(`
       SELECT
@@ -1863,7 +1946,9 @@ app.get('/api/enrichment/summary', async (_req, res) => {
 })
 
 app.get('/api/enrichment/unmatched', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
   const limit = Number(req.query.limit ?? 25)
+
   const { rows } = await pool.query(
     `
       SELECT item_id, end_date, title, parsed_set_guess, parsed_number_text, enrich_status, enrich_confidence

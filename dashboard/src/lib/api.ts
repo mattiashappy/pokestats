@@ -25,8 +25,11 @@ export async function fetchEnrichmentAuctions(params: {
   endDate?: string | null
 }): Promise<EnrichmentListResponse> {
   const search = new URLSearchParams()
-  if (params.linked) search.set('linked', '1')
-  if (!params.linked) search.set('linked', '0')
+
+  // Only set linked if explicitly provided
+  if (params.linked === true) search.set('linked', '1')
+  if (params.linked === false) search.set('linked', '0')
+
   if (params.confidence) search.set('confidence', params.confidence)
   if (params.q) search.set('q', params.q)
   if (params.hasImage) search.set('hasImage', '1')
@@ -35,7 +38,8 @@ export async function fetchEnrichmentAuctions(params: {
   if (params.startDate) search.set('startDate', params.startDate)
   if (params.endDate) search.set('endDate', params.endDate)
 
-  const response = await fetch(`/api/enrichment/auctions?${search.toString()}`)
+  const qs = search.toString()
+  const response = await fetch(`/api/enrichment/auctions${qs ? `?${qs}` : ''}`)
   if (!response.ok) throw new Error('Failed to fetch enrichment auctions')
   return response.json()
 }
@@ -49,7 +53,41 @@ export async function fetchEnrichmentAuction(id: number): Promise<EnrichmentAuct
 export async function searchEnrichmentCards(q: string) {
   const response = await fetch(`/api/enrichment/cards/search?q=${encodeURIComponent(q)}`)
   if (!response.ok) throw new Error('Failed to search cards')
-  return response.json() as Promise<Array<{ id: number; name: string; set_code: string | null; set_name: string | null; card_number: string | null; image_url: string | null }>>
+  return response.json() as Promise<
+    Array<{
+      id: number
+      name: string
+      set_code: string | null
+      set_name: string | null
+      card_number: string | null
+      image_url: string | null
+    }>
+  >
+}
+
+export async function createEnrichmentCard(payload: {
+  name: string
+  set_name: string
+  set_code?: string | null
+  card_number?: string | null
+  image_url?: string | null
+  era?: string | null
+}) {
+  const response = await fetch('/api/enrichment/cards', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+
+  if (!response.ok) throw new Error('Failed to create card')
+  return response.json() as Promise<{
+    id: number
+    name: string
+    set_name: string | null
+    set_code: string | null
+    card_number: string | null
+    image_url: string | null
+  }>
 }
 
 export async function linkEnrichmentAuction(
