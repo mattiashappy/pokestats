@@ -46,6 +46,7 @@ type AuctionDetailProps = {
 function AuctionDetail({ auction, onSelectCard, selectedCardId }: AuctionDetailProps): JSX.Element | null {
   const [search, setSearch] = useState('')
   const debounced = useDebouncedValue(search, 250)
+
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newCardName, setNewCardName] = useState('')
   const [newCardSetName, setNewCardSetName] = useState('')
@@ -93,6 +94,7 @@ function AuctionDetail({ auction, onSelectCard, selectedCardId }: AuctionDetailP
       setNewCardNumber('')
       setNewCardImageUrl('')
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auction?.item_id])
 
   if (!auction) return null
@@ -165,7 +167,11 @@ function AuctionDetail({ auction, onSelectCard, selectedCardId }: AuctionDetailP
                 type="button"
                 key={card.id}
                 onClick={() => onSelectCard?.(card.id)}
-                className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm shadow-sm transition hover:border-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dark:border-slate-800 dark:bg-slate-900 ${selectedCardId === card.id ? 'border-sky-500 ring-2 ring-sky-300 dark:ring-sky-700' : 'border-slate-200 bg-white'}`}
+                className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm shadow-sm transition hover:border-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dark:border-slate-800 dark:bg-slate-900 ${
+                  selectedCardId === card.id
+                    ? 'border-sky-500 ring-2 ring-sky-300 dark:ring-sky-700'
+                    : 'border-slate-200 bg-white'
+                }`}
               >
                 <div>
                   <div className="font-medium text-slate-900 dark:text-slate-100">{card.name}</div>
@@ -174,7 +180,11 @@ function AuctionDetail({ auction, onSelectCard, selectedCardId }: AuctionDetailP
                   </div>
                 </div>
                 {card.image_url ? (
-                  <img src={card.image_url} alt={card.name} className="h-12 w-9 rounded border border-slate-200 object-contain" />
+                  <img
+                    src={card.image_url}
+                    alt={card.name}
+                    className="h-12 w-9 rounded border border-slate-200 object-contain"
+                  />
                 ) : null}
               </button>
             ))
@@ -211,8 +221,17 @@ function AuctionDetail({ auction, onSelectCard, selectedCardId }: AuctionDetailP
                 value={newCardImageUrl}
                 onChange={(e) => setNewCardImageUrl(e.target.value)}
               />
-              <Button onClick={() => createCard.mutate()} disabled={createCard.isPending || !newCardName || !newCardSetName} variant="secondary">
-                {createCard.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}Create card
+              <Button
+                onClick={() => createCard.mutate()}
+                disabled={createCard.isPending || !newCardName || !newCardSetName}
+                variant="secondary"
+              >
+                {createCard.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="mr-2 h-4 w-4" />
+                )}
+                Create card
               </Button>
             </div>
           ) : null}
@@ -318,10 +337,18 @@ export function DataEnrichmentPage(): JSX.Element {
           <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Auction mappings</h2>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={() => setActiveTab('raw')} className={activeTab === 'raw' ? 'bg-sky-100 dark:bg-sky-900/30' : ''}>
+          <Button
+            variant="secondary"
+            onClick={() => setActiveTab('raw')}
+            className={activeTab === 'raw' ? 'bg-sky-100 dark:bg-sky-900/30' : ''}
+          >
             Auctions (Raw)
           </Button>
-          <Button variant="secondary" onClick={() => setActiveTab('image')} className={activeTab === 'image' ? 'bg-sky-100 dark:bg-sky-900/30' : ''}>
+          <Button
+            variant="secondary"
+            onClick={() => setActiveTab('image')}
+            className={activeTab === 'image' ? 'bg-sky-100 dark:bg-sky-900/30' : ''}
+          >
             Manual Link (Image-first)
           </Button>
           <Button onClick={() => reprocessMutation.mutate()} disabled={reprocessMutation.isPending}>
@@ -348,10 +375,7 @@ export function DataEnrichmentPage(): JSX.Element {
                 Unlinked only
               </label>
 
-              <Select
-                value={filters.confidence}
-                onChange={(e) => setFilters((f) => ({ ...f, confidence: e.target.value, page: 1 }))}
-              >
+              <Select value={filters.confidence} onChange={(e) => setFilters((f) => ({ ...f, confidence: e.target.value, page: 1 }))}>
                 <option value="">Any confidence</option>
                 <option value="high">High</option>
                 <option value="medium">Medium</option>
@@ -401,58 +425,60 @@ export function DataEnrichmentPage(): JSX.Element {
                         <Loader2 className="mx-auto h-5 w-5 animate-spin text-slate-500" />
                       </TableCell>
                     </TableRow>
-                  ) : (data?.items ?? []).map((auction) => (
-                    <TableRow key={auction.item_id} className="align-top">
-                      <TableCell className="w-20">
-                        {auction.thumbnail_url ? (
-                          <img src={auction.thumbnail_url} alt={auction.title ?? ''} className="h-16 w-16 rounded object-cover" />
-                        ) : (
-                          <div className="flex h-16 w-16 items-center justify-center rounded bg-slate-100 text-slate-400">
-                            <ImageIcon className="h-4 w-4" />
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium text-slate-900 dark:text-slate-100">{auction.title ?? 'Untitled'}</div>
-                        <div className="text-xs text-slate-500">{auction.item_id}</div>
-                      </TableCell>
-                      <TableCell className="text-sm text-slate-600">{new Date(auction.end_date).toLocaleString()}</TableCell>
-                      <TableCell className="text-sm">{auction.price ?? '—'}</TableCell>
-                      <TableCell className="text-sm">{auction.bid_count ?? 0}</TableCell>
-                      <TableCell className="text-sm">
-                        {auction.card ? (
-                          <div>
-                            <div className="font-medium">{auction.card.name}</div>
-                            <div className="text-xs text-slate-500">
-                              {auction.card.set_name} {auction.card.card_number ? `• ${auction.card.card_number}` : ''}
+                  ) : (
+                    (data?.items ?? []).map((auction) => (
+                      <TableRow key={auction.item_id} className="align-top">
+                        <TableCell className="w-20">
+                          {auction.thumbnail_url ? (
+                            <img src={auction.thumbnail_url} alt={auction.title ?? ''} className="h-16 w-16 rounded object-cover" />
+                          ) : (
+                            <div className="flex h-16 w-16 items-center justify-center rounded bg-slate-100 text-slate-400">
+                              <ImageIcon className="h-4 w-4" />
                             </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium text-slate-900 dark:text-slate-100">{auction.title ?? 'Untitled'}</div>
+                          <div className="text-xs text-slate-500">{auction.item_id}</div>
+                        </TableCell>
+                        <TableCell className="text-sm text-slate-600">{new Date(auction.end_date).toLocaleString()}</TableCell>
+                        <TableCell className="text-sm">{auction.price ?? '—'}</TableCell>
+                        <TableCell className="text-sm">{auction.bid_count ?? 0}</TableCell>
+                        <TableCell className="text-sm">
+                          {auction.card ? (
+                            <div>
+                              <div className="font-medium">{auction.card.name}</div>
+                              <div className="text-xs text-slate-500">
+                                {auction.card.set_name} {auction.card.card_number ? `• ${auction.card.card_number}` : ''}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-amber-600">Not linked</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs uppercase text-slate-500">
+                          <div>{auction.match_confidence ?? 'unknown'}</div>
+                          <div className="text-[11px] text-slate-400">{auction.match_method ?? 'unmatched'}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button variant="secondary" size="sm" onClick={() => setSelectedAuctionId(auction.item_id)}>
+                              View
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => unlinkMutation.mutate(auction.item_id)}
+                              disabled={unlinkMutation.isPending}
+                            >
+                              <Unlink2 className="mr-1 h-4 w-4" />
+                              Unlink
+                            </Button>
                           </div>
-                        ) : (
-                          <span className="text-xs text-amber-600">Not linked</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs uppercase text-slate-500">
-                        <div>{auction.match_confidence ?? 'unknown'}</div>
-                        <div className="text-[11px] text-slate-400">{auction.match_method ?? 'unmatched'}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button variant="secondary" size="sm" onClick={() => setSelectedAuctionId(auction.item_id)}>
-                            View
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => unlinkMutation.mutate(auction.item_id)}
-                            disabled={unlinkMutation.isPending}
-                          >
-                            <Unlink2 className="mr-1 h-4 w-4" />
-                            Unlink
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>
@@ -486,11 +512,7 @@ export function DataEnrichmentPage(): JSX.Element {
                   {selectedAuction.isFetching ? (
                     <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
                   ) : (
-                    <AuctionDetail
-                      auction={selectedAuction.data ?? null}
-                      onSelectCard={setSelectedCardId}
-                      selectedCardId={selectedCardId}
-                    />
+                    <AuctionDetail auction={selectedAuction.data ?? null} onSelectCard={setSelectedCardId} selectedCardId={selectedCardId} />
                   )}
                 </CardContent>
               </Card>
@@ -505,17 +527,14 @@ export function DataEnrichmentPage(): JSX.Element {
                     value={selectedCardId ?? ''}
                     onChange={(e) => setSelectedCardId(Number(e.target.value) || null)}
                   />
-                  <Input
-                    placeholder="Notes (optional)"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                  />
+                  <Input placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
                   <div className="flex gap-2">
                     <Button
                       onClick={() => selectedAuctionId && selectedCardId && handleLink(selectedAuctionId, selectedCardId)}
                       disabled={!selectedAuctionId || !selectedCardId || linkMutation.isPending}
                     >
-                      {linkMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}Link
+                      {linkMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
+                      Link
                     </Button>
                     <Button
                       variant="secondary"
@@ -563,17 +582,11 @@ export function DataEnrichmentPage(): JSX.Element {
                   <div className="space-y-3">
                     <AuctionDetail auction={auction} onSelectCard={setSelectedCardId} selectedCardId={selectedCardId} />
                     <div className="flex gap-2">
-                      <Button
-                        onClick={() => handleLink(auction.item_id, selectedCardId ?? 0)}
-                        disabled={!selectedCardId || linkMutation.isPending}
-                      >
-                        {linkMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}Link selected
+                      <Button onClick={() => handleLink(auction.item_id, selectedCardId ?? 0)} disabled={!selectedCardId || linkMutation.isPending}>
+                        {linkMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
+                        Link selected
                       </Button>
-                      <Button
-                        variant="secondary"
-                        onClick={() => unlinkMutation.mutate(auction.item_id)}
-                        disabled={unlinkMutation.isPending}
-                      >
+                      <Button variant="secondary" onClick={() => unlinkMutation.mutate(auction.item_id)} disabled={unlinkMutation.isPending}>
                         <Unlink2 className="mr-2 h-4 w-4" />
                         Mark unmatched
                       </Button>
