@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format, formatDistanceToNow, parseISO } from 'date-fns'
 import { ArrowUpDown, CalendarClock, ChevronDown, ExternalLink, Loader2, Search } from 'lucide-react'
@@ -22,6 +22,7 @@ const sortOptions = [
 
 type SortValue = (typeof sortOptions)[number]['value']
 type AttributeStat = { label: string; count: number }
+const PAGE_SIZE = 50
 
 export function AuctionsPage(): JSX.Element {
   const { data, isLoading, error } = useQuery<AuctionRecord[]>({
@@ -41,6 +42,7 @@ export function AuctionsPage(): JSX.Element {
   const [sortBy, setSortBy] = useState<SortValue>('endDesc')
   const [searchTerm, setSearchTerm] = useState('')
   const [showFilters, setShowFilters] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
 
   const activeAttribute = (attribute ?? '').toLowerCase()
   const totalAuctions = data?.length ?? 0
@@ -188,6 +190,27 @@ export function AuctionsPage(): JSX.Element {
     })
   }, [data, searchTerm, maxPrice, minPrice, era, language, gradingCompany, grade, sortBy])
 
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm, maxPrice, minPrice, era, language, gradingCompany, grade, sortBy])
+
+  const totalPages = useMemo(() => {
+    if (!filteredAndSorted.length) return 1
+    return Math.ceil(filteredAndSorted.length / PAGE_SIZE)
+  }, [filteredAndSorted.length])
+
+  useEffect(() => {
+    setCurrentPage((previous) => Math.min(previous, totalPages))
+  }, [totalPages])
+
+  const paginatedAuctions = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE
+    return filteredAndSorted.slice(start, start + PAGE_SIZE)
+  }, [filteredAndSorted, currentPage])
+
+  const displayStart = filteredAndSorted.length ? (currentPage - 1) * PAGE_SIZE + 1 : 0
+  const displayEnd = Math.min(currentPage * PAGE_SIZE, filteredAndSorted.length)
+
   const lastUpdatedLabel = useMemo(() => {
     if (!importSettings?.lastImportAt) return null
     const lastRun = format(new Date(importSettings.lastImportAt), 'LLL d, HH:mm')
@@ -259,11 +282,7 @@ export function AuctionsPage(): JSX.Element {
       <div className="rounded-3xl border border-slate-200/70 bg-white/80 p-6 shadow-sm backdrop-blur-md dark:border-slate-900/70 dark:bg-slate-950/60">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Auctions</p>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Tradera ended auctions</h1>
-            <p className="max-w-2xl text-sm text-slate-600 dark:text-slate-400">
-              Browse and filter ended Tradera auctions imported after completion. Live auctions are not tracked.
-            </p>
+            <h1 className="text-4xl font-bold text-slate-900 dark:text-slate-50">Tradera Auctions</h1>
           </div>
 
           {lastUpdatedLabel ? (
@@ -508,7 +527,7 @@ export function AuctionsPage(): JSX.Element {
               <ArrowUpDown className="h-4 w-4" /> {sortOptions.find((option) => option.value === sortBy)?.label}
             </span>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600 shadow-sm dark:bg-slate-900/60 dark:text-slate-200">
-              {filteredAndSorted.length.toLocaleString('sv-SE')} auctions in view
+              {filteredAndSorted.length.toLocaleString('sv-SE')} auctions in view · Page {currentPage} of {totalPages}
             </span>
           </div>
 
@@ -534,7 +553,8 @@ export function AuctionsPage(): JSX.Element {
                 </TableHeader>
 
                 <TableBody>
-                  {filteredAndSorted.map((auction) => {
+                  {paginatedAuctions.length ? (
+                    paginatedAuctions.map((auction) => {
                     const hasKnownSetName = auction.cardSetName && auction.cardSetName.toLowerCase() !== 'unknown'
                     const cardHref = auction.cardId ? `/cards/${auction.cardId}` : null
 
@@ -612,11 +632,49 @@ export function AuctionsPage(): JSX.Element {
                         </TableCell>
                       </TableRow>
                     )
-                  })}
+                  })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
+                        No auctions match your filters.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </div>
           )}
+
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
+            <span>
+              Showing {displayStart.toLocaleString('sv-SE')}
+              {displayEnd ? `–${displayEnd.toLocaleString('sv-SE')}` : ''} of
+              {' '}
+              {filteredAndSorted.length.toLocaleString('sv-SE')} auctions
+            </span>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <span className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={currentPage === totalPages || !filteredAndSorted.length}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>
