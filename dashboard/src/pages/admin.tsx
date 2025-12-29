@@ -1,15 +1,15 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { Shield, Sparkles } from 'lucide-react'
+import { History, Shield, Sparkles } from 'lucide-react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { Button } from '../components/ui/button'
 import { registeredUsers } from '../data/users'
-import { fetchEnrichmentSummary, fetchUnmatchedAuctions, runEnrichment } from '../lib/api'
-import type { EnrichmentSummary, UnmatchedAuction } from '../lib/api'
+import { fetchEnrichmentSummary, fetchImportRuns, fetchUnmatchedAuctions, runEnrichment, runImporter } from '../lib/api'
+import type { EnrichmentSummary, ImportRun, UnmatchedAuction } from '../lib/api'
 
 export function AdminPage(): JSX.Element {
   const {
@@ -18,12 +18,19 @@ export function AdminPage(): JSX.Element {
     isFetching: isFetchingEnrichment
   } = useQuery<EnrichmentSummary>({ queryKey: ['enrichment-summary'], queryFn: fetchEnrichmentSummary })
   const {
+    data: importRuns,
+    refetch: refetchImportRuns,
+    isFetching: isFetchingImportRuns
+  } = useQuery<ImportRun[]>({ queryKey: ['import-runs'], queryFn: () => fetchImportRuns(15) })
+  const {
     data: unmatched,
     refetch: refetchUnmatched,
     isFetching: isFetchingUnmatched
   } = useQuery<UnmatchedAuction[]>({ queryKey: ['enrichment-unmatched'], queryFn: () => fetchUnmatchedAuctions(25) })
   const [enrichmentRunResult, setEnrichmentRunResult] = useState<string | null>(null)
   const [enrichmentRunPending, setEnrichmentRunPending] = useState(false)
+  const [importRunResult, setImportRunResult] = useState<string | null>(null)
+  const [importRunPending, setImportRunPending] = useState(false)
 
   const totals = useMemo(() => {
     return registeredUsers.reduce(
@@ -53,6 +60,24 @@ export function AdminPage(): JSX.Element {
     }
   }
 
+  const handleRunImporter = async (): Promise<void> => {
+    setImportRunResult(null)
+    setImportRunPending(true)
+    try {
+      const result = await runImporter()
+      const seconds = Math.max(1, Math.round(result.durationMs / 1000))
+      setImportRunResult(
+        `Ran importer at ${format(new Date(result.startedAt), 'PPpp')} and added ${result.newRows.toLocaleString('sv-SE')} auctions in ~${seconds}s.`
+      )
+      await refetchImportRuns()
+      await refetchEnrichment()
+    } catch (e) {
+      setImportRunResult(`Import failed: ${String(e)}`)
+    } finally {
+      setImportRunPending(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -70,6 +95,96 @@ export function AdminPage(): JSX.Element {
       </div>
 
       <div className="grid gap-4">
+        <Card>
+          <CardHeader className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-5 w-5 text-amber-300" />
+                Auction imports
+              </CardTitle>
+              <CardDescription>
+                Track when the Tradera feed last brought in new auctions and trigger a manual refresh.
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleRunImporter}
+                variant="secondary"
+                size="sm"
+                className="gap-2"
+                disabled={importRunPending || isFetchingImportRuns}
+              >
+                <History className="h-4 w-4" />
+                {importRunPending ? 'Running…' : 'Run importer'}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Last started</p>
+                <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
+                  {importRuns?.[0]?.started_at ? format(new Date(importRuns[0].started_at), 'PPpp') : '—'}
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">Time the importer most recently kicked off.</p>
+              </div>
+              <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
+                <p className="text-xs uppercase tracking-wide text-slate-500">New auctions</p>
+                <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
+                  {importRuns?.[0]?.new_rows?.toLocaleString('sv-SE') ?? '—'}
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">Added during the latest importer run.</p>
+              </div>
+              <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Status</p>
+                <p className="text-base font-semibold text-slate-900 dark:text-slate-50 capitalize">
+                  {importRuns?.[0]?.status ?? '—'}
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">Latest import outcome.</p>
+              </div>
+            </div>
+
+            {importRunResult ? (
+              <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Last import run</p>
+                <p className="mt-1 text-slate-900 dark:text-slate-50">{importRunResult}</p>
+              </div>
+            ) : null}
+
+            <div className="overflow-hidden rounded-xl border border-slate-900/80">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Started</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>New rows</TableHead>
+                    <TableHead>Requests</TableHead>
+                    <TableHead>Notes</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(importRuns ?? []).map((run) => (
+                    <TableRow key={run.id}>
+                      <TableCell className="text-slate-300">{format(new Date(run.started_at), 'PPpp')}</TableCell>
+                      <TableCell className="capitalize text-slate-100">{run.status}</TableCell>
+                      <TableCell className="text-slate-300">{run.new_rows.toLocaleString('sv-SE')}</TableCell>
+                      <TableCell className="text-slate-300">{run.requests_used}</TableCell>
+                      <TableCell className="text-slate-300">{run.message ?? '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                  {(!importRuns || importRuns.length === 0) && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-slate-300">
+                        No import runs logged yet.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader className="flex flex-wrap items-center justify-between gap-2">
             <div>
