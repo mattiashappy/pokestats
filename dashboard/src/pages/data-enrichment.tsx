@@ -41,11 +41,13 @@ type AuctionDetailProps = {
   auction: EnrichmentAuction | null
   onSelectCard?: (id: number) => void
   selectedCardId?: number | null
+  onSelectExpansion?: (id: number | null) => void
 }
 
-function AuctionDetail({ auction, onSelectCard, selectedCardId }: AuctionDetailProps): JSX.Element | null {
+function AuctionDetail({ auction, onSelectCard, selectedCardId, onSelectExpansion }: AuctionDetailProps): JSX.Element | null {
   const [search, setSearch] = useState('')
   const debounced = useDebouncedValue(search, 250)
+  const [selectedExpansionId, setSelectedExpansionId] = useState<number | null>(null)
 
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newCardName, setNewCardName] = useState('')
@@ -55,9 +57,9 @@ function AuctionDetail({ auction, onSelectCard, selectedCardId }: AuctionDetailP
   const [newCardImageUrl, setNewCardImageUrl] = useState('')
 
   const { data: cardResults, isFetching: searching } = useQuery({
-    queryKey: ['enrichment-card-search', debounced],
+    queryKey: ['enrichment-card-search', debounced, selectedExpansionId],
     enabled: Boolean(debounced?.length >= 2),
-    queryFn: () => searchEnrichmentCards(debounced)
+    queryFn: () => searchEnrichmentCards(debounced, selectedExpansionId)
   })
 
   const createCard = useMutation({
@@ -87,12 +89,16 @@ function AuctionDetail({ auction, onSelectCard, selectedCardId }: AuctionDetailP
       setNewCardSetName(auction.parsed_set_hint ?? '')
       setNewCardSetCode(auction.parsed_set_hint ?? '')
       setNewCardNumber(auction.parsed_card_number ?? '')
+      const bestGuess = auction.parsed_set_guess?.expansion_id ?? null
+      setSelectedExpansionId(bestGuess)
+      onSelectExpansion?.(bestGuess)
     } else {
       setNewCardName('')
       setNewCardSetName('')
       setNewCardSetCode('')
       setNewCardNumber('')
       setNewCardImageUrl('')
+      setSelectedExpansionId(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auction?.item_id])
@@ -100,6 +106,16 @@ function AuctionDetail({ auction, onSelectCard, selectedCardId }: AuctionDetailP
   if (!auction) return null
 
   const primaryImage = auction.thumbnail_url || auction.image_urls?.[0] || null
+  const candidateSets = auction.parsed_set_candidates ?? []
+  const suggested = auction.suggested_cards ?? []
+
+  const parsedSummary = [
+    auction.attributes?.pokemon_era?.[0] ? `ERA: ${auction.attributes?.pokemon_era?.[0]}` : null,
+    auction.parsed_card_number ? `Parsed: ${auction.parsed_card_number}` : null,
+    auction.parsed_total_in_set ? `Total in set: ${auction.parsed_total_in_set}` : null,
+    auction.parsed_name ? `Name: ${auction.parsed_name}` : null,
+    auction.parsed_set_hint ? `Set hint: ${auction.parsed_set_hint}` : null
+  ].filter(Boolean)
 
   return (
     <div className="space-y-3">
@@ -128,11 +144,14 @@ function AuctionDetail({ auction, onSelectCard, selectedCardId }: AuctionDetailP
       )}
 
       <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
-        <div className="flex items-center gap-3 text-xs text-slate-500">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
           <span className="font-medium text-slate-700 dark:text-slate-200">Match</span>
-          <span>{auction.match_confidence ?? 'unknown'}</span>
-          <span>•</span>
-          <span>{auction.match_method ?? 'unmatched'}</span>
+          <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold uppercase text-slate-700 dark:bg-slate-800 dark:text-slate-100">
+            {auction.match_confidence ?? 'unknown'}
+          </span>
+          <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold uppercase text-slate-500 dark:bg-slate-800">
+            {auction.match_method ?? 'unmatched'}
+          </span>
           {auction.card ? (
             <span className="ml-2 rounded bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
               {auction.card.name} {auction.card.card_number ? `(${auction.card.card_number})` : ''}
@@ -145,6 +164,76 @@ function AuctionDetail({ auction, onSelectCard, selectedCardId }: AuctionDetailP
         </div>
       </div>
 
+      {parsedSummary.length ? (
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200">
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Parsed summary</div>
+          <ul className="list-disc space-y-1 pl-4">
+            {parsedSummary.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {candidateSets.length ? (
+        <div className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Candidate sets (based on ERA + /total)</div>
+          <div className="flex flex-wrap gap-2">
+            {candidateSets.map((candidate) => {
+              const isBest = auction.parsed_set_guess?.expansion_id === candidate.expansion_id
+              const isSelected = selectedExpansionId === candidate.expansion_id
+              return (
+                <button
+                  key={candidate.expansion_id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedExpansionId(candidate.expansion_id)
+                    onSelectExpansion?.(candidate.expansion_id)
+                  }}
+                  className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                    isSelected
+                      ? 'border-sky-500 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-900/50 dark:text-sky-100'
+                      : 'border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100'
+                  }`}
+                >
+                  {candidate.name || candidate.set_code}
+                  {candidate.set_total ? ` • ${candidate.set_total}` : ''}
+                  {isBest ? ' (Best guess)' : ''}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {suggested.length ? (
+        <div className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Suggested matches</div>
+          <div className="space-y-2">
+            {suggested.map((card) => (
+              <button
+                key={card.id}
+                type="button"
+                onClick={() => onSelectCard?.(card.id)}
+                className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm shadow-sm transition hover:border-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dark:border-slate-800 dark:bg-slate-900 ${
+                  selectedCardId === card.id
+                    ? 'border-sky-500 ring-2 ring-sky-300 dark:ring-sky-700'
+                    : 'border-slate-200 bg-white'
+                }`}
+              >
+                <div>
+                  <div className="font-medium text-slate-900 dark:text-slate-100">{card.name}</div>
+                  <div className="text-xs text-slate-500">
+                    {card.set_name ?? card.set_code ?? 'Unknown set'} {card.card_number ? `• ${card.card_number}` : null}
+                  </div>
+                </div>
+                {card.image_url ? <img src={card.image_url} alt={card.name ?? ''} className="h-12 w-9 rounded object-contain" /> : null}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div>
         <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
           Search card to link
@@ -155,7 +244,7 @@ function AuctionDetail({ auction, onSelectCard, selectedCardId }: AuctionDetailP
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search card name / number / set"
+              placeholder={selectedExpansionId ? 'Search within selected set' : 'Search card name / number / set'}
               className="pl-8"
             />
           </div>
@@ -256,6 +345,7 @@ export function DataEnrichmentPage(): JSX.Element {
   const [filters, setFilters] = useState<Filters>({ linked: false, confidence: '', q: '', hasImage: false, page: 1 })
   const [selectedAuctionId, setSelectedAuctionId] = useState<number | null>(null)
   const [selectedCardId, setSelectedCardId] = useState<number | null>(null)
+  const [selectedExpansionId, setSelectedExpansionId] = useState<number | null>(null)
   const [notes, setNotes] = useState('')
   const [showDetailModal, setShowDetailModal] = useState(false)
 
@@ -263,6 +353,7 @@ export function DataEnrichmentPage(): JSX.Element {
     setShowDetailModal(false)
     setSelectedAuctionId(null)
     setSelectedCardId(null)
+    setSelectedExpansionId(null)
   }
 
   const { data, isLoading } = useQuery({
@@ -285,10 +376,10 @@ export function DataEnrichmentPage(): JSX.Element {
   })
 
   const linkMutation = useMutation({
-    mutationFn: (payload: { auctionId: number; cardId: number }) =>
+    mutationFn: (payload: { auctionId: number; cardId: number; matchConfidence?: string }) =>
       linkEnrichmentAuction(payload.auctionId, {
         card_id: payload.cardId,
-        match_confidence: 'medium',
+        match_confidence: payload.matchConfidence ?? 'medium',
         match_method: activeTab === 'image' ? 'image_only' : 'manual',
         notes: notes || null
       }),
@@ -331,7 +422,19 @@ export function DataEnrichmentPage(): JSX.Element {
 
   const handleLink = (auctionId: number, cardId: number) => {
     setSelectedCardId(cardId)
-    linkMutation.mutate({ auctionId, cardId })
+    const auctionDetails =
+      (selectedAuction.data && selectedAuction.data.item_id === auctionId ? selectedAuction.data : null) ||
+      data?.items?.find((item) => item.item_id === auctionId)
+
+    const isSuggested = auctionDetails?.suggested_cards?.some((card) => card.id === cardId)
+    const hasNumber = Boolean(auctionDetails?.parsed_card_number)
+    const hasSafeSet =
+      auctionDetails?.parsed_set_candidates?.length === 1 ||
+      (!!selectedExpansionId && selectedExpansionId === auctionDetails?.parsed_set_guess?.expansion_id)
+
+    const matchConfidence = isSuggested && hasNumber && hasSafeSet ? 'high' : 'medium'
+
+    linkMutation.mutate({ auctionId, cardId, matchConfidence })
   }
 
   const hardCases = useMemo(() => {
@@ -349,7 +452,7 @@ export function DataEnrichmentPage(): JSX.Element {
         unlinkMutation.mutate(selectedAuctionId)
       }
       if (e.key === 'Enter' && selectedAuctionId && selectedCardId) {
-        linkMutation.mutate({ auctionId: selectedAuctionId, cardId: selectedCardId })
+        handleLink(selectedAuctionId, selectedCardId)
       }
     }
     window.addEventListener('keydown', handleKey)
@@ -475,7 +578,21 @@ export function DataEnrichmentPage(): JSX.Element {
                           </div>
                           <div className="text-xs text-slate-500">{auction.item_id}</div>
                         </TableCell>
-                        <TableCell className="text-sm text-slate-600">{auction.attributes?.pokemon_era?.[0] ?? '—'}</TableCell>
+                        <TableCell className="text-sm text-slate-600">
+                          <div>{auction.attributes?.pokemon_era?.[0] ?? '—'}</div>
+                          {auction.parsed_card_number ? (
+                            <div className="text-xs text-slate-500">Parsed: {auction.parsed_card_number}</div>
+                          ) : null}
+                          {(auction.parsed_set_candidates?.length ?? 0) > 0 ? (
+                            <div className="text-xs text-slate-500">
+                              Candidates:{' '}
+                              {(auction.parsed_set_candidates || [])
+                                .map((c) => c.name || c.set_code)
+                                .filter(Boolean)
+                                .join(', ')}
+                            </div>
+                          ) : null}
+                        </TableCell>
                         <TableCell className="text-sm">
                           {auction.card ? (
                             <div>
@@ -500,6 +617,7 @@ export function DataEnrichmentPage(): JSX.Element {
                               onClick={() => {
                                 setSelectedAuctionId(auction.item_id)
                                 setSelectedCardId(null)
+                                setSelectedExpansionId(auction.parsed_set_guess?.expansion_id ?? null)
                                 setShowDetailModal(true)
                               }}
                             >
@@ -574,7 +692,12 @@ export function DataEnrichmentPage(): JSX.Element {
                   </div>
 
                   <div className="space-y-3">
-                    <AuctionDetail auction={auction} onSelectCard={setSelectedCardId} selectedCardId={selectedCardId} />
+                    <AuctionDetail
+                      auction={auction}
+                      onSelectCard={setSelectedCardId}
+                      selectedCardId={selectedCardId}
+                      onSelectExpansion={setSelectedExpansionId}
+                    />
                     <div className="flex gap-2">
                       <Button
                         onClick={() => handleLink(auction.item_id, selectedCardId ?? 0)}
@@ -631,6 +754,7 @@ export function DataEnrichmentPage(): JSX.Element {
                     auction={selectedAuction.data ?? null}
                     onSelectCard={setSelectedCardId}
                     selectedCardId={selectedCardId}
+                    onSelectExpansion={setSelectedExpansionId}
                   />
                 )}
               </div>
@@ -646,6 +770,12 @@ export function DataEnrichmentPage(): JSX.Element {
                       onChange={(e) => setSelectedCardId(Number(e.target.value) || null)}
                     />
                     <Input placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+                    {!selectedAuction.data?.card_id && selectedAuction.data?.enrich_notes ? (
+                      <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-200">
+                        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Why unmatched?</div>
+                        <pre className="whitespace-pre-wrap text-[11px]">{JSON.stringify(selectedAuction.data.enrich_notes)}</pre>
+                      </div>
+                    ) : null}
                     <div className="flex gap-2">
                       <Button
                         onClick={() => selectedAuctionId && selectedCardId && handleLink(selectedAuctionId, selectedCardId)}
