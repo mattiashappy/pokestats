@@ -21,7 +21,7 @@ import type { EnrichmentAuction } from '../types'
 const PAGE_SIZE = 50
 
 type Filters = {
-  linked: boolean
+  linked: boolean | null
   confidence: string
   q: string
   hasImage: boolean
@@ -260,7 +260,7 @@ export function DataEnrichmentPage(): JSX.Element {
     queryKey: ['enrichment-auctions', filters],
     queryFn: () =>
       fetchEnrichmentAuctions({
-        linked: filters.linked,
+        linked: filters.linked ?? undefined,
         confidence: filters.confidence || null,
         q: filters.q || null,
         hasImage: filters.hasImage,
@@ -368,8 +368,10 @@ export function DataEnrichmentPage(): JSX.Element {
               <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                 <input
                   type="checkbox"
-                  checked={!filters.linked}
-                  onChange={(e) => setFilters((f) => ({ ...f, linked: !e.target.checked, page: 1 }))}
+                  checked={filters.linked === false}
+                  onChange={(e) =>
+                    setFilters((f) => ({ ...f, linked: e.target.checked ? false : null, page: 1 }))
+                  }
                   className="h-4 w-4"
                 />
                 Unlinked only
@@ -462,7 +464,15 @@ export function DataEnrichmentPage(): JSX.Element {
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2">
-                            <Button variant="secondary" size="sm" onClick={() => setSelectedAuctionId(auction.item_id)}>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedAuctionId(auction.item_id)
+                                setSelectedCardId(null)
+                                document.getElementById('selected-auction-panel')?.scrollIntoView({ behavior: 'smooth' })
+                              }}
+                            >
                               View
                             </Button>
                             <Button
@@ -504,7 +514,10 @@ export function DataEnrichmentPage(): JSX.Element {
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Card className="border-dashed border-slate-300 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/50">
+              <Card
+                id="selected-auction-panel"
+                className="border-dashed border-slate-300 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/50"
+              >
                 <CardHeader>
                   <CardTitle className="text-base">Selected auction</CardTitle>
                 </CardHeader>

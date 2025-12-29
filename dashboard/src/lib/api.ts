@@ -15,7 +15,7 @@ export async function fetchAuctions(): Promise<AuctionRecord[]> {
 }
 
 export async function fetchEnrichmentAuctions(params: {
-  linked?: boolean
+  linked?: boolean | null
   confidence?: string | null
   q?: string | null
   hasImage?: boolean
