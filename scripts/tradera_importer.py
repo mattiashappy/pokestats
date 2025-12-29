@@ -1,9 +1,8 @@
 """
 Tradera importer (REFRESH ONLY, SOAP) -> PostgreSQL
-
 - Purpose: keep DB up-to-date with newest ended auctions (incremental).
 - Locked: ItemsPerPage = 50 (small responses).
-- Budget-safe: MAX_REQUESTS caps usage.
+- Budget-safe: MAX_REQUESTS caps daily usage.
 - Early-stop: stops when it hits already-imported data (watermark + overlap).
 
 Required ENV:
@@ -20,17 +19,17 @@ Optional ENV:
 Filters (optional):
 - ITEM_STATUS (default Ended)
 - ITEM_TYPE (default Auction)
-- BIDS_MINIMUM (default 1)                  # set to "none"/"0"/"" to OMIT the tag entirely
-- ORDER_BY (default EndDateDescending)      # will be forced if wrong in incremental
+- BIDS_MINIMUM (default 1)                  # set to "none" / "" to disable
+- ORDER_BY (default EndDateDescending)      # will be forced if wrong
 
 Incremental tuning:
 - INCREMENTAL_OVERLAP_MINUTES (default 10)
 
 Network tuning:
-- TRADERA_CONNECT_TIMEOUT (default 20)
-- TRADERA_READ_TIMEOUT (default 120)
-- TRADERA_RETRIES (default 10)
-- TRADERA_BACKOFF (default 1.2)
+- TRADERA_CONNECT_TIMEOUT (default 10)
+- TRADERA_READ_TIMEOUT (default 60)
+- TRADERA_RETRIES (default 6)
+- TRADERA_BACKOFF (default 0.8)
 
 DB assumptions:
 - tradera_sales has unique constraint on item_id
@@ -59,14 +58,41 @@ from urllib3.util.retry import Retry
 API_URL = "https://api.tradera.com/v3/SearchService.asmx"
 SOAP_ACTION = "http://api.tradera.com/SearchAdvanced"
 
+CATEGORY_ID = int(os.getenv("TRADERA_CATEGORY_ID", "1001337"))
+
+# LOCKED to 50 rows per response (as requested)
+ITEMS_PER_PAGE = 50
+
+# Refresh should always start from page 1
+START_PAGE = 1
+
+# Budget guard
+MAX_REQUESTS = int(os.getenv("MAX_REQUESTS", "10"))
+SLEEP_MS = int(os.getenv("SLEEP_MS", "150"))
+
+ITEM_STATUS = os.getenv("ITEM_STATUS", "Ended")
+ITEM_TYPE = os.getenv("ITEM_TYPE", "Auction")
+
+# "none" / "" disables the BidsMinimum filter entirely.
+BIDS_MINIMUM_RAW = os.getenv("BIDS_MINIMUM", "1")
+
+ORDER_BY = os.getenv("ORDER_BY", "EndDateDescending")
+MODE = os.getenv("MODE", "INCREMENTAL")
+
+TZ_NAME = os.getenv("TZ") or os.getenv("LOCAL_TIMEZONE") or "Europe/Stockholm"
+INCREMENTAL_OVERLAP_MINUTES = int(os.getenv("INCREMENTAL_OVERLAP_MINUTES", "10"))
+
+CONNECT_TIMEOUT = float(os.getenv("TRADERA_CONNECT_TIMEOUT", "10"))
+READ_TIMEOUT = float(os.getenv("TRADERA_READ_TIMEOUT", "60"))
+TOTAL_RETRIES = int(os.getenv("TRADERA_RETRIES", "6"))
+BACKOFF = float(os.getenv("TRADERA_BACKOFF", "0.8"))
+
 NS = {
     "soap": "http://schemas.xmlsoap.org/soap/envelope/",
     "t": "http://api.tradera.com",
 }
 
-# -----------------------------
-# Helpers
-# -----------------------------
+
 def log(msg: str) -> None:
     sys.stdout.write(msg + "\n")
     sys.stdout.flush()
@@ -79,68 +105,36 @@ def require_env(name: str) -> str:
     return v.strip()
 
 
-def env_int_or_none(name: str, default: Optional[int] = None) -> Optional[int]:
+def normalize_bids_minimum(raw: str) -> Optional[int]:
     """
-    Reads an env var and returns:
-      - None if env is missing and default=None, or if env value is: "", "none", "null", "0"
-      - int otherwise
+    Returns:
+      - int if enabled
+      - None if disabled
+    Disabled values: "none", "null", "", "off"
     """
-    raw = os.getenv(name)
     if raw is None:
-        return default
-    raw2 = raw.strip().lower()
-    if raw2 in {"", "none", "null", "0"}:
+        return None
+    s = str(raw).strip().lower()
+    if s in {"", "none", "null", "off", "false"}:
         return None
     try:
-        return int(raw2)
-    except ValueError:
-        raise RuntimeError(f"Invalid integer for {name}: {raw!r}")
-
-
-def env_str_or_none(name: str, default: Optional[str] = None) -> Optional[str]:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    raw2 = raw.strip()
-    if raw2 == "" or raw2.lower() in {"none", "null"}:
+        return int(float(s))
+    except Exception:
+        # If it's garbage, disable rather than breaking calls
         return None
-    return raw2
 
 
-# -----------------------------
-# Config
-# -----------------------------
-CATEGORY_ID = int(os.getenv("TRADERA_CATEGORY_ID", "1001337"))
-
-# LOCKED to 50 rows per response (as requested)
-ITEMS_PER_PAGE = 50
-START_PAGE = 1
-
-MAX_REQUESTS = int(os.getenv("MAX_REQUESTS", "10"))
-SLEEP_MS = int(os.getenv("SLEEP_MS", "150"))
-
-ITEM_STATUS = env_str_or_none("ITEM_STATUS", "Ended")  # if set to none -> omitted
-ITEM_TYPE = env_str_or_none("ITEM_TYPE", "Auction")    # if set to none -> omitted
-BIDS_MINIMUM = env_int_or_none("BIDS_MINIMUM", 1)      # if set to none/0 -> omitted
-ORDER_BY = os.getenv("ORDER_BY", "EndDateDescending").strip() or "EndDateDescending"
-MODE = os.getenv("MODE", "INCREMENTAL").strip() or "INCREMENTAL"
-
-TZ_NAME = os.getenv("TZ") or os.getenv("LOCAL_TIMEZONE") or "Europe/Stockholm"
-INCREMENTAL_OVERLAP_MINUTES = int(os.getenv("INCREMENTAL_OVERLAP_MINUTES", "10"))
-
-CONNECT_TIMEOUT = float(os.getenv("TRADERA_CONNECT_TIMEOUT", "20"))
-READ_TIMEOUT = float(os.getenv("TRADERA_READ_TIMEOUT", "120"))
-TOTAL_RETRIES = int(os.getenv("TRADERA_RETRIES", "10"))
-BACKOFF = float(os.getenv("TRADERA_BACKOFF", "1.2"))
+BIDS_MINIMUM = normalize_bids_minimum(BIDS_MINIMUM_RAW)
 
 
-# -----------------------------
-# SOAP
-# -----------------------------
 def build_envelope(app_id: str, app_key: str, page_number: int, order_by: str) -> str:
     item_status_xml = f"<ItemStatus>{ITEM_STATUS}</ItemStatus>" if ITEM_STATUS else ""
     item_type_xml = f"<ItemType>{ITEM_TYPE}</ItemType>" if ITEM_TYPE else ""
-    bids_min_xml = f"<BidsMinimum>{BIDS_MINIMUM}</BidsMinimum>" if BIDS_MINIMUM is not None else ""
+
+    if BIDS_MINIMUM is None:
+        bids_min_xml = ""  # OFF
+    else:
+        bids_min_xml = f"<BidsMinimum>{BIDS_MINIMUM}</BidsMinimum>"
 
     return f"""<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -184,7 +178,7 @@ def make_session() -> requests.Session:
     adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=10)
     s.mount("https://", adapter)
     s.mount("http://", adapter)
-    s.headers.update({"User-Agent": "pokestats-importer-refresh-50/1.1"})
+    s.headers.update({"User-Agent": "pokestats-importer-refresh-50/1.0"})
     return s
 
 
@@ -200,112 +194,168 @@ def post_soap(session: requests.Session, xml_body: str) -> str:
         headers=headers,
         timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
     )
-
-    # Tradera sometimes returns SOAP faults as 500 or sometimes 200 with fault content.
-    # We'll handle 4xx/5xx with a snippet, but also allow parsing below.
     if r.status_code >= 400:
         snippet = (r.text or "")[:1200].replace("\n", " ")
         raise RuntimeError(f"HTTP {r.status_code} from Tradera. Body: {snippet}")
-
     return r.text
 
 
-def parse_response(xml_text: str) -> Tuple[int, int, List[ET.Element]]:
+def strip_ns(tag: str) -> str:
+    if "}" in tag:
+        return tag.split("}", 1)[1]
+    return tag
+
+
+def find_child_text(parent: ET.Element, local_name: str) -> Optional[str]:
+    """
+    Finds a DIRECT child by local name regardless of namespace.
+    Tradera's <Items> payload often has non-namespaced children like <Id>, <EndDate>, etc.
+    """
+    for child in list(parent):
+        if strip_ns(child.tag) == local_name:
+            if child.text and child.text.strip():
+                return child.text.strip()
+            return None
+    return None
+
+
+def find_any_text(parent: ET.Element, local_name: str) -> Optional[str]:
+    """
+    Finds a descendant element by local name regardless of namespace.
+    Useful for nested paths like ImageLinks.
+    """
+    for el in parent.iter():
+        if strip_ns(el.tag) == local_name:
+            if el.text and el.text.strip():
+                return el.text.strip()
+            return None
+    return None
+
+
+def parse_response(xml_text: str) -> Tuple[int, int, List[ET.Element], str]:
     root = ET.fromstring(xml_text)
 
-    # Detect SOAP Fault quickly
     fault = root.find(".//soap:Fault", NS)
     if fault is not None:
-        # Keep it short in logs but enough to debug
         fault_text = ET.tostring(fault, encoding="unicode")
-        raise RuntimeError(f"SOAP Fault: {fault_text[:1000]}")
+        raise RuntimeError(f"SOAP Fault: {fault_text[:1200]}")
 
-    total_items_el = root.find(".//t:TotalNumberOfItems", NS)
-    total_pages_el = root.find(".//t:TotalNumberOfPages", NS)
+    total_items_el = root.find(".//t:TotalNumberOfItems", NS) or root.find(".//TotalNumberOfItems")
+    total_pages_el = root.find(".//t:TotalNumberOfPages", NS) or root.find(".//TotalNumberOfPages")
 
     total_items = int(total_items_el.text) if total_items_el is not None and total_items_el.text else 0
     total_pages = int(total_pages_el.text) if total_pages_el is not None and total_pages_el.text else 0
 
-    item_nodes = root.findall(".//t:Items/t:Item", NS)
+    # The real schema you showed: each item is an <Items> node, with children <Id>, <ShortDescription>, etc.
+    item_nodes = root.findall(".//t:Items", NS)
     if not item_nodes:
-        item_nodes = root.findall(".//t:Item", NS)
+        item_nodes = root.findall(".//Items")
 
-    return total_items, total_pages, item_nodes
-
-
-# -----------------------------
-# Parsing
-# -----------------------------
-def get_text(el: Optional[ET.Element]) -> Optional[str]:
-    return el.text.strip() if el is not None and el.text else None
+    snippet = xml_text[:1200].replace("\n", " ")
+    return total_items, total_pages, item_nodes, snippet
 
 
-def parse_int(el: Optional[ET.Element]) -> Optional[int]:
-    t = get_text(el)
-    if not t:
+def parse_int_text(v: Optional[str]) -> Optional[int]:
+    if not v:
         return None
     try:
-        return int(float(t))
+        return int(float(v))
     except Exception:
         return None
 
 
-def parse_float(el: Optional[ET.Element]) -> Optional[float]:
-    t = get_text(el)
-    if not t:
+def parse_float_text(v: Optional[str]) -> Optional[float]:
+    if not v:
         return None
     try:
-        return float(t)
+        return float(v)
     except Exception:
         return None
 
 
-def parse_bool(el: Optional[ET.Element]) -> Optional[bool]:
-    t = get_text(el)
-    if t is None:
+def parse_bool_text(v: Optional[str]) -> Optional[bool]:
+    if v is None:
         return None
-    return t.strip().lower() in {"1", "true", "yes"}
+    return v.strip().lower() in {"1", "true", "yes"}
 
 
-def parse_dt(el: Optional[ET.Element]) -> Optional[datetime]:
-    t = get_text(el)
-    if not t:
+def parse_dt_text(v: Optional[str]) -> Optional[datetime]:
+    if not v:
         return None
-    dt = datetime.fromisoformat(t.replace("Z", "+00:00"))
-    return dt.astimezone(pytz.UTC)
+    # Example: 2025-12-29T12:09:45.578+01:00 (already offset)
+    try:
+        dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = pytz.UTC.localize(dt)
+        return dt.astimezone(pytz.UTC)
+    except Exception:
+        return None
 
 
 def parse_image_links(item_el: ET.Element) -> List[str]:
+    """
+    Handles both:
+      <ImageLinks><ImageLink><Url>...</Url></ImageLink>...</ImageLinks>
+    with and without namespaces.
+    """
     urls: List[str] = []
-    for link in item_el.findall(".//t:ImageLinks/t:ImageLink", NS):
-        url_el = link.find("t:Url", NS)
-        if url_el is not None and url_el.text:
-            urls.append(url_el.text.strip())
+
+    # Find ImageLink nodes by local name
+    for el in item_el.iter():
+        if strip_ns(el.tag) == "ImageLink":
+            url = None
+            for child in list(el):
+                if strip_ns(child.tag) == "Url" and child.text:
+                    url = child.text.strip()
+                    break
+            if url:
+                urls.append(url)
+
     return urls
 
 
 def parse_attributes(item_el: ET.Element) -> Dict[str, List[str]]:
+    """
+    Best-effort: Tradera attribute structure varies. We keep this robust:
+    - Looks for any TermAttributeValue blocks and extracts Name + string values.
+    """
     out: Dict[str, List[str]] = {}
-    for tav in item_el.findall(".//t:AttributeValues/t:TermAttributeValues/t:TermAttributeValue", NS):
-        name = get_text(tav.find("t:Name", NS))
-        if not name:
+
+    for tav in item_el.iter():
+        if strip_ns(tav.tag) != "TermAttributeValue":
             continue
+
+        name = None
         values: List[str] = []
-        for s in tav.findall(".//t:Values/t:string", NS):
-            if s.text:
-                values.append(s.text.strip())
-        out[name] = values
+
+        for child in list(tav):
+            if strip_ns(child.tag) == "Name" and child.text:
+                name = child.text.strip()
+            # Values can be nested; collect any <string>
+            for desc in child.iter():
+                if strip_ns(desc.tag) == "string" and desc.text:
+                    values.append(desc.text.strip())
+
+        if name:
+            out[name] = values
+
     return out
 
 
 def build_attributes_payload(item_el: ET.Element) -> Dict[str, Any]:
     attributes: Dict[str, Any] = parse_attributes(item_el)
+
+    has_bids = parse_bool_text(find_child_text(item_el, "HasBids") or find_any_text(item_el, "HasBids"))
+    is_ended = parse_bool_text(find_child_text(item_el, "IsEnded") or find_any_text(item_el, "IsEnded"))
+
     meta = {
-        "has_bids": parse_bool(item_el.find("t:HasBids", NS)),
-        "is_ended": parse_bool(item_el.find("t:IsEnded", NS)),
-        "item_type": get_text(item_el.find("t:ItemType", NS)),
-        "next_bid": parse_int(item_el.find("t:NextBid", NS)),
-        "buy_it_now_price": parse_float(item_el.find("t:BuyItNowPrice", NS)),
+        "has_bids": has_bids,
+        "is_ended": is_ended,
+        "item_type": find_child_text(item_el, "ItemType") or find_any_text(item_el, "ItemType"),
+        "next_bid": parse_int_text(find_child_text(item_el, "NextBid") or find_any_text(item_el, "NextBid")),
+        "buy_it_now_price": parse_float_text(
+            find_child_text(item_el, "BuyItNowPrice") or find_any_text(item_el, "BuyItNowPrice")
+        ),
     }
     meta = {k: v for k, v in meta.items() if v is not None}
     if meta:
@@ -352,37 +402,46 @@ class Row:
 
 
 def parse_item(item_el: ET.Element) -> Optional[Row]:
-    item_id = parse_int(item_el.find("t:Id", NS))
+    item_id = parse_int_text(find_child_text(item_el, "Id") or find_any_text(item_el, "Id"))
     if item_id is None:
         return None
 
-    end_date = parse_dt(item_el.find("t:EndDate", NS))
+    end_date = parse_dt_text(find_child_text(item_el, "EndDate") or find_any_text(item_el, "EndDate"))
     if end_date is None:
         return None
 
-    category_id = parse_int(item_el.find("t:CategoryId", NS)) or CATEGORY_ID
+    category_id = parse_int_text(find_child_text(item_el, "CategoryId") or find_any_text(item_el, "CategoryId")) or CATEGORY_ID
+
+    price = parse_int_text(find_child_text(item_el, "MaxBid") or find_any_text(item_el, "MaxBid"))
+    bid_count = parse_int_text(find_child_text(item_el, "BidCount") or find_any_text(item_el, "BidCount"))
+
+    seller_id = parse_int_text(find_child_text(item_el, "SellerId") or find_any_text(item_el, "SellerId"))
+    seller_alias = find_child_text(item_el, "SellerAlias") or find_any_text(item_el, "SellerAlias")
+    seller_dsr = parse_float_text(find_child_text(item_el, "SellerDsrAverage") or find_any_text(item_el, "SellerDsrAverage"))
+
+    title = find_child_text(item_el, "ShortDescription") or find_any_text(item_el, "ShortDescription")
+    description = find_child_text(item_el, "LongDescription") or find_any_text(item_el, "LongDescription")
+    item_url = find_child_text(item_el, "ItemUrl") or find_any_text(item_el, "ItemUrl")
+    thumbnail_url = find_child_text(item_el, "ThumbnailLink") or find_any_text(item_el, "ThumbnailLink")
 
     return Row(
         item_id=item_id,
         category_id=category_id,
         end_date=end_date,
-        price=parse_int(item_el.find("t:MaxBid", NS)),
-        bid_count=parse_int(item_el.find("t:BidCount", NS)),
-        seller_id=parse_int(item_el.find("t:SellerId", NS)),
-        seller_alias=get_text(item_el.find("t:SellerAlias", NS)),
-        seller_dsr=parse_float(item_el.find("t:SellerDsrAverage", NS)),
-        title=get_text(item_el.find("t:ShortDescription", NS)),
-        description=get_text(item_el.find("t:LongDescription", NS)),
-        item_url=get_text(item_el.find("t:ItemUrl", NS)),
-        thumbnail_url=get_text(item_el.find("t:ThumbnailLink", NS)),
+        price=price,
+        bid_count=bid_count,
+        seller_id=seller_id,
+        seller_alias=seller_alias,
+        seller_dsr=seller_dsr,
+        title=title,
+        description=description,
+        item_url=item_url,
+        thumbnail_url=thumbnail_url,
         image_urls=parse_image_links(item_el),
         attributes=build_attributes_payload(item_el),
     )
 
 
-# -----------------------------
-# Card mapping (basic)
-# -----------------------------
 def normalize_card_value(value: Optional[str]) -> str:
     if not value:
         return "unknown"
@@ -428,9 +487,6 @@ def ensure_card(conn, payload: Dict[str, Optional[str]]) -> int:
     return int(row[0])
 
 
-# -----------------------------
-# DB upserts
-# -----------------------------
 def upsert(conn, rows: List[Row]) -> None:
     if not rows:
         return
@@ -549,9 +605,6 @@ def get_db_watermark_end_date(conn) -> Optional[datetime]:
     return val
 
 
-# -----------------------------
-# Main
-# -----------------------------
 def main() -> None:
     app_id = require_env("TRADERA_APP_ID")
     app_key = require_env("TRADERA_APP_KEY")
@@ -559,7 +612,7 @@ def main() -> None:
 
     # Local copy (no global mutation)
     order_by = ORDER_BY
-    if MODE.upper() == "INCREMENTAL" and order_by != "EndDateDescending":
+    if MODE == "INCREMENTAL" and order_by != "EndDateDescending":
         log("MODE=INCREMENTAL requires ORDER_BY=EndDateDescending for early-stop. Overriding.")
         order_by = "EndDateDescending"
 
@@ -568,7 +621,7 @@ def main() -> None:
         f"max_requests={MAX_REQUESTS} bids_min={BIDS_MINIMUM} status={ITEM_STATUS!r} type={ITEM_TYPE!r} "
         f"timeouts=({CONNECT_TIMEOUT},{READ_TIMEOUT}) retries={TOTAL_RETRIES} backoff={BACKOFF}"
     )
-    log(f"SOAP bids_min_xml={'ON' if BIDS_MINIMUM is not None else 'OFF'}")
+    log("SOAP bids_min_xml=" + ("OFF" if BIDS_MINIMUM is None else "ON"))
 
     session = make_session()
 
@@ -579,6 +632,7 @@ def main() -> None:
         imported_total = 0
         pages_fetched = 0
         requests_used = 0
+        status_message = None
 
         try:
             watermark_end_date = get_db_watermark_end_date(conn)
@@ -596,20 +650,19 @@ def main() -> None:
             page = START_PAGE
 
             while requests_used < MAX_REQUESTS:
-                log(f"Fetching page {page}... ({requests_used + 1}/{MAX_REQUESTS})")
+                log(f"Fetching page {page}... ({requests_used+1}/{MAX_REQUESTS})")
 
                 envelope = build_envelope(app_id, app_key, page, order_by)
                 xml_resp = post_soap(session, envelope)
                 requests_used += 1
 
-                total_items, total_pages, item_nodes = parse_response(xml_resp)
+                total_items, total_pages, item_nodes, resp_snippet = parse_response(xml_resp)
 
                 if page == 1:
                     log(f"API totals (snapshot): total_items={total_items}, total_pages={total_pages}")
 
                 if not item_nodes:
-                    snippet = (xml_resp or "")[:1000].replace("\n", " ")
-                    log(f"No items returned; stopping. response_snippet={snippet}")
+                    log(f"No items returned; stopping. response_snippet={resp_snippet}")
                     break
 
                 rows: List[Row] = []
@@ -652,7 +705,9 @@ def main() -> None:
                 if SLEEP_MS > 0:
                     time.sleep(SLEEP_MS / 1000.0)
 
-            msg = f"requests_used={requests_used}, pages_fetched={pages_fetched}, total_imported={imported_total}"
+            status_message = (
+                f"requests_used={requests_used}, pages_fetched={pages_fetched}, total_imported={imported_total}"
+            )
             finalize_import_run(
                 conn,
                 run_id,
@@ -660,10 +715,11 @@ def main() -> None:
                 new_rows=imported_total,
                 pages_fetched=pages_fetched,
                 requests_used=requests_used,
-                message=msg,
+                message=status_message,
             )
 
         except Exception as exc:
+            error_message = str(exc)
             finalize_import_run(
                 conn,
                 run_id,
@@ -671,7 +727,7 @@ def main() -> None:
                 new_rows=imported_total,
                 pages_fetched=pages_fetched,
                 requests_used=requests_used,
-                message=str(exc),
+                message=error_message,
             )
             raise
 
