@@ -259,6 +259,12 @@ export function DataEnrichmentPage(): JSX.Element {
   const [notes, setNotes] = useState('')
   const [showDetailModal, setShowDetailModal] = useState(false)
 
+  const closeDetailModal = () => {
+    setShowDetailModal(false)
+    setSelectedAuctionId(null)
+    setSelectedCardId(null)
+  }
+
   const { data, isLoading } = useQuery({
     queryKey: ['enrichment-auctions', filters],
     queryFn: () =>
@@ -302,13 +308,21 @@ export function DataEnrichmentPage(): JSX.Element {
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['enrichment-auctions'] })
       queryClient.setQueryData(['enrichment-auction', updated.item_id], updated)
-      if (showDetailModal) {
-        setShowDetailModal(false)
-        setSelectedAuctionId(null)
-        setSelectedCardId(null)
-      }
-    }
+      if (showDetailModal) closeDetailModal()
+    },
+    onError: () => alert('Failed to unlink auction')
   })
+
+  useEffect(() => {
+    if (!showDetailModal) return
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeDetailModal()
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [showDetailModal])
 
   const reprocessMutation = useMutation({
     mutationFn: () => reprocessEnrichmentAuctions(200, true),
@@ -588,8 +602,15 @@ export function DataEnrichmentPage(): JSX.Element {
       ) : null}
 
       {showDetailModal && selectedAuctionId ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-5xl rounded-lg bg-white shadow-2xl dark:bg-slate-900">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={closeDetailModal}
+          role="presentation"
+        >
+          <div
+            className="w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-lg bg-white shadow-2xl dark:bg-slate-900"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500">Auction detail</p>
@@ -597,19 +618,11 @@ export function DataEnrichmentPage(): JSX.Element {
                   {selectedAuction.data?.title ?? 'Untitled'}
                 </p>
               </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setShowDetailModal(false)
-                  setSelectedAuctionId(null)
-                  setSelectedCardId(null)
-                }}
-              >
+              <Button variant="secondary" size="sm" onClick={closeDetailModal}>
                 Close
               </Button>
             </div>
-            <div className="grid gap-4 px-4 py-4 md:grid-cols-2">
+            <div className="grid max-h-[calc(90vh-64px)] gap-4 overflow-y-auto px-4 py-4 md:grid-cols-2">
               <div className="space-y-3">
                 {selectedAuction.isFetching ? (
                   <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
@@ -647,7 +660,7 @@ export function DataEnrichmentPage(): JSX.Element {
                         onClick={() => selectedAuctionId && unlinkMutation.mutate(selectedAuctionId)}
                       >
                         <Unlink2 className="mr-2 h-4 w-4" />
-                        Mark unmatched
+                        {unlinkMutation.isPending ? 'Unlinking…' : 'Mark unmatched'}
                       </Button>
                     </div>
                   </CardContent>
