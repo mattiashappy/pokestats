@@ -419,6 +419,75 @@ def upsert(conn, rows: List[Row]) -> None:
     conn.commit()
 
 
+def ensure_import_runs_table(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS import_runs (
+                id SERIAL PRIMARY KEY,
+                source TEXT NOT NULL DEFAULT 'tradera',
+                started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                finished_at TIMESTAMPTZ,
+                new_rows INTEGER NOT NULL DEFAULT 0,
+                pages_fetched INTEGER NOT NULL DEFAULT 0,
+                requests_used INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'running',
+                message TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_import_runs_started_at ON import_runs (started_at DESC);
+            """
+        )
+    conn.commit()
+
+
+def start_import_run(conn) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO import_runs (source, status, started_at)
+            VALUES ('tradera', 'running', NOW())
+            RETURNING id;
+            """
+        )
+        row = cur.fetchone()
+    conn.commit()
+    return int(row[0])
+
+
+def finalize_import_run(
+    conn,
+    run_id: int,
+    *,
+    status: str,
+    new_rows: int,
+    pages_fetched: int,
+    requests_used: int,
+    message: Optional[str] = None,
+) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE import_runs
+            SET finished_at = NOW(),
+                status = %(status)s,
+                message = %(message)s,
+                new_rows = %(new_rows)s,
+                pages_fetched = %(pages_fetched)s,
+                requests_used = %(requests_used)s
+            WHERE id = %(run_id)s;
+            """,
+            {
+                "status": status,
+                "message": message,
+                "new_rows": new_rows,
+                "pages_fetched": pages_fetched,
+                "requests_used": requests_used,
+                "run_id": run_id,
+            },
+        )
+    conn.commit()
+
+
 def get_db_watermark_end_date(conn) -> Optional[datetime]:
     with conn.cursor() as cur:
         cur.execute("SELECT max(end_date) FROM tradera_sales;")
@@ -445,77 +514,106 @@ def main() -> None:
     session = make_session()
 
     with psycopg2.connect(db_url) as conn:
-        watermark_end_date = get_db_watermark_end_date(conn)
-        watermark_cutoff: Optional[datetime] = None
-
-        if watermark_end_date is None:
-            log("REFRESH: DB empty -> will import up to MAX_REQUESTS pages starting from newest.")
-        else:
-            watermark_cutoff = watermark_end_date - timedelta(minutes=INCREMENTAL_OVERLAP_MINUTES)
-            log(
-                f"REFRESH watermark: max(end_date)={watermark_end_date.isoformat()} UTC, "
-                f"cutoff(with overlap {INCREMENTAL_OVERLAP_MINUTES}m)={watermark_cutoff.isoformat()} UTC"
-            )
-
-        page = START_PAGE
+        ensure_import_runs_table(conn)
+        run_id = start_import_run(conn)
+        status_message = None
         imported_total = 0
         pages_fetched = 0
         requests_used = 0
+        try:
+            watermark_end_date = get_db_watermark_end_date(conn)
+            watermark_cutoff: Optional[datetime] = None
 
-        while requests_used < MAX_REQUESTS:
-            log(f"Fetching page {page}... ({requests_used+1}/{MAX_REQUESTS})")
+            if watermark_end_date is None:
+                log("REFRESH: DB empty -> will import up to MAX_REQUESTS pages starting from newest.")
+            else:
+                watermark_cutoff = watermark_end_date - timedelta(minutes=INCREMENTAL_OVERLAP_MINUTES)
+                log(
+                    f"REFRESH watermark: max(end_date)={watermark_end_date.isoformat()} UTC, "
+                    f"cutoff(with overlap {INCREMENTAL_OVERLAP_MINUTES}m)={watermark_cutoff.isoformat()} UTC"
+                )
 
-            envelope = build_envelope(app_id, app_key, page)
-            xml_resp = post_soap(session, envelope)
-            requests_used += 1
+            page = START_PAGE
 
-            total_items, total_pages, item_nodes = parse_response(xml_resp)
+            while requests_used < MAX_REQUESTS:
+                log(f"Fetching page {page}... ({requests_used+1}/{MAX_REQUESTS})")
 
-            if page == 1:
-                log(f"API totals (snapshot): total_items={total_items}, total_pages={total_pages}")
+                envelope = build_envelope(app_id, app_key, page)
+                xml_resp = post_soap(session, envelope)
+                requests_used += 1
 
-            if not item_nodes:
-                log("No items returned; stopping.")
-                break
+                total_items, total_pages, item_nodes = parse_response(xml_resp)
 
-            rows: List[Row] = []
-            oldest_on_page: Optional[datetime] = None
+                if page == 1:
+                    log(f"API totals (snapshot): total_items={total_items}, total_pages={total_pages}")
 
-            for el in item_nodes:
-                row = parse_item(el)
-                if not row:
-                    continue
-                if oldest_on_page is None or row.end_date < oldest_on_page:
-                    oldest_on_page = row.end_date
+                if not item_nodes:
+                    log("No items returned; stopping.")
+                    break
 
-                # Incremental filter: keep only items newer than cutoff
-                if watermark_cutoff is not None and row.end_date <= watermark_cutoff:
-                    continue
+                rows: List[Row] = []
+                oldest_on_page: Optional[datetime] = None
 
-                rows.append(row)
+                for el in item_nodes:
+                    row = parse_item(el)
+                    if not row:
+                        continue
+                    if oldest_on_page is None or row.end_date < oldest_on_page:
+                        oldest_on_page = row.end_date
 
-            upsert(conn, rows)
-            imported_total += len(rows)
-            pages_fetched += 1
+                    # Incremental filter: keep only items newer than cutoff
+                    if watermark_cutoff is not None and row.end_date <= watermark_cutoff:
+                        continue
 
-            log(
-                f"Page {page}/{total_pages or '?'} received={len(item_nodes)} imported={len(rows)} "
-                f"total_imported={imported_total}"
-                + (f" oldest_end_date_on_page={oldest_on_page.isoformat()}" if oldest_on_page else "")
+                    rows.append(row)
+
+                upsert(conn, rows)
+                imported_total += len(rows)
+                pages_fetched += 1
+
+                log(
+                    f"Page {page}/{total_pages or '?'} received={len(item_nodes)} imported={len(rows)} "
+                    f"total_imported={imported_total}"
+                    + (f" oldest_end_date_on_page={oldest_on_page.isoformat()}" if oldest_on_page else "")
+                )
+
+                # Early stop: if entire page is older than cutoff, next pages will be even older
+                if watermark_cutoff is not None and oldest_on_page is not None and oldest_on_page <= watermark_cutoff:
+                    log("REFRESH: reached already-imported cutoff; stopping early.")
+                    break
+
+                if total_pages and page >= total_pages:
+                    log("Reached last page.")
+                    break
+
+                page += 1
+                if SLEEP_MS > 0:
+                    time.sleep(SLEEP_MS / 1000.0)
+
+            status_message = (
+                f"requests_used={requests_used}, pages_fetched={pages_fetched}, total_imported={imported_total}"
             )
-
-            # Early stop: if entire page is older than cutoff, next pages will be even older
-            if watermark_cutoff is not None and oldest_on_page is not None and oldest_on_page <= watermark_cutoff:
-                log("REFRESH: reached already-imported cutoff; stopping early.")
-                break
-
-            if total_pages and page >= total_pages:
-                log("Reached last page.")
-                break
-
-            page += 1
-            if SLEEP_MS > 0:
-                time.sleep(SLEEP_MS / 1000.0)
+            finalize_import_run(
+                conn,
+                run_id,
+                status="ok",
+                new_rows=imported_total,
+                pages_fetched=pages_fetched,
+                requests_used=requests_used,
+                message=status_message,
+            )
+        except Exception as exc:
+            error_message = str(exc)
+            finalize_import_run(
+                conn,
+                run_id,
+                status="failed",
+                new_rows=imported_total,
+                pages_fetched=pages_fetched,
+                requests_used=requests_used,
+                message=error_message,
+            )
+            raise
 
     log(f"DONE: requests_used={requests_used}, pages_fetched={pages_fetched}, total_imported={imported_total}")
 

@@ -2,6 +2,7 @@
 const express = require('express')
 const compression = require('compression')
 const path = require('path')
+const { spawn } = require('child_process')
 const { Pool } = require('pg')
 
 const {
@@ -80,6 +81,8 @@ let hasCheckedSalesParsedSetCodeColumn = false
 let salesParsedSetCodeColumnAvailable = false
 let hasBackfilledSalesCards = false
 let hasEnsuredSalesCardIndex = false
+let hasCheckedImportRunsTable = false
+let importRunsTableAvailable = false
 
 async function ensureColumnExists(tableName, columnName, definition) {
   const { rows } = await pool.query(
@@ -132,6 +135,36 @@ async function ensureIndexExists(tableName, indexName, definition) {
     console.error(`Failed to create ${indexName} on ${tableName}`, error)
     return false
   }
+}
+
+async function ensureImportRunsTable() {
+  if (!pool) return false
+  if (hasCheckedImportRunsTable) return importRunsTableAvailable
+
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS public.import_runs (
+        id SERIAL PRIMARY KEY,
+        source TEXT NOT NULL DEFAULT 'tradera',
+        started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        finished_at TIMESTAMPTZ,
+        new_rows INTEGER NOT NULL DEFAULT 0,
+        pages_fetched INTEGER NOT NULL DEFAULT 0,
+        requests_used INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'running',
+        message TEXT
+      )
+    `)
+
+    const indexReady = await ensureIndexExists('import_runs', 'idx_import_runs_started_at', '(started_at DESC)')
+    importRunsTableAvailable = Boolean(indexReady)
+  } catch (error) {
+    console.error('Failed to ensure import_runs table exists', error)
+    importRunsTableAvailable = false
+  }
+
+  hasCheckedImportRunsTable = true
+  return importRunsTableAvailable
 }
 
 async function ensureSalesTableAvailable() {
@@ -709,6 +742,30 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
   return result.rows.map(normalizeAuctionRow)
 }
 
+function runImporterScript() {
+  return new Promise((resolve, reject) => {
+    const child = spawn('python', ['scripts/tradera_importer.py'], {
+      cwd: __dirname,
+      env: { ...process.env },
+      shell: false
+    })
+
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout.on('data', (data) => {
+      stdout += data.toString()
+    })
+    child.stderr.on('data', (data) => {
+      stderr += data.toString()
+    })
+    child.on('error', (error) => reject(error))
+    child.on('close', (code) => {
+      resolve({ code, stdout, stderr })
+    })
+  })
+}
+
 async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
   if (!pool) return []
   const ok = await ensureCardInfrastructure()
@@ -917,6 +974,71 @@ app.get('/api/sales/diagnostic', async (_req, res) => {
     res.json({ source: 'database', count: auctions.length, auctions })
   } catch (error) {
     res.status(500).json({ source: 'database', error: error?.message || String(error) })
+  }
+})
+
+app.get('/api/import/runs', async (req, res) => {
+  if (!pool) return res.json([])
+
+  try {
+    const ok = await ensureImportRunsTable()
+    if (!ok) return res.status(500).json({ error: 'import_runs table unavailable' })
+
+    const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100)
+    const { rows } = await pool.query(
+      `
+        SELECT id, source, started_at, finished_at, status, new_rows, pages_fetched, requests_used, message
+        FROM public.import_runs
+        ORDER BY started_at DESC
+        LIMIT $1
+      `,
+      [limit]
+    )
+
+    res.json(rows)
+  } catch (error) {
+    console.error('Failed to fetch import runs', error)
+    res.status(500).json({ error: 'Failed to load import runs' })
+  }
+})
+
+app.post('/api/import/run', async (_req, res) => {
+  if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
+
+  try {
+    const salesAvailable = await ensureSalesTableAvailable()
+    const runsAvailable = await ensureImportRunsTable()
+    if (!salesAvailable || !runsAvailable)
+      return res.status(500).json({ ok: false, error: 'Required tables unavailable' })
+
+    const startTime = Date.now()
+    const {
+      rows: [before]
+    } = await pool.query('SELECT COUNT(*)::int AS count, MAX(fetched_at) AS last_fetched FROM public.tradera_sales')
+
+    const { code, stdout, stderr } = await runImporterScript()
+    const durationMs = Date.now() - startTime
+
+    const {
+      rows: [after]
+    } = await pool.query('SELECT COUNT(*)::int AS count, MAX(fetched_at) AS last_fetched FROM public.tradera_sales')
+
+    const newRows = after.count - before.count
+    const payload = {
+      ok: code === 0,
+      exitCode: code,
+      newRows,
+      durationMs,
+      startedAt: new Date(startTime).toISOString(),
+      lastFetchedAt: after.last_fetched,
+      output: `${stdout}${stderr}`.trim()
+    }
+
+    if (code !== 0) return res.status(500).json(payload)
+    return res.json(payload)
+  } catch (error) {
+    console.error('Failed to run importer', error)
+    return res.status(500).json({ ok: false, error: String(error) })
   }
 })
 

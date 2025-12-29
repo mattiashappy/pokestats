@@ -77,6 +77,18 @@ export type EnrichmentSummary = {
   error?: string
 }
 
+export type ImportRun = {
+  id: number
+  source: string
+  started_at: string
+  finished_at: string | null
+  status: string
+  new_rows: number
+  pages_fetched: number
+  requests_used: number
+  message?: string | null
+}
+
 export async function fetchEnrichmentSummary() {
   const res = await fetch('/api/enrichment/summary')
   if (!res.ok) throw new Error('Failed to fetch enrichment summary')
@@ -97,4 +109,23 @@ export async function fetchUnmatchedAuctions(limit = 25) {
   const res = await fetch(`/api/enrichment/unmatched?limit=${limit}`)
   if (!res.ok) throw new Error('Failed to fetch unmatched auctions')
   return res.json() as Promise<UnmatchedAuction[]>
+}
+
+export async function fetchImportRuns(limit = 15) {
+  const res = await fetch(`/api/import/runs?limit=${limit}`)
+  if (!res.ok) throw new Error('Failed to fetch import runs')
+  return res.json() as Promise<ImportRun[]>
+}
+
+export async function runImporter() {
+  const res = await fetch('/api/import/run', { method: 'POST' })
+  if (!res.ok) throw new Error('Failed to run importer')
+  return res.json() as Promise<{
+    ok: boolean
+    newRows: number
+    durationMs: number
+    startedAt: string
+    lastFetchedAt: string | null
+    output?: string
+  }>
 }
