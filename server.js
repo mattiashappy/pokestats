@@ -1121,7 +1121,7 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
 }
 
 async function fetchEnrichmentAuctions({
-  linkedOnly = false,
+  linkedOnly = null,
   confidence = null,
   q = null,
   hasImage = null,
@@ -1137,9 +1137,9 @@ async function fetchEnrichmentAuctions({
   const where = []
   const params = []
 
-  // IMPORTANT: linkedOnly means "only linked". Otherwise show "only unlinked".
-  if (linkedOnly) where.push('ts.card_id IS NOT NULL')
-  else where.push('ts.card_id IS NULL')
+  // linkedOnly: true -> only linked, false -> only unlinked, null -> all
+  if (linkedOnly === true) where.push('ts.card_id IS NOT NULL')
+  else if (linkedOnly === false) where.push('ts.card_id IS NULL')
 
   const normalizedConfidence = normalizeMatchConfidence(confidence)
   if (normalizedConfidence === 'unmatched') {
@@ -1598,7 +1598,8 @@ app.post('/api/import/run', async (_req, res) => {
 // --------------------
 app.get('/api/enrichment/auctions', async (req, res) => {
   try {
-    const linked = req.query.linked === '1'
+    const linkedParam = req.query.linked
+    const linked = linkedParam === '1' ? true : linkedParam === '0' ? false : null
     const confidence = req.query.confidence ? String(req.query.confidence) : null
     const q = req.query.q ? String(req.query.q) : null
     const hasImage = req.query.hasImage === '1'
