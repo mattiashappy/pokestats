@@ -76,6 +76,7 @@ ITEM_STATUS = os.getenv("ITEM_STATUS", "Ended")
 ITEM_TYPE = os.getenv("ITEM_TYPE", "Auction")
 BIDS_MINIMUM = os.getenv("BIDS_MINIMUM", "1")
 ORDER_BY = os.getenv("ORDER_BY", "EndDateDescending")
+MODE = os.getenv("MODE", "INCREMENTAL")
 
 TZ_NAME = os.getenv("TZ") or os.getenv("LOCAL_TIMEZONE") or "Europe/Stockholm"
 INCREMENTAL_OVERLAP_MINUTES = int(os.getenv("INCREMENTAL_OVERLAP_MINUTES", "10"))
@@ -109,13 +110,16 @@ def build_envelope(app_id: str, app_key: str, page_number: int, order_by: str) -
     bids_min_xml = f"<BidsMinimum>{BIDS_MINIMUM}</BidsMinimum>" if BIDS_MINIMUM is not None else ""
 
     return f"""<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Header>
     <AuthenticationHeader xmlns="http://api.tradera.com">
       <AppId>{app_id}</AppId>
       <AppKey>{app_key}</AppKey>
     </AuthenticationHeader>
   </soap:Header>
+
   <soap:Body>
     <SearchAdvanced xmlns="http://api.tradera.com">
       <request>
@@ -500,9 +504,10 @@ def main() -> None:
     app_key = require_env("TRADERA_APP_KEY")
     db_url = require_env("DATABASE_URL")
 
+    # Local copy (no global mutation => no SyntaxError)
     order_by = ORDER_BY
-    if order_by != "EndDateDescending":
-        log("REFRESH requires ORDER_BY=EndDateDescending for early-stop. Overriding.")
+    if MODE == "INCREMENTAL" and order_by != "EndDateDescending":
+        log("MODE=INCREMENTAL requires ORDER_BY=EndDateDescending for early-stop. Overriding.")
         order_by = "EndDateDescending"
 
     log(

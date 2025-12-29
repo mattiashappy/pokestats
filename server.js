@@ -199,8 +199,10 @@ async function ensureExpansionsTableAvailable() {
       )
     `)
 
+    const hasImageUrl = await ensureColumnExists('expansions', 'image_url', 'TEXT')
+
     const hasEraIndex = await ensureIndexExists('expansions', 'idx_expansions_era', '(era)')
-    expansionsTableAvailable = Boolean(hasEraIndex)
+    expansionsTableAvailable = Boolean(hasEraIndex && hasImageUrl)
   } catch (error) {
     console.error('Failed to ensure expansions table exists', error)
     expansionsTableAvailable = false
