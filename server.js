@@ -202,7 +202,15 @@ const pool = DATABASE_URL
   : null
 
 const MATCH_CONFIDENCE_LEVELS = ['high', 'medium', 'low']
-const MATCH_METHODS = ['auto:number+set', 'auto:number+name+era', 'manual', 'image_only', 'unmatched']
+const MATCH_METHODS = [
+  'number_first',
+  'number_first_tiebreak',
+  'auto:number+set',
+  'auto:number+name+era',
+  'manual',
+  'image_only',
+  'unmatched'
+]
 
 let hasCheckedSalesTable = false
 let salesTableAvailable = false
@@ -495,7 +503,13 @@ async function ensureSalesEnrichmentColumnsAvailable() {
       ensureColumnExists('tradera_sales', 'match_method', 'TEXT'),
       ensureColumnExists('tradera_sales', 'parsed_name', 'TEXT'),
       ensureColumnExists('tradera_sales', 'parsed_card_number', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'parsed_total_in_set', 'INTEGER'),
       ensureColumnExists('tradera_sales', 'parsed_set_hint', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'parsed_set_guess', 'JSONB'),
+      ensureColumnExists('tradera_sales', 'parsed_set_confidence', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'parsed_set_candidates', 'JSONB'),
+      ensureColumnExists('tradera_sales', 'suggested_cards', 'JSONB'),
+      ensureColumnExists('tradera_sales', 'enrich_notes', 'JSONB'),
       ensureColumnExists('tradera_sales', 'notes', 'TEXT'),
       ensureColumnExists('tradera_sales', 'updated_at', 'TIMESTAMPTZ NOT NULL DEFAULT NOW()')
     ])
@@ -786,59 +800,10 @@ function extractCardPayload(row) {
 
 // NOTE: this can create “unknown” cards from Tradera filters.
 async function ensureMissingSalesAreLinkedToCards() {
-  if (!pool || hasBackfilledSalesCards) return
-
-  const ok = await ensureCardInfrastructure()
-  if (!ok) return
-
-  const { rows: missingRows } = await pool.query(
-    `SELECT item_id, title, attributes FROM public.tradera_sales WHERE card_id IS NULL LIMIT 5000`
-  )
-
-  if (missingRows.length === 0) {
-    hasBackfilledSalesCards = true
-    return
-  }
-
-  const client = await pool.connect()
-  try {
-    await client.query('BEGIN')
-
-    const cardCache = new Map()
-
-    for (const row of missingRows) {
-      const payload = extractCardPayload(row)
-      const cacheKey = `${payload.name}::${payload.set_name}`
-
-      if (!cardCache.has(cacheKey)) {
-        const cardResult = await client.query(
-          `
-            INSERT INTO public.cards (name, era, set_name, card_number)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (name, set_name) DO UPDATE SET
-              era = COALESCE(public.cards.era, EXCLUDED.era),
-              card_number = COALESCE(public.cards.card_number, EXCLUDED.card_number)
-            RETURNING id
-          `,
-          [payload.name, payload.era, payload.set_name, payload.card_number]
-        )
-        cardCache.set(cacheKey, cardResult.rows[0].id)
-      }
-
-      const cardId = cardCache.get(cacheKey)
-      await client.query('UPDATE public.tradera_sales SET card_id = $1 WHERE item_id = $2', [
-        cardId,
-        row.item_id
-      ])
-    }
-
-    await client.query('COMMIT')
-  } catch (error) {
-    await client.query('ROLLBACK')
-    console.error('Failed to backfill card links', error)
-  } finally {
-    client.release()
-  }
+  // Previous versions auto-created "unknown" cards to backfill missing links. That caused noisy data,
+  // so the enrichment flow now intentionally leaves auctions unmatched unless a real card exists.
+  // This helper is kept as a no-op to avoid reintroducing the old behavior while keeping call sites intact.
+  hasBackfilledSalesCards = true
 }
 
 // --------------------
@@ -882,7 +847,16 @@ function buildAuctionWithCard(row) {
     ...rest
   } = row
 
-  return { ...rest, card }
+  return {
+    ...rest,
+    parsed_set_candidates: row.parsed_set_candidates || [],
+    parsed_set_guess: row.parsed_set_guess || null,
+    parsed_set_confidence: row.parsed_set_confidence || null,
+    parsed_total_in_set: row.parsed_total_in_set ?? rest.parsed_total_in_set ?? null,
+    suggested_cards: row.suggested_cards || [],
+    enrich_notes: row.enrich_notes || null,
+    card
+  }
 }
 
 function normalizeAuctionRow(row) {
@@ -1232,13 +1206,21 @@ async function fetchEnrichmentAuctionById(id) {
   return buildAuctionWithCard(rows[0])
 }
 
-async function searchCards(q) {
+async function searchCards(q, expansionId = null) {
   if (!pool) return []
   const ok = await ensureCardInfrastructure()
   if (!ok) return []
 
   const term = `%${q}%`
   const params = [term, term, term, term]
+  const clauses = [
+    '(c.name ILIKE $1 OR c.card_number ILIKE $2 OR COALESCE(e.name, c.set_name) ILIKE $3 OR COALESCE(e.set_code, c.set_code) ILIKE $4)'
+  ]
+
+  if (expansionId) {
+    params.push(expansionId)
+    clauses.push(`c.expansion_id = $${params.length}`)
+  }
 
   const { rows } = await pool.query(
     `
@@ -1251,10 +1233,7 @@ async function searchCards(q) {
         c.image_url
       FROM public.cards c
       LEFT JOIN public.expansions e ON e.id = c.expansion_id
-      WHERE c.name ILIKE $1
-        OR c.card_number ILIKE $2
-        OR COALESCE(e.name, c.set_name) ILIKE $3
-        OR COALESCE(e.set_code, c.set_code) ILIKE $4
+      WHERE ${clauses.join(' AND ')}
       ORDER BY c.name ASC
       LIMIT 50
     `,
@@ -1266,24 +1245,19 @@ async function searchCards(q) {
 
 async function tryAutoMatchAuction(client, row, parsedOverride = null) {
   const text = `${row.title || ''} ${row.description || ''}`
-  const parsed = parsedOverride || {
-    parsed_name: parseCardName(text),
-    parsed_card_number: parseCardNumber(text).cardNumber,
-    parsed_set_hint: parseSetHint(text)
-  }
-
   const expansions = await fetchCachedExpansions(client)
-  const normalizedExpansions = expansions.map((exp) => ({
-    ...exp,
-    era: normalizeEraLabel(exp.era)
-  }))
-
-  const updateFields = await resolveAuctionMatch(client, row, normalizedExpansions)
+  const updateFields = await resolveAuctionMatch(client, row, expansions)
 
   return {
-    parsed_name: updateFields.parsed_name ?? parsed.parsed_name ?? null,
-    parsed_card_number: updateFields.parsed_card_number ?? parsed.parsed_card_number ?? null,
-    parsed_set_hint: updateFields.parsed_set_hint ?? parsed.parsed_set_hint ?? null,
+    parsed_name: updateFields.parsed_name ?? parsedOverride?.parsed_name ?? parseCardName(text),
+    parsed_card_number: updateFields.parsed_card_number ?? parsedOverride?.parsed_card_number ?? parseCardNumber(text).cardNumber,
+    parsed_total_in_set: updateFields.parsed_total_in_set ?? parsedOverride?.parsed_total_in_set ?? parseCardNumber(text).denominator,
+    parsed_set_hint: updateFields.parsed_set_hint ?? parsedOverride?.parsed_set_hint ?? parseSetHint(text),
+    parsed_set_guess: updateFields.parsed_set_guess ?? null,
+    parsed_set_confidence: updateFields.parsed_set_confidence ?? null,
+    parsed_set_candidates: updateFields.parsed_set_candidates ?? [],
+    suggested_cards: updateFields.suggested_cards ?? [],
+    enrich_notes: updateFields.enrich_notes ?? null,
     match_method: updateFields.match_method,
     match_confidence: updateFields.match_confidence,
     card_id: updateFields.card_id,
@@ -1646,7 +1620,8 @@ app.get('/api/enrichment/cards/search', async (req, res) => {
     const q = String(req.query.q || '').trim()
     if (!q) return res.json([])
 
-    const cards = await searchCards(q)
+    const expansionId = req.query.expansionId ? Number(req.query.expansionId) : null
+    const cards = await searchCards(q, Number.isFinite(expansionId) ? expansionId : null)
     res.json(cards)
   } catch (error) {
     console.error('Failed to search cards', error)
@@ -1784,6 +1759,7 @@ app.post('/api/enrichment/auctions/reprocess', async (req, res) => {
     let unmatched = 0
     let reviewed = 0
     let collisions = 0
+    let unmatchedWithParsedNumber = 0
     const totalBuckets = new Map()
 
     for (const row of rows) {
@@ -1801,7 +1777,13 @@ app.post('/api/enrichment/auctions/reprocess', async (req, res) => {
               match_method = $4,
               parsed_name = COALESCE($5, parsed_name),
               parsed_card_number = COALESCE($6, parsed_card_number),
-              parsed_set_hint = COALESCE($7, parsed_set_hint),
+              parsed_total_in_set = COALESCE($7, parsed_total_in_set),
+              parsed_set_hint = COALESCE($8, parsed_set_hint),
+              parsed_set_guess = COALESCE($9, parsed_set_guess),
+              parsed_set_confidence = COALESCE($10, parsed_set_confidence),
+              parsed_set_candidates = COALESCE($11, parsed_set_candidates),
+              suggested_cards = COALESCE($12, suggested_cards),
+              enrich_notes = COALESCE($13, enrich_notes),
               updated_at = NOW()
           WHERE item_id = $1
         `,
@@ -1812,20 +1794,29 @@ app.post('/api/enrichment/auctions/reprocess', async (req, res) => {
           updates.match_method,
           updates.parsed_name,
           updates.parsed_card_number,
-          updates.parsed_set_hint
+          updates.parsed_total_in_set,
+          updates.parsed_set_hint,
+          updates.parsed_set_guess ? JSON.stringify(updates.parsed_set_guess) : null,
+          updates.parsed_set_confidence,
+          updates.parsed_set_candidates ? JSON.stringify(updates.parsed_set_candidates) : null,
+          updates.suggested_cards ? JSON.stringify(updates.suggested_cards) : null,
+          updates.enrich_notes ? JSON.stringify(updates.enrich_notes) : null
         ]
       )
 
-      if (updates.collision_candidates?.length) collisions++
+      if ((updates.parsed_set_candidates || []).length > 1) collisions++
 
       if (updates.card_id) linked++
-      else if (updates.parsed_name || updates.parsed_card_number) reviewed++
-      else unmatched++
+      else if (updates.parsed_name || updates.parsed_card_number) {
+        reviewed++
+        if (updates.parsed_card_number) unmatchedWithParsedNumber++
+      } else unmatched++
     }
 
     console.log(
       `[enrichment] ${new Date().toISOString()} reprocessed ${rows.length} auctions -> linked:${linked} review:${reviewed} unmatched:${unmatched} collisions:${collisions}`
     )
+    console.log('[enrichment] unmatched with parsed numbers', unmatchedWithParsedNumber)
 
     const mostCommonTotals = Array.from(totalBuckets.entries())
       .sort((a, b) => b[1] - a[1])

@@ -50,8 +50,10 @@ export async function fetchEnrichmentAuction(id: number): Promise<EnrichmentAuct
   return response.json()
 }
 
-export async function searchEnrichmentCards(q: string) {
-  const response = await fetch(`/api/enrichment/cards/search?q=${encodeURIComponent(q)}`)
+export async function searchEnrichmentCards(q: string, expansionId?: number | null) {
+  const search = new URLSearchParams({ q })
+  if (expansionId) search.set('expansionId', String(expansionId))
+  const response = await fetch(`/api/enrichment/cards/search?${search.toString()}`)
   if (!response.ok) throw new Error('Failed to search cards')
   return response.json() as Promise<
     Array<{

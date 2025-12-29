@@ -88,7 +88,13 @@ export type EnrichmentAuction = {
   match_method: string | null
   parsed_name?: string | null
   parsed_card_number?: string | null
+  parsed_total_in_set?: number | null
   parsed_set_hint?: string | null
+  parsed_set_candidates?: Array<{ expansion_id: number; set_code: string; name: string; set_total: number | null }>
+  parsed_set_guess?: { expansion_id: number; set_code: string; name: string } | null
+  parsed_set_confidence?: string | null
+  suggested_cards?: Array<{ id: number; name: string; set_name: string | null; set_code: string | null; card_number: string | null; image_url: string | null }>
+  enrich_notes?: Record<string, unknown> | null
   notes?: string | null
   updated_at?: string
   card?: CardPreview | null
