@@ -456,23 +456,45 @@ def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
 
     raw_name = attr_value("card_name", "card name", "Card name") or row.title or "unknown card"
     raw_set = attr_value("series", "set", "pokemon_set", "Series", "Set")
+    raw_set_code = attr_value("set_code", "set code", "Set code", "Set_code", "setcode")
+
+    name_value = normalize_card_value(raw_name)
+    set_name_value = normalize_card_value(raw_set) if raw_set else "unknown"
+
+    # Prefer explicit set_code attribute, else fall back to set_name, else stable "unknown-<name>" code
+    if raw_set_code and str(raw_set_code).strip():
+        set_code_value = normalize_card_value(raw_set_code)
+    elif raw_set and str(raw_set).strip():
+        set_code_value = set_name_value
+    else:
+        fallback_code = name_value.replace(" ", "-")
+        set_code_value = f"unknown-{fallback_code}" if fallback_code != "unknown" else "unknown-unknown"
+
+    # Card number: keep DB safe for NOT NULL schemas by defaulting to "unknown"
+    card_number_value = attr_value("card_number", "card number", "Card number")
+    card_number_value = card_number_value.strip() if isinstance(card_number_value, str) else None
+    if not card_number_value:
+        card_number_value = "unknown"
 
     return {
-        "name": normalize_card_value(raw_name),
+        "name": name_value,
         "era": attr_value("pokemon_era", "era", "generation", "Era", "Generation"),
-        "set_name": normalize_card_value(raw_set) if raw_set else "unknown",
-        "card_number": attr_value("card_number", "card number", "Card number") or "unknown",
+        "set_name": set_name_value,
+        "set_code": set_code_value,
+        "card_number": card_number_value,
     }
+
 
 
 def ensure_card(conn, payload: Dict[str, Optional[str]]) -> int:
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO cards (name, era, set_name, card_number)
-            VALUES (%(name)s, %(era)s, %(set_name)s, %(card_number)s)
+            INSERT INTO cards (name, era, set_name, set_code, card_number)
+            VALUES (%(name)s, %(era)s, %(set_name)s, %(set_code)s, %(card_number)s)
             ON CONFLICT (name, set_name) DO UPDATE SET
                 era = COALESCE(cards.era, EXCLUDED.era),
+                set_code = COALESCE(cards.set_code, EXCLUDED.set_code),
                 card_number = COALESCE(cards.card_number, EXCLUDED.card_number)
             RETURNING id;
             """,
