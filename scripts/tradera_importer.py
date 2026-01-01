@@ -104,11 +104,11 @@ def log(event: str, **fields: Any) -> None:
         "run_uuid": RUN_UUID,
     }
     payload.update(fields)
-    sys.stdout.write(json.dumps(payload) + "\n")
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
     sys.stdout.flush()
 
 
-def log_error(event: str, exc: Exception, **fields: Any) -> None:
+def log_error(event: str, exc: BaseException, **fields: Any) -> None:
     payload: Dict[str, Any] = {
         "ts": _iso_now(),
         "level": "error",
@@ -118,7 +118,7 @@ def log_error(event: str, exc: Exception, **fields: Any) -> None:
         "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
     }
     payload.update(fields)
-    sys.stdout.write(json.dumps(payload) + "\n")
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
     sys.stdout.flush()
 
 
@@ -538,12 +538,15 @@ def ensure_import_runs_table(conn) -> None:
                 run_uuid TEXT,
                 error_stack TEXT
             );
-            CREATE INDEX IF NOT EXISTS idx_import_runs_started_at ON import_runs (started_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_import_runs_run_uuid ON import_runs (run_uuid);
             """
         )
+
+        # Keep schema compatible if table existed before these columns were added
         cur.execute("ALTER TABLE import_runs ADD COLUMN IF NOT EXISTS run_uuid TEXT;")
         cur.execute("ALTER TABLE import_runs ADD COLUMN IF NOT EXISTS error_stack TEXT;")
+
+        # Indexes
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_import_runs_started_at ON import_runs (started_at DESC);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_import_runs_run_uuid ON import_runs (run_uuid);")
     conn.commit()
 
@@ -612,7 +615,11 @@ def main() -> None:
 
     order_by = ORDER_BY
     if MODE == "INCREMENTAL" and order_by != "EndDateDescending":
-        log("import_mode_adjusted", message="MODE=INCREMENTAL requires ORDER_BY=EndDateDescending for early-stop. Overriding.")
+        log(
+            "import_mode_adjusted",
+            message="MODE=INCREMENTAL requires ORDER_BY=EndDateDescending for early-stop. Overriding.",
+            requested_order_by=order_by,
+        )
         order_by = "EndDateDescending"
 
     log(
@@ -630,6 +637,7 @@ def main() -> None:
         backoff=BACKOFF,
         mode=MODE,
         order_by=order_by,
+        tz=TZ_NAME,
     )
     log("import_bids_min", message="SOAP bids minimum toggle", bids_min_enabled=BIDS_MINIMUM is not None)
 
