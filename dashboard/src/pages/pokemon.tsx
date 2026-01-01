@@ -10,6 +10,106 @@ import { Card, CardContent } from '../components/ui/card'
 import { fetchExpansions } from '../lib/api'
 import type { ExpansionSummary } from '../types'
 
+type SeriesGroup = {
+  label: string
+  order: number
+  expansions: ExpansionSummary[]
+}
+
+const seriesDefinitions: { label: string; order: number; match: (setCode: string, era?: string | null) => boolean }[] = [
+  {
+    label: 'Mega Evolution Series',
+    order: 0,
+    match: (code, era) => code.toUpperCase().startsWith('ME') || era?.toLowerCase().includes('mega evolution')
+  },
+  {
+    label: 'Scarlet & Violet Series',
+    order: 1,
+    match: (code, era) => /SV/i.test(code) || era?.toLowerCase().includes('scarlet')
+  },
+  {
+    label: 'Sword & Shield Series',
+    order: 2,
+    match: (code, era) =>
+      /SWSH/i.test(code) ||
+      ['CEL', 'PGO', 'CP', 'SF', 'CZ'].some((prefix) => code.toUpperCase().startsWith(prefix)) ||
+      era?.toLowerCase().includes('sword & shield')
+  },
+  {
+    label: 'Sun & Moon Series',
+    order: 3,
+    match: (code, era) => code.toUpperCase().startsWith('SM') || era?.toLowerCase().includes('sun & moon')
+  },
+  {
+    label: 'XY Series',
+    order: 4,
+    match: (code, era) => code.toUpperCase().startsWith('XY') || era?.toLowerCase() === 'xy'
+  },
+  {
+    label: 'Call of Legends Series',
+    order: 5,
+    match: (code, era) => code.toUpperCase().startsWith('COL') || era?.toLowerCase().includes('call of legends')
+  },
+  {
+    label: 'Black & White Series',
+    order: 6,
+    match: (code, era) => code.toUpperCase().startsWith('BW') || era?.toLowerCase().includes('black & white')
+  },
+  {
+    label: 'HeartGold & SoulSilver Series',
+    order: 7,
+    match: (code, era) => code.toUpperCase().startsWith('HGSS') || era?.toLowerCase().includes('heartgold')
+  },
+  {
+    label: 'Platinum Series',
+    order: 8,
+    match: (code, era) => code.toUpperCase().startsWith('PL') || era?.toLowerCase().includes('platinum')
+  },
+  {
+    label: 'Diamond & Pearl Series',
+    order: 9,
+    match: (code, era) => code.toUpperCase().startsWith('DP') || era?.toLowerCase().includes('diamond & pearl')
+  },
+  {
+    label: 'Legendary Collection Series',
+    order: 10,
+    match: (code, era) => code.toUpperCase().startsWith('LC') || era?.toLowerCase().includes('legendary collection')
+  },
+  {
+    label: 'e-Card Series',
+    order: 11,
+    match: (code, era) =>
+      ['AQ', 'SK', 'EX'].some((prefix) => code.toUpperCase().startsWith(prefix)) || era?.toLowerCase().includes('e-card')
+  },
+  {
+    label: 'EX Series',
+    order: 12,
+    match: (code, era) => code.toUpperCase().startsWith('EX') || era?.toLowerCase().startsWith('ex ')
+  },
+  {
+    label: 'Neo Series',
+    order: 13,
+    match: (code, era) => code.toUpperCase().startsWith('N') || era?.toLowerCase().startsWith('neo')
+  },
+  {
+    label: 'Original Series',
+    order: 14,
+    match: (code, era) =>
+      ['BS', 'JU', 'FO', 'B2', 'TR', 'G1', 'G2'].some((prefix) => code.toUpperCase().startsWith(prefix)) ||
+      era?.toLowerCase().includes('original')
+  }
+]
+
+function resolveSeries(expansion: ExpansionSummary): { label: string; order: number } {
+  const setCode = expansion.set_code
+  const era = expansion.era?.trim() ?? undefined
+
+  const matchingSeries = seriesDefinitions.find((series) => series.match(setCode, era))
+  if (matchingSeries) return { label: matchingSeries.label, order: matchingSeries.order }
+
+  return { label: era ? `${era} Series` : 'Other series', order: 99 }
+}
+
 function SetCard({ expansion }: { expansion: ExpansionSummary }) {
   const releaseLabel = expansion.release_date
     ? `Released ${format(new Date(expansion.release_date), 'PP')}`
@@ -92,7 +192,31 @@ export function PokemonPage(): JSX.Element {
     })
   }, [expansions])
 
-  const hasSets = sorted.length > 0
+  const groupedSeries = useMemo<SeriesGroup[]>(() => {
+    if (!sorted.length) return []
+
+    const groups: Record<string, SeriesGroup> = {}
+
+    sorted.forEach((expansion) => {
+      const { label, order } = resolveSeries(expansion)
+      const existing = groups[label]
+
+      if (existing) {
+        existing.expansions.push(expansion)
+        return
+      }
+
+      groups[label] = {
+        label,
+        order,
+        expansions: [expansion]
+      }
+    })
+
+    return Object.values(groups).sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
+  }, [sorted])
+
+  const hasSets = groupedSeries.length > 0
 
   return (
     <div className="space-y-6">
@@ -122,9 +246,25 @@ export function PokemonPage(): JSX.Element {
           No sets found yet. Seed your first set to get started.
         </p>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {sorted.map((expansion) => (
-            <SetCard key={expansion.id} expansion={expansion} />
+        <div className="space-y-8">
+          {groupedSeries.map((group) => (
+            <section key={group.label} className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-slate-500" />
+                  <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">{group.label}</h2>
+                </div>
+                <Badge variant="secondary" className="text-xs font-semibold uppercase tracking-wide">
+                  {group.expansions.length} {group.expansions.length === 1 ? 'set' : 'sets'}
+                </Badge>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {group.expansions.map((expansion) => (
+                  <SetCard key={expansion.id} expansion={expansion} />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}
