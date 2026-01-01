@@ -401,8 +401,18 @@ async function ensureSalesEnrichmentColumnsAvailable() {
   if (!salesTableAvailable) return false
 
   try {
+    // Hardening: add missing ERA columns even if metadata checks below fail.
+    await pool.query(`
+      ALTER TABLE public.tradera_sales
+      ADD COLUMN IF NOT EXISTS era TEXT,
+      ADD COLUMN IF NOT EXISTS pokemon_era TEXT
+    `)
+
     // NOTE: Include any column referenced by queries/endpoints below to avoid runtime SQL errors.
     const results = await Promise.all([
+      ensureColumnExists('tradera_sales', 'era', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'pokemon_era', 'TEXT'),
+
       ensureColumnExists('tradera_sales', 'match_status', 'TEXT'),
       ensureColumnExists('tradera_sales', 'match_confidence', 'TEXT'),
       ensureColumnExists('tradera_sales', 'match_method', 'TEXT'),
@@ -1509,10 +1519,18 @@ app.post('/api/enrichment/run', async (req, res) => {
 
   const limit = Math.min(Math.max(Number(req.body?.limit) || 500, 1), 1000)
 
+  const logPrefix = `[Enrichment run @ ${new Date().toISOString()}]`
+  console.info(`${logPrefix} Starting matcher for ${limit} auctions`)
+
   const client = await pool.connect()
   try {
     const matcherIndexes = await loadMatcherIndexes()
     const cardIndex = await buildDatabaseCardIndex()
+
+    console.info(
+      `${logPrefix} Loaded matcher indexes (eras: ${Object.keys(matcherIndexes.setsByEraAndTotal || {}).length}, ` +
+        `sets: ${Object.keys(matcherIndexes.cardsBySetAndNumber || {}).length})`
+    )
 
     const { rows } = await client.query(
       `
@@ -1526,9 +1544,11 @@ app.post('/api/enrichment/run', async (req, res) => {
 
     const statusCounts = new Map()
     let linked = 0
+    let processed = 0
 
     for (const row of rows) {
       const match = matchAuction(row, matcherIndexes)
+
       const confidence = match.match_status?.includes('High')
         ? 'high'
         : match.match_status?.includes('Medium')
@@ -1576,9 +1596,21 @@ app.post('/api/enrichment/run', async (req, res) => {
       )
 
       statusCounts.set(match.match_status || 'Unknown', (statusCounts.get(match.match_status || 'Unknown') || 0) + 1)
+
+      processed++
+      if (processed % 50 === 0) {
+        console.info(`${logPrefix} Progress: processed ${processed}/${rows.length}`)
+      }
     }
 
-    res.json({ ok: true, attempted: rows.length, linked, statusCounts: Object.fromEntries(statusCounts) })
+    const payload = { ok: true, attempted: rows.length, linked, statusCounts: Object.fromEntries(statusCounts) }
+    console.info(
+      `${logPrefix} Completed matcher run. Attempted ${payload.attempted}, linked ${payload.linked}, status counts: ${JSON.stringify(
+        payload.statusCounts
+      )}`
+    )
+
+    res.json(payload)
   } catch (error) {
     console.error('Failed to run enrichment matcher', error)
     res.status(500).json({ ok: false, error: String(error) })
