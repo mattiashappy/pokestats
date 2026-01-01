@@ -458,23 +458,32 @@ def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
     raw_set = attr_value("series", "set", "pokemon_set", "Series", "Set")
     raw_set_code = attr_value("set_code", "set code", "Set code", "Set_code", "setcode")
 
+    name_value = normalize_card_value(raw_name)
     set_name_value = normalize_card_value(raw_set) if raw_set else "unknown"
 
-    if raw_set_code:
-        set_code = normalize_card_value(raw_set_code)
-    elif raw_set:
-        set_code = set_name_value
+    # Prefer explicit set_code attribute, else fall back to set_name, else stable "unknown-<name>" code
+    if raw_set_code and str(raw_set_code).strip():
+        set_code_value = normalize_card_value(raw_set_code)
+    elif raw_set and str(raw_set).strip():
+        set_code_value = set_name_value
     else:
-        fallback_code = normalize_card_value(raw_name).replace(" ", "-")
-        set_code = f"unknown-{fallback_code}" if fallback_code != "unknown" else "unknown-unknown"
+        fallback_code = name_value.replace(" ", "-")
+        set_code_value = f"unknown-{fallback_code}" if fallback_code != "unknown" else "unknown-unknown"
+
+    # Card number: keep DB safe for NOT NULL schemas by defaulting to "unknown"
+    card_number_value = attr_value("card_number", "card number", "Card number")
+    card_number_value = card_number_value.strip() if isinstance(card_number_value, str) else None
+    if not card_number_value:
+        card_number_value = "unknown"
 
     return {
-        "name": normalize_card_value(raw_name),
+        "name": name_value,
         "era": attr_value("pokemon_era", "era", "generation", "Era", "Generation"),
         "set_name": set_name_value,
-        "set_code": set_code,
-        "card_number": attr_value("card_number", "card number", "Card number") or "unknown",
+        "set_code": set_code_value,
+        "card_number": card_number_value,
     }
+
 
 
 def ensure_card(conn, payload: Dict[str, Optional[str]]) -> int:
