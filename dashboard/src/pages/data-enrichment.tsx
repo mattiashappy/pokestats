@@ -1,12 +1,22 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { AlertCircle, RefreshCcw, Rocket, Search } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
+import { Select } from '../components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
-import { fetchEnrichmentSummary, fetchUnmatchedAuctions, runEnrichment } from '../lib/api'
+import {
+  fetchCardsForSet,
+  fetchEnrichmentSummary,
+  fetchRecentEnrichment,
+  fetchUnmatchedAuctions,
+  manuallyMatchAuction,
+  runEnrichment,
+  type UnmatchedAuction
+} from '../lib/api'
 
 const matchingSteps = [
   'Validate ERA; missing or garbage eras are marked as Mismatched.',
@@ -28,6 +38,11 @@ export function DataEnrichmentPage(): JSX.Element {
   const unmatchedQuery = useQuery({
     queryKey: ['enrichment-unmatched'],
     queryFn: () => fetchUnmatchedAuctions(25)
+  })
+
+  const recentQuery = useQuery({
+    queryKey: ['enrichment-recent'],
+    queryFn: () => fetchRecentEnrichment(50)
   })
 
   const mutation = useMutation({
@@ -159,6 +174,57 @@ export function DataEnrichmentPage(): JSX.Element {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Recent enrichment activity</CardTitle>
+          {recentQuery.isFetching ? <span className="text-xs text-slate-500">Loading…</span> : null}
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>ID</TableHead>
+                <TableHead>Title</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Parsed number</TableHead>
+                <TableHead>Set total</TableHead>
+                <TableHead>Set hint</TableHead>
+                <TableHead>Matched card</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(recentQuery.data ?? []).map((row) => (
+                <TableRow key={row.item_id}>
+                  <TableCell className="font-mono text-xs">{row.item_id}</TableCell>
+                  <TableCell className="max-w-xs truncate text-sm">{row.title}</TableCell>
+                  <TableCell>{row.match_status ?? '—'}</TableCell>
+                  <TableCell>{row.parsed_card_number ?? '—'}</TableCell>
+                  <TableCell>{row.parsed_set_total ?? '—'}</TableCell>
+                  <TableCell>{row.matched_set_code ?? '—'}</TableCell>
+                  <TableCell>
+                    {row.card_id ? (
+                      <Link
+                        to={`/cards/${row.card_id}`}
+                        className="text-indigo-600 hover:underline dark:text-indigo-300"
+                      >
+                        {row.card_set_code ? `${row.card_set_code} ` : ''}
+                        {row.card_number ? `${row.card_number} — ` : ''}
+                        {row.card_name || 'Card detail'}
+                      </Link>
+                    ) : (
+                      <span className="text-slate-500">—</span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {recentQuery.data?.length === 0 ? (
+            <p className="text-sm text-slate-500">No enrichment activity yet.</p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Items needing review</CardTitle>
           {unmatchedQuery.isFetching ? <span className="text-xs text-slate-500">Loading…</span> : null}
         </CardHeader>
@@ -172,6 +238,7 @@ export function DataEnrichmentPage(): JSX.Element {
                 <TableHead>Set total</TableHead>
                 <TableHead>Set hint</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Manual match</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -183,6 +250,15 @@ export function DataEnrichmentPage(): JSX.Element {
                   <TableCell>{row.parsed_set_total ?? '—'}</TableCell>
                   <TableCell>{row.matched_set_code ?? '—'}</TableCell>
                   <TableCell>{row.match_status ?? '—'}</TableCell>
+                  <TableCell>
+                    <ManualMatchCell
+                      auction={row}
+                      onMatched={() => {
+                        unmatchedQuery.refetch()
+                        recentQuery.refetch()
+                      }}
+                    />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -192,6 +268,87 @@ export function DataEnrichmentPage(): JSX.Element {
           ) : null}
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+type ManualMatchCellProps = {
+  auction: UnmatchedAuction
+  onMatched: () => void
+}
+
+function ManualMatchCell({ auction, onMatched }: ManualMatchCellProps) {
+  const [search, setSearch] = useState('')
+  const [selectedCardId, setSelectedCardId] = useState<number | ''>('')
+
+  const cardsQuery = useQuery({
+    queryKey: ['cards-for-set', auction.matched_set_code],
+    queryFn: () => fetchCardsForSet(auction.matched_set_code || ''),
+    enabled: Boolean(auction.matched_set_code)
+  })
+
+  const mutation = useMutation({
+    mutationFn: (cardId: number) => manuallyMatchAuction(auction.item_id, cardId),
+    onSuccess: () => {
+      setSelectedCardId('')
+      onMatched()
+    }
+  })
+
+  const filteredCards = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    const cards = cardsQuery.data || []
+    if (!query) return cards
+    return cards.filter((card) => {
+      const name = card.name?.toLowerCase() || ''
+      const number = card.card_number?.toLowerCase() || ''
+      return name.includes(query) || number.includes(query)
+    })
+  }, [cardsQuery.data, search])
+
+  if (!auction.matched_set_code) {
+    return <p className="text-xs text-slate-500">No set hint available.</p>
+  }
+
+  return (
+    <div className="space-y-2 text-xs">
+      <Input
+        className="h-8"
+        placeholder="Search card name/#"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+      <div className="flex items-center gap-2">
+        <Select
+          value={selectedCardId === '' ? '' : String(selectedCardId)}
+          disabled={cardsQuery.isFetching || (cardsQuery.data?.length || 0) === 0}
+          onChange={(e) => setSelectedCardId(Number(e.target.value) || '')}
+        >
+          <option value="">{cardsQuery.isFetching ? 'Loading cards…' : 'Select a card'}</option>
+          {filteredCards.map((card) => (
+            <option key={card.id} value={card.id}>
+              {card.card_number ? `${card.card_number} — ` : ''}
+              {card.name || 'Unnamed card'}
+            </option>
+          ))}
+          {!cardsQuery.isFetching && filteredCards.length === 0 ? (
+            <option disabled value="">
+              No matches for “{search}”
+            </option>
+          ) : null}
+        </Select>
+        <Button
+          size="sm"
+          disabled={!selectedCardId || mutation.isPending}
+          onClick={() => typeof selectedCardId === 'number' && mutation.mutate(selectedCardId)}
+        >
+          {mutation.isPending ? 'Linking…' : 'Link'}
+        </Button>
+      </div>
+      {mutation.isError ? (
+        <p className="text-[11px] text-red-500">{(mutation.error as Error).message}</p>
+      ) : null}
+      {mutation.isSuccess ? <p className="text-[11px] text-green-600">Linked!</p> : null}
     </div>
   )
 }

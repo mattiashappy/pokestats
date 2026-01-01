@@ -1662,6 +1662,106 @@ app.get('/api/enrichment/unmatched', async (req, res) => {
   )
   res.json(rows)
 })
+
+app.get('/api/enrichment/recent', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+  const limit = Math.min(Math.max(Number(req.query.limit ?? 25), 1), 200)
+
+  const { rows } = await pool.query(
+    `
+      SELECT
+        s.item_id,
+        s.end_date,
+        s.title,
+        s.match_status,
+        s.parsed_card_number,
+        s.parsed_set_total,
+        s.matched_set_code,
+        s.card_id,
+        c.name AS card_name,
+        c.card_number,
+        c.set_code AS card_set_code
+      FROM public.tradera_sales s
+      LEFT JOIN public.cards c ON c.id = s.card_id
+      WHERE s.match_status IS NOT NULL
+      ORDER BY s.updated_at DESC NULLS LAST, s.end_date DESC
+      LIMIT $1
+    `,
+    [limit]
+  )
+
+  res.json(rows)
+})
+
+app.post('/api/enrichment/manual-match', async (req, res) => {
+  if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
+
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return res.status(500).json({ ok: false, error: 'Card infrastructure unavailable' })
+
+  const itemId = Number(req.body?.itemId)
+  const cardId = Number(req.body?.cardId)
+
+  if (!Number.isFinite(itemId) || !Number.isFinite(cardId)) {
+    return res.status(400).json({ ok: false, error: 'Invalid itemId or cardId' })
+  }
+
+  const client = await pool.connect()
+
+  try {
+    const { rows: saleRows } = await client.query(
+      'SELECT item_id FROM public.tradera_sales WHERE item_id = $1 LIMIT 1',
+      [itemId]
+    )
+
+    if (saleRows.length === 0) {
+      return res.status(404).json({ ok: false, error: 'Auction not found' })
+    }
+
+    const { rows: cardRows } = await client.query(
+      `
+        SELECT id, set_code, era, set_total, card_number
+        FROM public.cards
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [cardId]
+    )
+
+    if (cardRows.length === 0) {
+      return res.status(404).json({ ok: false, error: 'Card not found' })
+    }
+
+    const card = cardRows[0]
+    const parsedSetTotal = Number(card.set_total)
+    const setTotalValue = Number.isFinite(parsedSetTotal) ? parsedSetTotal : null
+
+    await client.query(
+      `
+        UPDATE public.tradera_sales
+        SET
+          card_id = $2,
+          match_status = 'Matched (manual)',
+          match_confidence = 'manual',
+          match_method = 'manual',
+          matched_set_code = COALESCE($3, matched_set_code),
+          matched_era = COALESCE($4, matched_era),
+          parsed_card_number = COALESCE($5, parsed_card_number),
+          parsed_set_total = COALESCE($6, parsed_set_total),
+          updated_at = NOW()
+        WHERE item_id = $1
+      `,
+      [itemId, cardId, card.set_code || null, card.era || null, card.card_number || null, setTotalValue]
+    )
+
+    return res.json({ ok: true, itemId, cardId })
+  } catch (error) {
+    console.error('Failed to apply manual match', error)
+    return res.status(500).json({ ok: false, error: 'Failed to apply manual match' })
+  } finally {
+    client.release()
+  }
+})
 // Bootstrap seed
 if (pool) {
   ensureCardInfrastructure()

@@ -102,10 +102,45 @@ export type UnmatchedAuction = {
   matched_set_code: string | null
 }
 
+export type EnrichedAuction = {
+  item_id: number
+  end_date: string
+  title: string
+  match_status: string | null
+  parsed_card_number: number | null
+  parsed_set_total: number | null
+  matched_set_code: string | null
+  card_id: number | null
+  card_name: string | null
+  card_number: string | null
+  card_set_code: string | null
+}
+
 export async function fetchUnmatchedAuctions(limit = 25) {
   const res = await fetch(`/api/enrichment/unmatched?limit=${limit}`)
   if (!res.ok) throw new Error('Failed to fetch unmatched auctions')
   return res.json() as Promise<UnmatchedAuction[]>
+}
+
+export async function fetchRecentEnrichment(limit = 25) {
+  const res = await fetch(`/api/enrichment/recent?limit=${limit}`)
+  if (!res.ok) throw new Error('Failed to fetch recent enrichment activity')
+  return res.json() as Promise<EnrichedAuction[]>
+}
+
+export async function manuallyMatchAuction(itemId: number, cardId: number) {
+  const res = await fetch('/api/enrichment/manual-match', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ itemId, cardId })
+  })
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || 'Failed to apply manual match')
+  }
+
+  return res.json() as Promise<{ ok: boolean; itemId: number; cardId: number }>
 }
 
 export async function fetchImportRuns(limit = 15) {
