@@ -456,12 +456,24 @@ def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
 
     raw_name = attr_value("card_name", "card name", "Card name") or row.title or "unknown card"
     raw_set = attr_value("series", "set", "pokemon_set", "Series", "Set")
+    raw_set_code = attr_value("set_code", "set code", "Set code", "Set_code", "setcode")
+
+    set_name_value = normalize_card_value(raw_set) if raw_set else "unknown"
+
+    if raw_set_code:
+        set_code = normalize_card_value(raw_set_code)
+    elif raw_set:
+        set_code = set_name_value
+    else:
+        fallback_code = normalize_card_value(raw_name).replace(" ", "-")
+        set_code = f"unknown-{fallback_code}" if fallback_code != "unknown" else "unknown-unknown"
 
     return {
         "name": normalize_card_value(raw_name),
         "era": attr_value("pokemon_era", "era", "generation", "Era", "Generation"),
-        "set_name": normalize_card_value(raw_set) if raw_set else "unknown",
-        "card_number": attr_value("card_number", "card number", "Card number"),
+        "set_name": set_name_value,
+        "set_code": set_code,
+        "card_number": attr_value("card_number", "card number", "Card number") or "unknown",
     }
 
 
@@ -469,10 +481,11 @@ def ensure_card(conn, payload: Dict[str, Optional[str]]) -> int:
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO cards (name, era, set_name, card_number)
-            VALUES (%(name)s, %(era)s, %(set_name)s, %(card_number)s)
+            INSERT INTO cards (name, era, set_name, set_code, card_number)
+            VALUES (%(name)s, %(era)s, %(set_name)s, %(set_code)s, %(card_number)s)
             ON CONFLICT (name, set_name) DO UPDATE SET
                 era = COALESCE(cards.era, EXCLUDED.era),
+                set_code = COALESCE(cards.set_code, EXCLUDED.set_code),
                 card_number = COALESCE(cards.card_number, EXCLUDED.card_number)
             RETURNING id;
             """,
