@@ -1220,6 +1220,8 @@ async function fetchExpansionSummaries() {
     const result = await pool.query(query)
     if (result.rows.length === 0) return staticExpansions
 
+    // Merge DB rows onto the static catalog so the API always returns the full canonical list.
+    // DB contributes live counts + any seeded metadata; static provides the source-of-truth catalog.
     const mergedByCode = new Map()
 
     const mergeRows = (current, incoming) => {
@@ -1234,16 +1236,19 @@ async function fetchExpansionSummaries() {
         set_total: current.set_total ?? incoming.set_total ?? null,
         release_date: current.release_date ?? incoming.release_date ?? null,
         image_url: current.image_url ?? incoming.image_url ?? null,
+        // counts are additive if the query ever returns duplicates for some reason
         cards_total: (current.cards_total ?? 0) + (incoming.cards_total ?? 0),
         linked_auctions: (current.linked_auctions ?? 0) + (incoming.linked_auctions ?? 0)
       }
     }
 
     for (const row of result.rows) {
-      const current = mergedByCode.get(row.set_code)
-      mergedByCode.set(row.set_code, mergeRows(current, row))
+      const code = row.set_code
+      const current = mergedByCode.get(code)
+      mergedByCode.set(code, mergeRows(current, row))
     }
 
+    // 1) Start with the canonical static list (stable ordering)
     const orderedResults = staticExpansions.map((expansion) => {
       const mergedRow = mergedByCode.get(expansion.set_code)
       const row = mergedRow ?? {}
@@ -1263,21 +1268,21 @@ async function fetchExpansionSummaries() {
       }
     })
 
+    // 2) Append any DB-only expansions that are not in the static catalog
     for (const [setCode, row] of mergedByCode.entries()) {
       if (staticByCode.has(setCode)) continue
 
-      const fallback = staticByCode.get(setCode)
       orderedResults.push({
         ...row,
         set_code: setCode,
-        name: row?.name ?? fallback?.name ?? null,
-        era: row?.era ?? fallback?.era ?? null,
-        language: row?.language ?? fallback?.language ?? null,
-        set_total: row?.set_total ?? fallback?.set_total ?? null,
-        release_date: row?.release_date ?? fallback?.release_date ?? null,
-        image_url: row?.image_url ?? fallback?.image_url ?? null,
-        cards_total: row?.cards_total ?? fallback?.cards_total ?? 0,
-        linked_auctions: row?.linked_auctions ?? fallback?.linked_auctions ?? 0
+        name: row?.name ?? null,
+        era: row?.era ?? null,
+        language: row?.language ?? null,
+        set_total: row?.set_total ?? null,
+        release_date: row?.release_date ?? null,
+        image_url: row?.image_url ?? null,
+        cards_total: row?.cards_total ?? 0,
+        linked_auctions: row?.linked_auctions ?? 0
       })
     }
 
