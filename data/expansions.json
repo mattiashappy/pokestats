@@ -6,7 +6,7 @@
     "language": "EN",
     "set_total": 102,
     "release_date": "1999-01-09",
-    "image_url": null,
+    "image_url": "/sets/base-set-logo.svg",
     "cards_file": "base.json"
   },
   {
@@ -16,7 +16,7 @@
     "language": "EN",
     "set_total": 64,
     "release_date": "1999-06-16",
-    "image_url": null,
+    "image_url": "/sets/1024px-Jungle_Logo.png",
     "cards_file": "jungle.json"
   },
   {
@@ -26,7 +26,7 @@
     "language": "EN",
     "set_total": 62,
     "release_date": "1999-10-10",
-    "image_url": null,
+    "image_url": "/sets/1024px-Fossil_Logo.png",
     "cards_file": "fossil.json"
   },
   {
@@ -36,7 +36,7 @@
     "language": "EN",
     "set_total": 130,
     "release_date": "2000-02-24",
-    "image_url": null,
+    "image_url": "/sets/800px-Base_Set_2_Logo.png",
     "cards_file": "base2.json"
   },
   {
@@ -46,7 +46,7 @@
     "language": "EN",
     "set_total": 83,
     "release_date": "2000-04-24",
-    "image_url": null,
+    "image_url": "/sets/Team_Rocket_Logo.png",
     "cards_file": "team_rocket.json"
   },
   {
@@ -56,7 +56,7 @@
     "language": "EN",
     "set_total": 132,
     "release_date": "2000-08-14",
-    "image_url": null,
+    "image_url": "/sets/1920px-Gym_Heroes_Logo.png",
     "cards_file": "gym_heroes.json"
   },
   {
@@ -66,7 +66,7 @@
     "language": "EN",
     "set_total": 132,
     "release_date": "2000-10-16",
-    "image_url": null,
+    "image_url": "/sets/Gym_Challenge_Logo.png",
     "cards_file": "gym_challenge.json"
   },
   {
@@ -76,7 +76,7 @@
     "language": "EN",
     "set_total": 111,
     "release_date": "2000-12-16",
-    "image_url": null,
+    "image_url": "/sets/Neo_Genesis_Logo_EN.png",
     "cards_file": "neo_genesis.json"
   },
   {
@@ -86,7 +86,7 @@
     "language": "EN",
     "set_total": 75,
     "release_date": "2001-06-01",
-    "image_url": null,
+    "image_url": "/sets/1920px-Neo_Discovery_Logo_EN.png",
     "cards_file": "neo_discovery.json"
   },
   {
@@ -96,7 +96,7 @@
     "language": "EN",
     "set_total": 66,
     "release_date": "2001-09-21",
-    "image_url": null,
+    "image_url": "/sets/1024px-Neo_Revelation_Logo_EN.png",
     "cards_file": "neo_revelation.json"
   },
   {
@@ -106,7 +106,7 @@
     "language": "EN",
     "set_total": 113,
     "release_date": "2002-02-28",
-    "image_url": null,
+    "image_url": "/sets/1920px-Neo_Destiny_Logo_EN.png",
     "cards_file": "neo_destiny.json"
   },
   {
@@ -116,7 +116,7 @@
     "language": "EN",
     "set_total": 110,
     "release_date": "2002-05-24",
-    "image_url": null,
+    "image_url": "/sets/1920px-Legendary_Collection_Logo.png",
     "cards_file": "legendary_collection.json"
   },
   {
@@ -126,7 +126,7 @@
     "language": "EN",
     "set_total": 165,
     "release_date": "2002-09-15",
-    "image_url": null,
+    "image_url": "/sets/E1_Logo_EN.png",
     "cards_file": "expedition.json"
   },
   {
@@ -136,7 +136,7 @@
     "language": "EN",
     "set_total": 182,
     "release_date": "2003-01-15",
-    "image_url": null,
+    "image_url": "/sets/1920px-E2_Logo_EN.png",
     "cards_file": "aquapolis.json"
   },
   {
@@ -146,7 +146,7 @@
     "language": "EN",
     "set_total": 182,
     "release_date": "2003-05-12",
-    "image_url": null,
+    "image_url": "/sets/1920px-E3_Logo_EN.png",
     "cards_file": "skyridge.json"
   }
 ]
