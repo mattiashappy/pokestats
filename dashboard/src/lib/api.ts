@@ -199,6 +199,9 @@ export type ImportRun = {
   pages_fetched: number
   requests_used: number
   message?: string | null
+  run_uuid?: string | null
+  error_stack?: string | null
+  error_stack_preview?: string | null
 }
 
 export async function fetchEnrichmentSummary() {
@@ -229,15 +232,27 @@ export async function fetchImportRuns(limit = 15) {
   return res.json() as Promise<ImportRun[]>
 }
 
+export async function fetchImportRun(id: number) {
+  const res = await fetch(`/api/import/runs/${id}`)
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || data.message || 'Failed to fetch import run')
+  }
+  return res.json() as Promise<ImportRun>
+}
+
 export async function runImporter() {
   const res = await fetch('/api/import/run', { method: 'POST' })
-  if (!res.ok) throw new Error('Failed to run importer')
-  return res.json() as Promise<{
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`)
+  return data as {
     ok: boolean
     newRows: number
     durationMs: number
     startedAt: string
     lastFetchedAt: string | null
     output?: string
-  }>
+    error?: string
+    runUuid?: string
+  }
 }
