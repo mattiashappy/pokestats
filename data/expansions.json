@@ -8,5 +8,15 @@
     "release_date": "1999-01-09",
     "image_url": null,
     "cards_file": "base.json"
+  },
+  {
+    "set_code": "JUNGLE",
+    "name": "Jungle",
+    "era": "Wizards of the Coast",
+    "language": "EN",
+    "set_total": 64,
+    "release_date": "1999-06-16",
+    "image_url": "images/jungle.png",
+    "cards_file": "jungle.json"
   }
 ]
