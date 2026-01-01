@@ -16,7 +16,137 @@
     "language": "EN",
     "set_total": 64,
     "release_date": "1999-06-16",
-    "image_url": "images/jungle.png",
+    "image_url": null,
     "cards_file": "jungle.json"
+  },
+  {
+    "set_code": "FOSSIL",
+    "name": "Fossil",
+    "era": "Wizards of the Coast",
+    "language": "EN",
+    "set_total": 62,
+    "release_date": "1999-10-10",
+    "image_url": null,
+    "cards_file": "fossil.json"
+  },
+  {
+    "set_code": "BASE2",
+    "name": "Base Set 2",
+    "era": "Wizards of the Coast",
+    "language": "EN",
+    "set_total": 130,
+    "release_date": "2000-02-24",
+    "image_url": null,
+    "cards_file": "base2.json"
+  },
+  {
+    "set_code": "TEAMROCKET",
+    "name": "Team Rocket",
+    "era": "Wizards of the Coast",
+    "language": "EN",
+    "set_total": 83,
+    "release_date": "2000-04-24",
+    "image_url": null,
+    "cards_file": "team_rocket.json"
+  },
+  {
+    "set_code": "GYMHEROES",
+    "name": "Gym Heroes",
+    "era": "Wizards of the Coast",
+    "language": "EN",
+    "set_total": 132,
+    "release_date": "2000-08-14",
+    "image_url": null,
+    "cards_file": "gym_heroes.json"
+  },
+  {
+    "set_code": "GYMCHALLENGE",
+    "name": "Gym Challenge",
+    "era": "Wizards of the Coast",
+    "language": "EN",
+    "set_total": 132,
+    "release_date": "2000-10-16",
+    "image_url": null,
+    "cards_file": "gym_challenge.json"
+  },
+  {
+    "set_code": "NEOGENESIS",
+    "name": "Neo Genesis",
+    "era": "Wizards of the Coast",
+    "language": "EN",
+    "set_total": 111,
+    "release_date": "2000-12-16",
+    "image_url": null,
+    "cards_file": "neo_genesis.json"
+  },
+  {
+    "set_code": "NEODISCOVERY",
+    "name": "Neo Discovery",
+    "era": "Wizards of the Coast",
+    "language": "EN",
+    "set_total": 75,
+    "release_date": "2001-06-01",
+    "image_url": null,
+    "cards_file": "neo_discovery.json"
+  },
+  {
+    "set_code": "NEOREVELATION",
+    "name": "Neo Revelation",
+    "era": "Wizards of the Coast",
+    "language": "EN",
+    "set_total": 66,
+    "release_date": "2001-09-21",
+    "image_url": null,
+    "cards_file": "neo_revelation.json"
+  },
+  {
+    "set_code": "NEODESTINY",
+    "name": "Neo Destiny",
+    "era": "Wizards of the Coast",
+    "language": "EN",
+    "set_total": 113,
+    "release_date": "2002-02-28",
+    "image_url": null,
+    "cards_file": "neo_destiny.json"
+  },
+  {
+    "set_code": "LEGENDARY",
+    "name": "Legendary Collection",
+    "era": "Wizards of the Coast",
+    "language": "EN",
+    "set_total": 110,
+    "release_date": "2002-05-24",
+    "image_url": null,
+    "cards_file": "legendary_collection.json"
+  },
+  {
+    "set_code": "EXPEDITION",
+    "name": "Expedition Base Set",
+    "era": "Wizards of the Coast",
+    "language": "EN",
+    "set_total": 165,
+    "release_date": "2002-09-15",
+    "image_url": null,
+    "cards_file": "expedition.json"
+  },
+  {
+    "set_code": "AQUAPOLIS",
+    "name": "Aquapolis",
+    "era": "Wizards of the Coast",
+    "language": "EN",
+    "set_total": 182,
+    "release_date": "2003-01-15",
+    "image_url": null,
+    "cards_file": "aquapolis.json"
+  },
+  {
+    "set_code": "SKYRIDGE",
+    "name": "Skyridge",
+    "era": "Wizards of the Coast",
+    "language": "EN",
+    "set_total": 182,
+    "release_date": "2003-05-12",
+    "image_url": null,
+    "cards_file": "skyridge.json"
   }
 ]
