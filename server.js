@@ -552,30 +552,31 @@ async function ensureMissingSalesAreLinkedToCards() {
   hasBackfilledSalesCards = true
 }
 
-async function buildDatabaseCardIndex() {
-  if (!pool) return {}
-  const { rows } = await pool.query(
-    `
-      SELECT
+  async function buildDatabaseCardIndex() {
+    if (!pool) return {}
+    const { rows } = await pool.query(
+      `
+        SELECT
         c.id,
         c.card_number,
         COALESCE(e.set_code, c.set_code) AS set_code
       FROM public.cards c
-      LEFT JOIN public.expansions e ON e.id = c.expansion_id
-    `
-  )
+        LEFT JOIN public.expansions e ON e.id = c.expansion_id
+      `
+    )
 
-  const bySetAndNumber = {}
-for (const row of rows) {
-  const setCode = row.set_code?.trim()
-  const numeric = parseInt(String(row.card_number).split(/[\s/]/)[0], 10)
-  if (!setCode || !Number.isFinite(numeric)) continue
+    const bySetAndNumber = {}
+    for (const row of rows) {
+      const setCode = row.set_code?.trim()
+      const numeric = parseInt(String(row.card_number).split(/[\s/]/)[0], 10)
+      if (!setCode || !Number.isFinite(numeric)) continue
 
-  if (!bySetAndNumber[setCode]) bySetAndNumber[setCode] = {}
-  bySetAndNumber[setCode][numeric] = row.id
-}
+      if (!bySetAndNumber[setCode]) bySetAndNumber[setCode] = {}
+      bySetAndNumber[setCode][numeric] = row.id
+    }
 
-return bySetAndNumber
+    return bySetAndNumber
+  }
 
 // --------------------
 // Query helpers
