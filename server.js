@@ -1197,6 +1197,9 @@ async function fetchExpansionSummaries() {
     const ok = await ensureCardInfrastructure()
     if (!ok) return getStaticExpansionSummaries()
 
+    const staticExpansions = await getStaticExpansionSummaries()
+    const staticByCode = new Map(staticExpansions.map((expansion) => [expansion.set_code, expansion]))
+
     const query = `
       SELECT
         e.id,
@@ -1216,7 +1219,22 @@ async function fetchExpansionSummaries() {
       ORDER BY e.era, e.release_date NULLS LAST, e.set_code
     `
     const result = await pool.query(query)
-    return result.rows
+    if (result.rows.length === 0) return staticExpansions
+
+    return result.rows.map((row) => {
+      const fallback = staticByCode.get(row.set_code)
+
+      return {
+        ...row,
+        name: row.name ?? fallback?.name ?? null,
+        era: row.era ?? fallback?.era ?? null,
+        language: row.language ?? fallback?.language ?? null,
+        set_total: row.set_total ?? fallback?.set_total ?? null,
+        release_date: row.release_date ?? fallback?.release_date ?? null,
+        image_url: row.image_url ?? fallback?.image_url ?? null,
+        cards_total: row.cards_total ?? fallback?.cards_total ?? 0
+      }
+    })
   } catch (error) {
     console.error('Falling back to canonical expansions due to DB error', error)
     return getStaticExpansionSummaries()
