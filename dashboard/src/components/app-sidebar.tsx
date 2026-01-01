@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { BadgeCheck, CreditCard, Database, Gavel, Globe, Settings, Shield, Sparkles, Star } from 'lucide-react'
+import { BadgeCheck, CreditCard, Database, Gavel, Globe, History, Settings, Shield, Sparkles, Star } from 'lucide-react'
 
 import {
   Sidebar,
@@ -53,6 +53,20 @@ export function AppSidebar(): JSX.Element {
     { title: 'Pokémon', url: '/pokemon', icon: Sparkles },
     { title: 'Settings', url: '/settings', icon: Settings }
   ]
+
+  const navAdmin: NavItem[] = user?.role === 'admin'
+    ? [
+        {
+          title: 'Admin',
+          url: '/admin',
+          icon: Shield,
+          items: [
+            { title: 'Data Enrichment', url: '/enrichment' },
+            { title: 'Auction Imports', url: '/admin/imports' }
+          ]
+        }
+      ]
+    : []
 
   return (
     <Sidebar collapsible="icon">
@@ -123,26 +137,52 @@ export function AppSidebar(): JSX.Element {
             })}
 
             {/* Admin */}
-            {user?.role === 'admin' ? (
-              <>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="Admin" isActive={isActive(pathname, '/admin')}>
-                    <Link to="/admin">
-                      <Shield className="h-4 w-4" />
-                      <span>Admin</span>
+            {navAdmin.map((item) => {
+              const Icon = item.icon
+              const groupActive = isActive(pathname, item.url)
+
+              return (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild tooltip={item.title} isActive={groupActive}>
+                    <Link to={item.url} className="font-medium">
+                      {Icon ? <Icon className="h-4 w-4" /> : null}
+                      <span>{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
+
+                  {item.items?.length ? (
+                    <SidebarMenuSub>
+                      {item.items.map((sub) => {
+                        const subActive = isActive(pathname, sub.url)
+                        const SubIcon =
+                          sub.url === '/auctions/era'
+                            ? Star
+                            : sub.url === '/auctions/language'
+                              ? Globe
+                              : sub.url === '/auctions/grading'
+                                ? BadgeCheck
+                                : sub.url === '/enrichment'
+                                  ? Database
+                                  : sub.url === '/admin/imports'
+                                    ? History
+                                    : null
+
+                        return (
+                          <SidebarMenuSubItem key={sub.title}>
+                            <SidebarMenuSubButton asChild isActive={subActive}>
+                              <Link to={sub.url}>
+                                {SubIcon ? <SubIcon className="mr-2 h-4 w-4" /> : null}
+                                <span>{sub.title}</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        )
+                      })}
+                    </SidebarMenuSub>
+                  ) : null}
                 </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="Data enrichment" isActive={isActive(pathname, '/enrichment')}>
-                    <Link to="/enrichment">
-                      <Database className="h-4 w-4" />
-                      <span>Data Enrichment</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </>
-            ) : null}
+              )
+            })}
 
             {/* Billing */}
             {showBilling ? (
