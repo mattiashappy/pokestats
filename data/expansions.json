@@ -148,5 +148,1015 @@
     "release_date": "2003-05-12",
     "image_url": "/sets/1920px-E3_Logo_EN.png",
     "cards_file": "skyridge.json"
+  },
+  {
+    "set_code": "EX_RUBY_SAPPHIRE",
+    "name": "EX Ruby & Sapphire",
+    "era": "EX Series",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EX_SANDSTORM",
+    "name": "EX Sandstorm",
+    "era": "EX Series",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EX_DRAGON",
+    "name": "EX Dragon",
+    "era": "EX Series",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EX_TEAM_MAGMA_AQUA",
+    "name": "EX Team Magma vs Team Aqua",
+    "era": "EX Series",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EX_HIDDEN_LEGENDS",
+    "name": "EX Hidden Legends",
+    "era": "EX Series",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EX_FIRERED_LEAFGREEN",
+    "name": "EX FireRed & LeafGreen",
+    "era": "EX Series",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EX_TEAM_ROCKET_RETURNS",
+    "name": "EX Team Rocket Returns",
+    "era": "EX Series",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EX_DEOXYS",
+    "name": "EX Deoxys",
+    "era": "EX Series",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EX_EMERALD",
+    "name": "EX Emerald",
+    "era": "EX Series",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EX_UNSEEN_FORCES",
+    "name": "EX Unseen Forces",
+    "era": "EX Series",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EX_DELTA_SPECIES",
+    "name": "EX Delta Species",
+    "era": "EX Series",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EX_LEGEND_MAKER",
+    "name": "EX Legend Maker",
+    "era": "EX Series",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EX_HOLON_PHANTOMS",
+    "name": "EX Holon Phantoms",
+    "era": "EX Series",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EX_CRYSTAL_GUARDIANS",
+    "name": "EX Crystal Guardians",
+    "era": "EX Series",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EX_DRAGON_FRONTIERS",
+    "name": "EX Dragon Frontiers",
+    "era": "EX Series",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EX_POWER_KEEPERS",
+    "name": "EX Power Keepers",
+    "era": "EX Series",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "DIAMOND_PEARL",
+    "name": "Diamond & Pearl",
+    "era": "Diamond & Pearl",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "MYSTERIOUS_TREASURES",
+    "name": "Mysterious Treasures",
+    "era": "Diamond & Pearl",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "SECRET_WONDERS",
+    "name": "Secret Wonders",
+    "era": "Diamond & Pearl",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "GREAT_ENCOUNTERS",
+    "name": "Great Encounters",
+    "era": "Diamond & Pearl",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "MAJESTIC_DAWN",
+    "name": "Majestic Dawn",
+    "era": "Diamond & Pearl",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "LEGENDS_AWAKENED",
+    "name": "Legends Awakened",
+    "era": "Diamond & Pearl",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "STORMFRONT",
+    "name": "Stormfront",
+    "era": "Diamond & Pearl",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "PLATINUM",
+    "name": "Platinum",
+    "era": "Platinum",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "RISING_RIVALS",
+    "name": "Rising Rivals",
+    "era": "Platinum",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "SUPREME_VICTORS",
+    "name": "Supreme Victors",
+    "era": "Platinum",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "ARCEUS",
+    "name": "Arceus",
+    "era": "Platinum",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "HGSS",
+    "name": "HeartGold & SoulSilver",
+    "era": "HeartGold & SoulSilver",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "HGSS_UNLEASHED",
+    "name": "Unleashed",
+    "era": "HeartGold & SoulSilver",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "HGSS_UNDAUNTED",
+    "name": "Undaunted",
+    "era": "HeartGold & SoulSilver",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "HGSS_TRIUMPHANT",
+    "name": "Triumphant",
+    "era": "HeartGold & SoulSilver",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "CALL_OF_LEGENDS",
+    "name": "Call of Legends",
+    "era": "Call of Legends",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "BLACK_WHITE",
+    "name": "Black & White",
+    "era": "Black & White",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EMERGING_POWERS",
+    "name": "Emerging Powers",
+    "era": "Black & White",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "NOBLE_VICTORIES",
+    "name": "Noble Victories",
+    "era": "Black & White",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "NEXT_DESTINIES",
+    "name": "Next Destinies",
+    "era": "Black & White",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "DARK_EXPLORERS",
+    "name": "Dark Explorers",
+    "era": "Black & White",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "DRAGONS_EXALTED",
+    "name": "Dragons Exalted",
+    "era": "Black & White",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "BOUNDARIES_CROSSED",
+    "name": "Boundaries Crossed",
+    "era": "Black & White",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "PLASMA_STORM",
+    "name": "Plasma Storm",
+    "era": "Black & White",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "PLASMA_FREEZE",
+    "name": "Plasma Freeze",
+    "era": "Black & White",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "PLASMA_BLAST",
+    "name": "Plasma Blast",
+    "era": "Black & White",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "LEGENDARY_TREASURES",
+    "name": "Legendary Treasures",
+    "era": "Black & White",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "XY_BASE",
+    "name": "XY",
+    "era": "XY",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "FLASHFIRE",
+    "name": "Flashfire",
+    "era": "XY",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "FURIOUS_FISTS",
+    "name": "Furious Fists",
+    "era": "XY",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "PHANTOM_FORCES",
+    "name": "Phantom Forces",
+    "era": "XY",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "PRIMAL_CLASH",
+    "name": "Primal Clash",
+    "era": "XY",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "ROARING_SKIES",
+    "name": "Roaring Skies",
+    "era": "XY",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "ANCIENT_ORIGINS",
+    "name": "Ancient Origins",
+    "era": "XY",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "BREAKTHROUGH",
+    "name": "BREAKthrough",
+    "era": "XY",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "BREAKPOINT",
+    "name": "BREAKpoint",
+    "era": "XY",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "GENERATIONS",
+    "name": "Generations",
+    "era": "XY",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "FATES_COLLIDE",
+    "name": "Fates Collide",
+    "era": "XY",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "STEAM_SIEGE",
+    "name": "Steam Siege",
+    "era": "XY",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EVOLUTIONS",
+    "name": "Evolutions",
+    "era": "XY",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "SUN_MOON",
+    "name": "Sun & Moon",
+    "era": "Sun & Moon",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "GUARDIANS_RISING",
+    "name": "Guardians Rising",
+    "era": "Sun & Moon",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "BURNING_SHADOWS",
+    "name": "Burning Shadows",
+    "era": "Sun & Moon",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "SHINING_LEGENDS",
+    "name": "Shining Legends",
+    "era": "Sun & Moon",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "CRIMSON_INVASION",
+    "name": "Crimson Invasion",
+    "era": "Sun & Moon",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "ULTRA_PRISM",
+    "name": "Ultra Prism",
+    "era": "Sun & Moon",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "FORBIDDEN_LIGHT",
+    "name": "Forbidden Light",
+    "era": "Sun & Moon",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "CELESTIAL_STORM",
+    "name": "Celestial Storm",
+    "era": "Sun & Moon",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "DRAGON_MAJESTY",
+    "name": "Dragon Majesty",
+    "era": "Sun & Moon",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "LOST_THUNDER",
+    "name": "Lost Thunder",
+    "era": "Sun & Moon",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "TEAM_UP",
+    "name": "Team Up",
+    "era": "Sun & Moon",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "DETECTIVE_PIKACHU",
+    "name": "Detective Pikachu",
+    "era": "Sun & Moon",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "UNBROKEN_BONDS",
+    "name": "Unbroken Bonds",
+    "era": "Sun & Moon",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "UNIFIED_MINDS",
+    "name": "Unified Minds",
+    "era": "Sun & Moon",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "HIDDEN_FATES",
+    "name": "Hidden Fates",
+    "era": "Sun & Moon",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "COSMIC_ECLIPSE",
+    "name": "Cosmic Eclipse",
+    "era": "Sun & Moon",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "SWORD_SHIELD",
+    "name": "Sword & Shield",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "REBEL_CLASH",
+    "name": "Rebel Clash",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "DARKNESS_ABLAZE",
+    "name": "Darkness Ablaze",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "CHAMPIONS_PATH",
+    "name": "Champion's Path",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "VIVID_VOLTAGE",
+    "name": "Vivid Voltage",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "SHINING_FATES",
+    "name": "Shining Fates",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "BATTLE_STYLES",
+    "name": "Battle Styles",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "CHILLING_REIGN",
+    "name": "Chilling Reign",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "EVOLVING_SKIES",
+    "name": "Evolving Skies",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "CELEBRATIONS",
+    "name": "Celebrations",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "FUSION_STRIKE",
+    "name": "Fusion Strike",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "BRILLIANT_STARS",
+    "name": "Brilliant Stars",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "ASTRAL_RADIANCE",
+    "name": "Astral Radiance",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "POKEMON_GO",
+    "name": "Pokémon GO",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "LOST_ORIGIN",
+    "name": "Lost Origin",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "SILVER_TEMPEST",
+    "name": "Silver Tempest",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "CROWN_ZENITH",
+    "name": "Crown Zenith",
+    "era": "Sword & Shield",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "SCARLET_VIOLET",
+    "name": "Scarlet & Violet",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "PALDEA_EVOLVED",
+    "name": "Paldea Evolved",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "OBSIDIAN_FLAMES",
+    "name": "Obsidian Flames",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "SV_151",
+    "name": "Scarlet & Violet—151",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "PARADOX_RIFT",
+    "name": "Paradox Rift",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "PALDEAN_FATES",
+    "name": "Paldean Fates",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "TEMPORAL_FORCES",
+    "name": "Temporal Forces",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "TWILIGHT_MASQUERADE",
+    "name": "Twilight Masquerade",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "SHROUDED_FABLE",
+    "name": "Shrouded Fable",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "STELLAR_CROWN",
+    "name": "Stellar Crown",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "PHANTASMAL_FLAMES",
+    "name": "Phantasmal Flames",
+    "era": "Mega Evolution",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
+  },
+  {
+    "set_code": "ASCENDED_HEROES",
+    "name": "Ascended Heroes",
+    "era": "Mega Evolution",
+    "language": "EN",
+    "set_total": null,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": null
   }
 ]
