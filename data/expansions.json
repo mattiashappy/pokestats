@@ -156,7 +156,7 @@
     "language": "EN",
     "set_total": 109,
     "release_date": "2003-06-18",
-    "image_url": null,
+    "image_url": "/sets/EX1_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -166,7 +166,7 @@
     "language": "EN",
     "set_total": 100,
     "release_date": "2003-09-18",
-    "image_url": null,
+    "image_url": "/sets/EX2_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -176,7 +176,7 @@
     "language": "EN",
     "set_total": 100,
     "release_date": "2003-11-24",
-    "image_url": null,
+    "image_url": "/sets/EX3_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -186,9 +186,9 @@
     "language": "EN",
     "set_total": 97,
     "release_date": "2004-03-15",
-    "image_url": null,
+    "image_url": "/sets/EX4_Logo_EN.png",
     "cards_file": null
-  }
+  },
   {
     "set_code": "EX_HIDDEN_LEGENDS",
     "name": "EX Hidden Legends",
@@ -196,7 +196,7 @@
     "language": "EN",
     "set_total": 101,
     "release_date": "2004-06-14",
-    "image_url": null,
+    "image_url": "/sets/EX5_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -206,7 +206,7 @@
     "language": "EN",
     "set_total": 112,
     "release_date": "2004-09-10",
-    "image_url": null,
+    "image_url": "/sets/EX6_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -216,7 +216,7 @@
     "language": "EN",
     "set_total": 111,
     "release_date": "2004-11-08",
-    "image_url": null,
+    "image_url": "/sets/EX7_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -226,7 +226,7 @@
     "language": "EN",
     "set_total": 107,
     "release_date": "2005-02-14",
-    "image_url": null,
+    "image_url": "/sets/EX8_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -236,7 +236,7 @@
     "language": "EN",
     "set_total": 106,
     "release_date": "2005-05-09",
-    "image_url": null,
+    "image_url": "/sets/EX9_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -246,7 +246,7 @@
     "language": "EN",
     "set_total": 145,
     "release_date": "2005-08-22",
-    "image_url": null,
+    "image_url": "/sets/EX10_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -256,7 +256,7 @@
     "language": "EN",
     "set_total": 113,
     "release_date": "2005-10-31",
-    "image_url": null,
+    "image_url": "/sets/EX11_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -266,17 +266,17 @@
     "language": "EN",
     "set_total": 92,
     "release_date": "2006-02-13",
-    "image_url": null,
+    "image_url": "/sets/EX12_Logo_EN.png",
     "cards_file": null
   },
-    {
+  {
     "set_code": "EX_HOLON_PHANTOMS",
     "name": "EX Holon Phantoms",
     "era": "EX Series",
     "language": "EN",
     "set_total": 110,
     "release_date": "2006-05-03",
-    "image_url": null,
+    "image_url": "/sets/EX13_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -286,7 +286,7 @@
     "language": "EN",
     "set_total": 100,
     "release_date": "2006-08-30",
-    "image_url": null,
+    "image_url": "/sets/EX14_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -296,7 +296,7 @@
     "language": "EN",
     "set_total": 101,
     "release_date": "2006-11-08",
-    "image_url": null,
+    "image_url": "/sets/EX15_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -306,10 +306,9 @@
     "language": "EN",
     "set_total": 108,
     "release_date": "2007-02-02",
-    "image_url": null,
+    "image_url": "/sets/EX16_Logo_EN.png",
     "cards_file": null
   },
-
   {
     "set_code": "DIAMOND_PEARL",
     "name": "Diamond & Pearl",
@@ -380,7 +379,6 @@
     "image_url": null,
     "cards_file": null
   },
-
   {
     "set_code": "PLATINUM",
     "name": "Platinum",
@@ -418,7 +416,7 @@
     "language": "EN",
     "set_total": 99,
     "release_date": "2009-11-04",
-    "image_url": null,
+    "image_url": "/sets/PL4_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -428,7 +426,7 @@
     "language": "EN",
     "set_total": 123,
     "release_date": "2010-02-10",
-    "image_url": null,
+    "image_url": "/sets/HS1_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -438,7 +436,7 @@
     "language": "EN",
     "set_total": 95,
     "release_date": "2010-05-12",
-    "image_url": null,
+    "image_url": "/sets/HS2_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -448,7 +446,7 @@
     "language": "EN",
     "set_total": 91,
     "release_date": "2010-08-18",
-    "image_url": null,
+    "image_url": "/sets/HS3_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -458,7 +456,7 @@
     "language": "EN",
     "set_total": 103,
     "release_date": "2010-11-03",
-    "image_url": null,
+    "image_url": "/sets/HS4_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -468,10 +466,9 @@
     "language": "EN",
     "set_total": 95,
     "release_date": "2011-02-09",
-    "image_url": null,
+    "image_url": "/sets/COL1_Logo_EN.png",
     "cards_file": null
   },
-
   {
     "set_code": "BLACK_WHITE",
     "name": "Black & White",
@@ -479,7 +476,7 @@
     "language": "EN",
     "set_total": 114,
     "release_date": "2011-04-25",
-    "image_url": null,
+    "image_url": "/sets/BW1_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -489,7 +486,7 @@
     "language": "EN",
     "set_total": 98,
     "release_date": "2011-08-31",
-    "image_url": null,
+    "image_url": "/sets/BW2_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -499,7 +496,7 @@
     "language": "EN",
     "set_total": 102,
     "release_date": "2011-11-16",
-    "image_url": null,
+    "image_url": "/sets/BW3_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -509,7 +506,7 @@
     "language": "EN",
     "set_total": 99,
     "release_date": "2012-02-08",
-    "image_url": null,
+    "image_url": "/sets/BW4_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -519,7 +516,7 @@
     "language": "EN",
     "set_total": 111,
     "release_date": "2012-05-09",
-    "image_url": null,
+    "image_url": "/sets/BW5_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -529,7 +526,7 @@
     "language": "EN",
     "set_total": 128,
     "release_date": "2012-08-15",
-    "image_url": null,
+    "image_url": "/sets/BW6_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -539,7 +536,7 @@
     "language": "EN",
     "set_total": 149,
     "release_date": "2012-11-07",
-    "image_url": null,
+    "image_url": "/sets/BW7_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -549,7 +546,7 @@
     "language": "EN",
     "set_total": 135,
     "release_date": "2013-02-06",
-    "image_url": null,
+    "image_url": "/sets/BW8_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -559,7 +556,7 @@
     "language": "EN",
     "set_total": 122,
     "release_date": "2013-05-08",
-    "image_url": null,
+    "image_url": "/sets/BW9_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -569,7 +566,7 @@
     "language": "EN",
     "set_total": 105,
     "release_date": "2013-08-14",
-    "image_url": null,
+    "image_url": "/sets/BW10_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -579,10 +576,9 @@
     "language": "EN",
     "set_total": 115,
     "release_date": "2013-11-06",
-    "image_url": null,
+    "image_url": "/sets/BW11_Logo_EN.png",
     "cards_file": null
   },
-
   {
     "set_code": "XY_BASE",
     "name": "XY",
@@ -590,7 +586,7 @@
     "language": "EN",
     "set_total": 146,
     "release_date": "2014-02-05",
-    "image_url": null,
+    "image_url": "/sets/XY1_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -600,7 +596,7 @@
     "language": "EN",
     "set_total": 109,
     "release_date": "2014-05-07",
-    "image_url": null,
+    "image_url": "/sets/XY2_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -610,7 +606,7 @@
     "language": "EN",
     "set_total": 111,
     "release_date": "2014-08-13",
-    "image_url": null,
+    "image_url": "/sets/XY3_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -620,7 +616,7 @@
     "language": "EN",
     "set_total": 124,
     "release_date": "2014-11-05",
-    "image_url": null,
+    "image_url": "/sets/XY4_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -630,7 +626,7 @@
     "language": "EN",
     "set_total": 164,
     "release_date": "2015-02-04",
-    "image_url": null,
+    "image_url": "/sets/XY5_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -640,7 +636,7 @@
     "language": "EN",
     "set_total": 110,
     "release_date": "2015-05-06",
-    "image_url": null,
+    "image_url": "/sets/XY6_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -650,7 +646,7 @@
     "language": "EN",
     "set_total": 100,
     "release_date": "2015-08-12",
-    "image_url": null,
+    "image_url": "/sets/XY7_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -660,7 +656,7 @@
     "language": "EN",
     "set_total": 162,
     "release_date": "2015-11-04",
-    "image_url": null,
+    "image_url": "/sets/XY8_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -670,7 +666,7 @@
     "language": "EN",
     "set_total": 122,
     "release_date": "2016-02-03",
-    "image_url": null,
+    "image_url": "/sets/XY9_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -680,7 +676,7 @@
     "language": "EN",
     "set_total": 115,
     "release_date": "2016-02-22",
-    "image_url": null,
+    "image_url": "/sets/Generations_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -690,7 +686,7 @@
     "language": "EN",
     "set_total": 124,
     "release_date": "2016-05-04",
-    "image_url": null,
+    "image_url": "/sets/XY10_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -700,7 +696,7 @@
     "language": "EN",
     "set_total": 114,
     "release_date": "2016-08-03",
-    "image_url": null,
+    "image_url": "/sets/XY11_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -710,10 +706,9 @@
     "language": "EN",
     "set_total": 113,
     "release_date": "2016-11-02",
-    "image_url": null,
+    "image_url": "/sets/XY12_Logo_EN.png",
     "cards_file": null
   },
-
   {
     "set_code": "SUN_MOON",
     "name": "Sun & Moon",
@@ -721,7 +716,7 @@
     "language": "EN",
     "set_total": 149,
     "release_date": "2017-02-03",
-    "image_url": null,
+    "image_url": "/sets/SM1_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -731,7 +726,7 @@
     "language": "EN",
     "set_total": 145,
     "release_date": "2017-05-05",
-    "image_url": null,
+    "image_url": "/sets/SM2_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -741,7 +736,7 @@
     "language": "EN",
     "set_total": 147,
     "release_date": "2017-08-04",
-    "image_url": null,
+    "image_url": "/sets/SM3_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -751,7 +746,7 @@
     "language": "EN",
     "set_total": 73,
     "release_date": "2017-10-06",
-    "image_url": null,
+    "image_url": "/sets/Shining_Legends_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -761,7 +756,7 @@
     "language": "EN",
     "set_total": 111,
     "release_date": "2017-11-03",
-    "image_url": null,
+    "image_url": "/sets/SM4_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -771,7 +766,7 @@
     "language": "EN",
     "set_total": 156,
     "release_date": "2018-02-02",
-    "image_url": null,
+    "image_url": "/sets/SM5_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -781,7 +776,7 @@
     "language": "EN",
     "set_total": 146,
     "release_date": "2018-05-04",
-    "image_url": null,
+    "image_url": "/sets/SM6_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -791,7 +786,7 @@
     "language": "EN",
     "set_total": 168,
     "release_date": "2018-08-03",
-    "image_url": null,
+    "image_url": "/sets/SM7_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -801,7 +796,7 @@
     "language": "EN",
     "set_total": 70,
     "release_date": "2018-09-07",
-    "image_url": null,
+    "image_url": "/sets/Dragon_Majesty_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -811,7 +806,7 @@
     "language": "EN",
     "set_total": 214,
     "release_date": "2018-11-02",
-    "image_url": null,
+    "image_url": "/sets/SM8_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -821,7 +816,7 @@
     "language": "EN",
     "set_total": 181,
     "release_date": "2019-02-01",
-    "image_url": null,
+    "image_url": "/sets/SM9_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -831,7 +826,7 @@
     "language": "EN",
     "set_total": 18,
     "release_date": "2019-04-05",
-    "image_url": null,
+    "image_url": "/sets/1920px-Detective_Pikachu_movie_logo.png",
     "cards_file": null
   },
   {
@@ -841,7 +836,7 @@
     "language": "EN",
     "set_total": 214,
     "release_date": "2019-05-03",
-    "image_url": null,
+    "image_url": "/sets/SM10_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -851,7 +846,7 @@
     "language": "EN",
     "set_total": 236,
     "release_date": "2019-08-02",
-    "image_url": null,
+    "image_url": "/sets/SM11_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -861,7 +856,7 @@
     "language": "EN",
     "set_total": 69,
     "release_date": "2019-08-23",
-    "image_url": null,
+    "image_url": "/sets/Hidden_Fates_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -871,10 +866,9 @@
     "language": "EN",
     "set_total": 236,
     "release_date": "2019-11-01",
-    "image_url": null,
+    "image_url": "/sets/SM12_Logo_EN.png",
     "cards_file": null
   },
-
   {
     "set_code": "SWORD_SHIELD",
     "name": "Sword & Shield",
@@ -882,7 +876,7 @@
     "language": "EN",
     "set_total": 202,
     "release_date": "2020-02-07",
-    "image_url": null,
+    "image_url": "/sets/SWSH1_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -892,7 +886,7 @@
     "language": "EN",
     "set_total": 192,
     "release_date": "2020-05-01",
-    "image_url": null,
+    "image_url": "/sets/SWSH2_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -902,7 +896,7 @@
     "language": "EN",
     "set_total": 189,
     "release_date": "2020-08-14",
-    "image_url": null,
+    "image_url": "/sets/SWSH3_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -912,7 +906,7 @@
     "language": "EN",
     "set_total": 73,
     "release_date": "2020-09-25",
-    "image_url": null,
+    "image_url": "/sets/Champion_Path_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -922,7 +916,7 @@
     "language": "EN",
     "set_total": 185,
     "release_date": "2020-11-13",
-    "image_url": null,
+    "image_url": "/sets/SWSH4_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -932,7 +926,7 @@
     "language": "EN",
     "set_total": 73,
     "release_date": "2021-02-19",
-    "image_url": null,
+    "image_url": "/sets/Shining_Fates_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -942,7 +936,7 @@
     "language": "EN",
     "set_total": 183,
     "release_date": "2021-03-19",
-    "image_url": null,
+    "image_url": "/sets/SWSH5_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -952,7 +946,7 @@
     "language": "EN",
     "set_total": 198,
     "release_date": "2021-06-18",
-    "image_url": null,
+    "image_url": "/sets/SWSH6_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -962,7 +956,7 @@
     "language": "EN",
     "set_total": 203,
     "release_date": "2021-08-27",
-    "image_url": null,
+    "image_url": "/sets/SWSH7_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -972,7 +966,7 @@
     "language": "EN",
     "set_total": 50,
     "release_date": "2021-10-08",
-    "image_url": null,
+    "image_url": "/sets/Celebrations_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -982,7 +976,7 @@
     "language": "EN",
     "set_total": 264,
     "release_date": "2021-11-12",
-    "image_url": null,
+    "image_url": "/sets/SWSH8_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -992,7 +986,7 @@
     "language": "EN",
     "set_total": 172,
     "release_date": "2022-02-25",
-    "image_url": null,
+    "image_url": "/sets/SWSH9_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -1002,17 +996,17 @@
     "language": "EN",
     "set_total": 189,
     "release_date": "2022-05-27",
-    "image_url": null,
+    "image_url": "/sets/SWSH10_Logo_EN.png",
     "cards_file": null
   },
   {
     "set_code": "POKEMON_GO",
-    "name": "Pokémon GO",
+    "name": "Pok\u00e9mon GO",
     "era": "Sword & Shield",
     "language": "EN",
     "set_total": 88,
     "release_date": "2022-07-01",
-    "image_url": null,
+    "image_url": "/sets/Pokemon_Go_Logo.png",
     "cards_file": null
   },
   {
@@ -1022,7 +1016,7 @@
     "language": "EN",
     "set_total": 196,
     "release_date": "2022-09-09",
-    "image_url": null,
+    "image_url": "/sets/SWSH11_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -1032,7 +1026,7 @@
     "language": "EN",
     "set_total": 195,
     "release_date": "2022-11-11",
-    "image_url": null,
+    "image_url": "/sets/SWSH12_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -1042,10 +1036,9 @@
     "language": "EN",
     "set_total": 159,
     "release_date": "2023-01-20",
-    "image_url": null,
+    "image_url": "/sets/Crown_Zenith_Logo_EN.png",
     "cards_file": null
   },
-
   {
     "set_code": "SCARLET_VIOLET",
     "name": "Scarlet & Violet",
@@ -1053,7 +1046,7 @@
     "language": "EN",
     "set_total": 198,
     "release_date": "2023-03-31",
-    "image_url": null,
+    "image_url": "/sets/SV1_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -1063,7 +1056,7 @@
     "language": "EN",
     "set_total": 279,
     "release_date": "2023-06-09",
-    "image_url": null,
+    "image_url": "/sets/SV2_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -1073,17 +1066,17 @@
     "language": "EN",
     "set_total": 197,
     "release_date": "2023-08-11",
-    "image_url": null,
+    "image_url": "/sets/SV3_Logo_EN.png",
     "cards_file": null
   },
   {
     "set_code": "SV_151",
-    "name": "Scarlet & Violet—151",
+    "name": "Scarlet & Violet\u2014151",
     "era": "Scarlet & Violet",
     "language": "EN",
     "set_total": 165,
     "release_date": "2023-09-22",
-    "image_url": null,
+    "image_url": "/sets/SV3.5_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -1093,7 +1086,7 @@
     "language": "EN",
     "set_total": 266,
     "release_date": "2023-11-03",
-    "image_url": null,
+    "image_url": "/sets/SV4_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -1103,7 +1096,7 @@
     "language": "EN",
     "set_total": 91,
     "release_date": "2024-01-26",
-    "image_url": null,
+    "image_url": "/sets/SV4.5_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -1113,7 +1106,7 @@
     "language": "EN",
     "set_total": 218,
     "release_date": "2024-03-22",
-    "image_url": null,
+    "image_url": "/sets/SV5_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -1123,7 +1116,7 @@
     "language": "EN",
     "set_total": 226,
     "release_date": "2024-05-24",
-    "image_url": null,
+    "image_url": "/sets/SV6_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -1133,7 +1126,7 @@
     "language": "EN",
     "set_total": 64,
     "release_date": "2024-08-02",
-    "image_url": null,
+    "image_url": "/sets/SV6.5_Logo_EN.png",
     "cards_file": null
   },
   {
@@ -1143,7 +1136,7 @@
     "language": "EN",
     "set_total": 142,
     "release_date": "2024-09-13",
-    "image_url": null,
+    "image_url": "/sets/1920px-SV7_Logo_EN.png",
     "cards_file": null
   }
 ]
