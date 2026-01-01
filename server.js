@@ -6,6 +6,9 @@ const { spawn } = require('child_process')
 const { Pool } = require('pg')
 const crypto = require('crypto')
 
+const { loadCatalog } = require('./server/catalog/catalogLoader')
+const { seedCatalog } = require('./server/catalog/catalogSeeder')
+
 const {
   parseAuctionTitle,
   normalize,
@@ -30,125 +33,6 @@ app.use(express.json())
 const DATABASE_URL = process.env.DATABASE_URL
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 
-// -----------------------------------
-// Minimal canonical seed data (expand later)
-// -----------------------------------
-const CANONICAL_EXPANSIONS = [
-  {
-    set_code: 'BASE',
-    name: 'Base Set',
-    era: 'Wizards of the Coast',
-    language: 'EN',
-    set_total: 102,
-    release_date: '1999-01-09',
-    image_url: null,
-    cards: [
-      { card_number: '1/102', name: 'Alakazam' },
-      { card_number: '2/102', name: 'Blastoise' },
-      { card_number: '3/102', name: 'Chansey' },
-      { card_number: '4/102', name: 'Charizard' },
-      { card_number: '5/102', name: 'Clefairy' },
-      { card_number: '6/102', name: 'Gyarados' },
-      { card_number: '7/102', name: 'Hitmonchan' },
-      { card_number: '8/102', name: 'Machamp' },
-      { card_number: '9/102', name: 'Magneton' },
-      { card_number: '10/102', name: 'Mewtwo' },
-      { card_number: '11/102', name: 'Nidoking' },
-      { card_number: '12/102', name: 'Ninetales' },
-      { card_number: '13/102', name: 'Poliwrath' },
-      { card_number: '14/102', name: 'Raichu' },
-      { card_number: '15/102', name: 'Venusaur' },
-      { card_number: '16/102', name: 'Zapdos' },
-      { card_number: '17/102', name: 'Beedrill' },
-      { card_number: '18/102', name: 'Dragonair' },
-      { card_number: '19/102', name: 'Dugtrio' },
-      { card_number: '20/102', name: 'Electabuzz' },
-      { card_number: '21/102', name: 'Electrode' },
-      { card_number: '22/102', name: 'Pidgeotto' },
-      { card_number: '23/102', name: 'Arcanine' },
-      { card_number: '24/102', name: 'Charmeleon' },
-      { card_number: '25/102', name: 'Dewgong' },
-      { card_number: '26/102', name: 'Dratini' },
-      { card_number: '27/102', name: "Farfetch'd" },
-      { card_number: '28/102', name: 'Growlithe' },
-      { card_number: '29/102', name: 'Haunter' },
-      { card_number: '30/102', name: 'Ivysaur' },
-      { card_number: '31/102', name: 'Jynx' },
-      { card_number: '32/102', name: 'Kadabra' },
-      { card_number: '33/102', name: 'Kakuna' },
-      { card_number: '34/102', name: 'Machoke' },
-      { card_number: '35/102', name: 'Magmar' },
-      { card_number: '36/102', name: 'Nidorino' },
-      { card_number: '37/102', name: 'Porygon' },
-      { card_number: '38/102', name: 'Poliwhirl' },
-      { card_number: '39/102', name: 'Raticate' },
-      { card_number: '40/102', name: 'Seel' },
-      { card_number: '41/102', name: 'Wartortle' },
-      { card_number: '42/102', name: 'Abra' },
-      { card_number: '43/102', name: 'Bulbasaur' },
-      { card_number: '44/102', name: 'Caterpie' },
-      { card_number: '45/102', name: 'Charmander' },
-      { card_number: '46/102', name: 'Diglett' },
-      { card_number: '47/102', name: 'Doduo' },
-      { card_number: '48/102', name: 'Drowzee' },
-      { card_number: '49/102', name: 'Gastly' },
-      { card_number: '50/102', name: 'Koffing' },
-      { card_number: '51/102', name: 'Machop' },
-      { card_number: '52/102', name: 'Magnemite' },
-      { card_number: '53/102', name: 'Metapod' },
-      { card_number: '54/102', name: 'Nidoran♂' },
-      { card_number: '55/102', name: 'Onix' },
-      { card_number: '56/102', name: 'Pidgey' },
-      { card_number: '57/102', name: 'Pikachu' },
-      { card_number: '58/102', name: 'Poliwag' },
-      { card_number: '59/102', name: 'Ponyta' },
-      { card_number: '60/102', name: 'Rattata' },
-      { card_number: '61/102', name: 'Sandshrew' },
-      { card_number: '62/102', name: 'Squirtle' },
-      { card_number: '63/102', name: 'Starmie' },
-      { card_number: '64/102', name: 'Staryu' },
-      { card_number: '65/102', name: 'Tangela' },
-      { card_number: '66/102', name: 'Voltorb' },
-      { card_number: '67/102', name: 'Vulpix' },
-      { card_number: '68/102', name: 'Weedle' },
-      { card_number: '69/102', name: 'Bill' },
-      { card_number: '70/102', name: 'Clefairy Doll' },
-      { card_number: '71/102', name: 'Computer Search' },
-      { card_number: '72/102', name: 'Defender' },
-      { card_number: '73/102', name: 'Devolution Spray' },
-      { card_number: '74/102', name: 'Energy Removal' },
-      { card_number: '75/102', name: 'Energy Retrieval' },
-      { card_number: '76/102', name: 'Full Heal' },
-      { card_number: '77/102', name: 'Imposter Professor Oak' },
-      { card_number: '78/102', name: 'Item Finder' },
-      { card_number: '79/102', name: 'Lass' },
-      { card_number: '80/102', name: 'Maintenance' },
-      { card_number: '81/102', name: 'PlusPower' },
-      { card_number: '82/102', name: 'Pokemon Breeder' },
-      { card_number: '83/102', name: 'Pokemon Center' },
-      { card_number: '84/102', name: 'Pokemon Flute' },
-      { card_number: '85/102', name: 'Pokemon Trader' },
-      { card_number: '86/102', name: 'Pokedex' },
-      { card_number: '87/102', name: 'Professor Oak' },
-      { card_number: '88/102', name: 'Revive' },
-      { card_number: '89/102', name: 'Scoop Up' },
-      { card_number: '90/102', name: 'Super Energy Removal' },
-      { card_number: '91/102', name: 'Super Potion' },
-      { card_number: '92/102', name: 'Switch' },
-      { card_number: '93/102', name: 'Gust of Wind' },
-      { card_number: '94/102', name: 'Potion' },
-      { card_number: '95/102', name: 'Energy Search' },
-      { card_number: '96/102', name: 'Double Colorless Energy' },
-      { card_number: '97/102', name: 'Fighting Energy' },
-      { card_number: '98/102', name: 'Fire Energy' },
-      { card_number: '99/102', name: 'Grass Energy' },
-      { card_number: '100/102', name: 'Lightning Energy' },
-      { card_number: '101/102', name: 'Psychic Energy' },
-      { card_number: '102/102', name: 'Water Energy' }
-    ]
-  }
-]
-
 const CARD_METADATA_OVERRIDES = new Map([
   [
     22888,
@@ -166,21 +50,6 @@ Artist:Ken Sugimori`
   ]
 ])
 
-function getCanonicalExpansionSummaries() {
-  return CANONICAL_EXPANSIONS.map((expansion, index) => ({
-    id: index + 1,
-    set_code: expansion.set_code,
-    name: expansion.name ?? null,
-    era: expansion.era ?? null,
-    language: expansion.language ?? null,
-    set_total: expansion.set_total ?? null,
-    release_date: expansion.release_date ?? null,
-    image_url: expansion.image_url ?? null,
-    cards_total: expansion.cards?.length ?? 0,
-    linked_auctions: 0
-  }))
-}
-
 function applyCardOverrides(card) {
   if (!card) return null
   const overrides = CARD_METADATA_OVERRIDES.get(card.id)
@@ -190,6 +59,32 @@ function applyCardOverrides(card) {
     image_url: overrides?.image_url ?? card.image_url ?? null,
     product_details: overrides?.product_details ?? card.product_details ?? null
   }
+}
+
+let cachedCatalogPromise = null
+
+async function getStaticCatalog() {
+  if (!cachedCatalogPromise) {
+    cachedCatalogPromise = loadCatalog()
+  }
+  return cachedCatalogPromise
+}
+
+async function getStaticExpansionSummaries() {
+  const { expansions, cardsBySetCode } = await getStaticCatalog()
+
+  return expansions.map((expansion, index) => ({
+    id: index + 1,
+    set_code: expansion.set_code,
+    name: expansion.name ?? null,
+    era: expansion.era ?? null,
+    language: expansion.language ?? null,
+    set_total: expansion.set_total ?? cardsBySetCode?.[expansion.set_code]?.set_total ?? null,
+    release_date: expansion.release_date ?? null,
+    image_url: expansion.image_url ?? null,
+    cards_total: cardsBySetCode?.[expansion.set_code]?.cards?.length ?? 0,
+    linked_auctions: 0
+  }))
 }
 
 // --------------------
@@ -586,81 +481,6 @@ async function ensureCardInfrastructure() {
       enrichmentColumnsAvailable &&
       enrichmentIndexesAvailable
   )
-}
-
-// --------------------
-// Seeding
-// --------------------
-async function seedCanonicalExpansionsAndCards() {
-  if (!pool) return
-
-  const ok = await ensureCardInfrastructure()
-  if (!ok) return
-
-  const client = await pool.connect()
-  try {
-    await client.query('BEGIN')
-
-    for (const expansion of CANONICAL_EXPANSIONS) {
-      const existingExpansion = await client.query(
-        'SELECT id FROM public.expansions WHERE set_code = $1 LIMIT 1',
-        [expansion.set_code]
-      )
-
-      let expansionId = existingExpansion.rows[0]?.id ?? null
-
-      if (!expansionId) {
-        const inserted = await client.query(
-          `
-            INSERT INTO public.expansions (set_code, name, era, language, set_total, release_date, image_url)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id
-          `,
-          [
-            expansion.set_code,
-            expansion.name ?? null,
-            expansion.era ?? null,
-            expansion.language ?? null,
-            expansion.set_total ?? null,
-            expansion.release_date ?? null,
-            expansion.image_url ?? null
-          ]
-        )
-        expansionId = inserted.rows[0].id
-      }
-
-      for (const card of expansion.cards) {
-        const existingCard = await client.query(
-          `SELECT id FROM public.cards WHERE expansion_id = $1 AND card_number = $2 LIMIT 1`,
-          [expansionId, card.card_number]
-        )
-        if (existingCard.rows[0]) continue
-
-        await client.query(
-          `
-            INSERT INTO public.cards (name, era, set_name, set_code, set_total, card_number, expansion_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-          `,
-          [
-            card.name,
-            expansion.era ?? null,
-            expansion.name ?? expansion.set_code,
-            expansion.set_code,
-            expansion.set_total ?? null,
-            card.card_number,
-            expansionId
-          ]
-        )
-      }
-    }
-
-    await client.query('COMMIT')
-  } catch (error) {
-    await client.query('ROLLBACK')
-    console.error('Failed to seed canonical expansions and cards', error)
-  } finally {
-    client.release()
-  }
 }
 
 // --------------------
@@ -1371,11 +1191,11 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
 }
 
 async function fetchExpansionSummaries() {
-  if (!pool) return getCanonicalExpansionSummaries()
+  if (!pool) return getStaticExpansionSummaries()
 
   try {
     const ok = await ensureCardInfrastructure()
-    if (!ok) return getCanonicalExpansionSummaries()
+    if (!ok) return getStaticExpansionSummaries()
 
     const query = `
       SELECT
@@ -1399,7 +1219,7 @@ async function fetchExpansionSummaries() {
     return result.rows
   } catch (error) {
     console.error('Falling back to canonical expansions due to DB error', error)
-    return getCanonicalExpansionSummaries()
+    return getStaticExpansionSummaries()
   }
 }
 
@@ -2079,9 +1899,14 @@ app.get('/api/enrichment/unmatched', async (req, res) => {
 
 // Bootstrap seed
 if (pool) {
-  seedCanonicalExpansionsAndCards().catch((error) => {
-    console.error('Failed to bootstrap canonical Pokémon data', error)
-  })
+  ensureCardInfrastructure()
+    .then((ok) => {
+      if (!ok) return null
+      return seedCatalog(pool)
+    })
+    .catch((error) => {
+      console.error('Failed to bootstrap Pokémon catalog', error)
+    })
 }
 
 // --------------------

@@ -1,0 +1,12 @@
+[
+  {
+    "set_code": "BASE",
+    "name": "Base Set",
+    "era": "Wizards of the Coast",
+    "language": "EN",
+    "set_total": 102,
+    "release_date": "1999-01-09",
+    "image_url": null,
+    "cards_file": "base.json"
+  }
+]
