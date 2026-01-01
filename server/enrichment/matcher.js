@@ -89,20 +89,46 @@ function chooseSetCandidate(candidates, title, setHintIndex) {
   return { set: null, reason: 'ambiguous' }
 }
 
+function resolveEraKey(rawEra, setsByEraAndTotal) {
+  const normalized = normalizeText(rawEra)
+  if (normalized && setsByEraAndTotal[normalized]) {
+    return { key: normalized, resolution: 'exact' }
+  }
+
+  const stripped = normalized?.replace(/\b\d+\b/g, ' ').replace(/\s+/g, ' ').trim()
+  if (stripped && setsByEraAndTotal[stripped]) {
+    return { key: stripped, resolution: 'stripped_numbers' }
+  }
+
+  for (const candidateKey of Object.keys(setsByEraAndTotal || {})) {
+    if (normalized && normalized.includes(candidateKey)) {
+      return { key: candidateKey, resolution: 'contains_candidate' }
+    }
+    if (normalized && candidateKey.includes(normalized)) {
+      return { key: candidateKey, resolution: 'contained_in_candidate' }
+    }
+  }
+
+  return { key: null, resolution: 'unresolved' }
+}
+
 function matchAuction(auctionRow, indexes) {
   const { setsByEraAndTotal, setHintIndex, cardsBySetAndNumber } = indexes
-  const eraKey = normalizeText(auctionRow?.era || auctionRow?.pokemon_era || auctionRow?.attributes?.pokemon_era?.[0])
+
+  const rawEra = auctionRow?.era || auctionRow?.pokemon_era || auctionRow?.attributes?.pokemon_era?.[0]
+  const { key: eraKey, resolution: eraResolution } = resolveEraKey(rawEra, setsByEraAndTotal)
+
   if (!eraKey || !setsByEraAndTotal[eraKey]) {
     return {
       match_status: 'Mismatched',
-      matched_era: eraKey || null,
+      matched_era: rawEra || null,
       parsed_card_number: null,
       parsed_set_total: null,
       matched_set_code: null,
       matched_card_number: null,
       matched_card_id: null,
       candidate_sets: [],
-      debug: { reason: 'missing_or_invalid_era' }
+      debug: { reason: 'missing_or_invalid_era', era_resolution: eraResolution }
     }
   }
 
@@ -112,14 +138,14 @@ function matchAuction(auctionRow, indexes) {
   if (!cardNumber || !setTotal) {
     return {
       match_status: 'Needs review',
-      matched_era: auctionRow?.era || auctionRow?.pokemon_era || null,
+      matched_era: rawEra || null,
       parsed_card_number: cardNumber || null,
       parsed_set_total: setTotal || null,
       matched_set_code: null,
       matched_card_number: null,
       matched_card_id: null,
       candidate_sets: candidateSets,
-      debug: { reason: 'missing_card_number', candidates: candidateSets }
+      debug: { reason: 'missing_card_number', candidates: candidateSets, era_resolution: eraResolution }
     }
   }
 
@@ -128,28 +154,28 @@ function matchAuction(auctionRow, indexes) {
   if (!chosenSet) {
     return {
       match_status: 'Needs review',
-      matched_era: auctionRow?.era || auctionRow?.pokemon_era || null,
+      matched_era: rawEra || null,
       parsed_card_number: cardNumber,
       parsed_set_total: setTotal,
       matched_set_code: null,
       matched_card_number: null,
       matched_card_id: null,
       candidate_sets: candidateSets,
-      debug: { reason, candidates: candidateSets }
+      debug: { reason, candidates: candidateSets, era_resolution: eraResolution }
     }
   }
 
   const card = cardsBySetAndNumber?.[chosenSet.set_code]?.[cardNumber] || null
   const matched = {
     match_status: null,
-    matched_era: auctionRow?.era || auctionRow?.pokemon_era || null,
+    matched_era: rawEra || null,
     parsed_card_number: cardNumber,
     parsed_set_total: setTotal,
     matched_set_code: chosenSet.set_code,
     matched_card_number: cardNumber,
     matched_card_id: null,
     candidate_sets: candidateSets,
-    debug: { reason, candidates: candidateSets }
+    debug: { reason, candidates: candidateSets, era_resolution: eraResolution }
   }
 
   if (card) {
@@ -174,6 +200,7 @@ module.exports = {
   parseCardNumberFromTitle,
   buildSetIndexes,
   chooseSetCandidate,
+  resolveEraKey,
   matchAuction,
   loadMatcherIndexes
 }
