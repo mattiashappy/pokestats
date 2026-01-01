@@ -461,7 +461,7 @@ def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
         "name": normalize_card_value(raw_name),
         "era": attr_value("pokemon_era", "era", "generation", "Era", "Generation"),
         "set_name": normalize_card_value(raw_set) if raw_set else "unknown",
-        "card_number": attr_value("card_number", "card number", "Card number"),
+        "card_number": attr_value("card_number", "card number", "Card number") or "unknown",
     }
 
 
