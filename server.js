@@ -10,19 +10,9 @@ const { loadCatalog } = require('./server/catalog/catalogLoader')
 const { seedCatalog } = require('./server/catalog/catalogSeeder')
 
 const {
-  parseAuctionTitle,
-  normalize,
-  canonicalNumberText,
-  looksLikeLotOrSealed
-} = require('./server/enrichment/titleParser')
-
-const {
-  resolveAuctionMatch,
-  normalizeEraLabel,
-  parseCardNumber,
-  parseSetHint,
-  parseCardName
-} = require('./server/enrichment/numberFirstMatcher')
+  matchAuction,
+  loadMatcherIndexes
+} = require('./server/enrichment/matcher')
 
 const app = express()
 const PORT = process.env.PORT || 8000
@@ -413,29 +403,15 @@ async function ensureSalesEnrichmentColumnsAvailable() {
   try {
     // NOTE: Include any column referenced by queries/endpoints below to avoid runtime SQL errors.
     const results = await Promise.all([
-      // used by /api/enrichment/auctions
+      ensureColumnExists('tradera_sales', 'match_status', 'TEXT'),
       ensureColumnExists('tradera_sales', 'match_confidence', 'TEXT'),
       ensureColumnExists('tradera_sales', 'match_method', 'TEXT'),
-      ensureColumnExists('tradera_sales', 'parsed_name', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'matched_set_code', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'matched_era', 'TEXT'),
       ensureColumnExists('tradera_sales', 'parsed_card_number', 'TEXT'),
-      ensureColumnExists('tradera_sales', 'parsed_total_in_set', 'INTEGER'),
-      ensureColumnExists('tradera_sales', 'parsed_set_hint', 'TEXT'),
-      ensureColumnExists('tradera_sales', 'parsed_set_guess', 'JSONB'),
-      ensureColumnExists('tradera_sales', 'parsed_set_confidence', 'TEXT'),
-      ensureColumnExists('tradera_sales', 'parsed_set_candidates', 'JSONB'),
-      ensureColumnExists('tradera_sales', 'suggested_cards', 'JSONB'),
-      ensureColumnExists('tradera_sales', 'enrich_notes', 'JSONB'),
-      ensureColumnExists('tradera_sales', 'notes', 'TEXT'),
-      ensureColumnExists('tradera_sales', 'updated_at', 'TIMESTAMPTZ NOT NULL DEFAULT NOW()'),
-
-      // used by /api/enrichment/run + older titleParser flow
-      ensureColumnExists('tradera_sales', 'description', 'TEXT'),
-      ensureColumnExists('tradera_sales', 'image_urls', 'JSONB'),
-      ensureColumnExists('tradera_sales', 'parsed_card_name', 'TEXT'),
-      ensureColumnExists('tradera_sales', 'parsed_number_text', 'TEXT'),
-      ensureColumnExists('tradera_sales', 'parsed_card_no', 'TEXT'),
-      ensureColumnExists('tradera_sales', 'enrich_status', 'TEXT'),
-      ensureColumnExists('tradera_sales', 'enrich_confidence', 'INTEGER')
+      ensureColumnExists('tradera_sales', 'parsed_set_total', 'INTEGER'),
+      ensureColumnExists('tradera_sales', 'match_debug', 'JSONB'),
+      ensureColumnExists('tradera_sales', 'updated_at', 'TIMESTAMPTZ NOT NULL DEFAULT NOW()')
     ])
 
     hasEnsuredEnrichmentColumns = results.every(Boolean)
@@ -561,98 +537,35 @@ function filterCandidateExpansions(expansions, { eraHint = null, setHint = null 
   })
 }
 
-function buildExpansionFilters(candidateExpansions, eraHint, startIndex = 1) {
-  const params = []
-  let index = startIndex
-
-  const expansionIds = candidateExpansions.map((expansion) => expansion.id).filter(Boolean)
-  const expansionCodes = candidateExpansions.map((expansion) => normalizeEra(expansion.set_code)).filter(Boolean)
-
-  const clauses = []
-
-  if (expansionIds.length > 0) {
-    clauses.push(`c.expansion_id = ANY($${index})`)
-    params.push(expansionIds)
-    index++
-  }
-
-  if (expansionCodes.length > 0) {
-    clauses.push(`LOWER(COALESCE(e.set_code, c.set_code)) = ANY($${index})`)
-    params.push(expansionCodes)
-    index++
-  }
-
-  if (clauses.length > 0) {
-    return { sql: ` AND (${clauses.join(' OR ')})`, params, nextIndex: index }
-  }
-
-  const eraNorm = normalizeEra(eraHint)
-  if (eraNorm) {
-    params.push(`%${eraNorm}%`)
-    return {
-      sql: ` AND LOWER(COALESCE(e.era, c.era)) LIKE $${index}`,
-      params,
-      nextIndex: index + 1
-    }
-  }
-
-  return { sql: '', params: [], nextIndex: index }
-}
-
-async function findOrCreateCardBySetCodeAndNumber(
-  db,
-  { setCode = null, numberText = null, cardNo = null, totalInSet = null, cardName = null, setGuess = null }
-) {
-  const normalizedSetCode = setCode?.trim() || null
-  const cardNumber = canonicalNumberText(numberText, cardNo ?? null, totalInSet ?? null)
-  if (!normalizedSetCode || !cardNumber) return null
-
-  const existing = await db.query(
-    `SELECT id FROM public.cards WHERE set_code = $1 AND card_number = $2 LIMIT 1`,
-    [normalizedSetCode, cardNumber]
-  )
-  if (existing.rows[0]) return existing.rows[0].id
-
-  const inserted = await db.query(
-    `
-      INSERT INTO public.cards (name, set_name, card_number, set_code, set_total)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id
-    `,
-    [cardName ?? 'unknown', setGuess ?? 'unknown', cardNumber, normalizedSetCode, totalInSet ?? null]
-  )
-
-  return inserted.rows[0].id
-}
-
-function normalizeCardValue(value) {
-  if (!value) return 'unknown'
-  return value.trim().toLowerCase().split(/\s+/).join(' ') || 'unknown'
-}
-
-function extractCardPayload(row) {
-  const attributes = row.attributes || {}
-  const attributeValue = (key) => {
-    const value = attributes?.[key]
-    if (!value) return null
-    if (Array.isArray(value)) return value[0]
-    return value
-  }
-
-  const rawName = attributeValue('Card name') || row.title || 'Unknown card'
-  const rawSet = attributeValue('Series') || attributeValue('Set')
-
-  return {
-    name: normalizeCardValue(rawName),
-    era: attributeValue('Era') || attributeValue('Generation'),
-    set_name: rawSet ? normalizeCardValue(rawSet) : 'unknown',
-    card_number: attributeValue('Card number')
-  }
-}
-
 // NOTE: intentionally no-op now (avoid noisy "unknown" cards)
 async function ensureMissingSalesAreLinkedToCards() {
   hasBackfilledSalesCards = true
+}
+
+async function buildDatabaseCardIndex() {
+  if (!pool) return {}
+  const { rows } = await pool.query(
+    `
+      SELECT
+        c.id,
+        c.card_number,
+        COALESCE(e.set_code, c.set_code) AS set_code
+      FROM public.cards c
+      LEFT JOIN public.expansions e ON e.id = c.expansion_id
+    `
+  )
+
+  const bySetAndNumber = {}
+  for (const row of rows) {
+    const setCode = row.set_code?.trim()
+    const numeric = parseInt(String(row.card_number).split(/[\s/]/)[0], 10)
+    if (!setCode || !Number.isFinite(numeric)) continue
+
+    if (!bySetAndNumber[setCode]) bySetAndNumber[setCode] = {}
+    bySetAndNumber[setCode][numeric] = row.id
+  }
+
+  return bySetAndNumber
 }
 
 // --------------------
@@ -1588,387 +1501,87 @@ app.post('/api/import/run', async (_req, res) => {
 // --------------------
 // Enrichment
 // --------------------
-app.get('/api/enrichment/auctions', async (req, res) => {
-  try {
-    const linkedParam = req.query.linked
-    const linked = linkedParam === '1' ? true : linkedParam === '0' ? false : null
-    const confidence = req.query.confidence ? String(req.query.confidence) : null
-    const q = req.query.q ? String(req.query.q) : null
-    const hasImage = req.query.hasImage === '1'
-    const page = Number(req.query.page || 1)
-    const pageSize = Number(req.query.pageSize || 50)
-    const startDate = req.query.startDate ? String(req.query.startDate) : null
-    const endDate = req.query.endDate ? String(req.query.endDate) : null
-
-    const data = await fetchEnrichmentAuctions({
-      linkedOnly: linked,
-      confidence,
-      q,
-      hasImage,
-      page,
-      pageSize,
-      startDate,
-      endDate
-    })
-
-    res.json(data)
-  } catch (error) {
-    console.error('Failed to fetch enrichment auctions', error)
-    res.status(500).json({ error: 'Failed to load enrichment auctions' })
-  }
-})
-
-app.get('/api/enrichment/auctions/:id', async (req, res) => {
-  try {
-    const id = Number(req.params.id)
-    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid auction id' })
-
-    const auction = await fetchEnrichmentAuctionById(id)
-    if (!auction) return res.status(404).json({ error: 'Auction not found' })
-
-    res.json(auction)
-  } catch (error) {
-    console.error('Failed to fetch enrichment auction', error)
-    res.status(500).json({ error: 'Failed to load auction' })
-  }
-})
-
-app.get('/api/enrichment/cards/search', async (req, res) => {
-  try {
-    const q = String(req.query.q || '').trim()
-    if (!q) return res.json([])
-
-    const expansionId = req.query.expansionId ? Number(req.query.expansionId) : null
-    const cards = await searchCards(q, Number.isFinite(expansionId) ? expansionId : null)
-    res.json(cards)
-  } catch (error) {
-    console.error('Failed to search cards', error)
-    res.status(500).json({ error: 'Failed to search cards' })
-  }
-})
-
-/**
- * ✅ Used by UI: “Add new card manually”
- * POST /api/enrichment/cards
- */
-app.post('/api/enrichment/cards', async (req, res) => {
-  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
-
-  try {
-    const payload = {
-      name: req.body?.name,
-      set_name: req.body?.set_name,
-      set_code: req.body?.set_code,
-      card_number: req.body?.card_number,
-      image_url: req.body?.image_url,
-      era: req.body?.era
-    }
-
-    const card = await createCard(payload)
-    if (!card) return res.status(400).json({ error: 'Failed to create card' })
-
-    console.log(`[enrichment] ${new Date().toISOString()} created card ${card.id} (${card.name} / ${card.set_name})`)
-    res.status(201).json(card)
-  } catch (error) {
-    console.error('Failed to create card', error)
-    res.status(500).json({ error: 'Failed to create card' })
-  }
-})
-
-app.post('/api/enrichment/auctions/:id/link', async (req, res) => {
-  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
-
-  try {
-    const id = Number(req.params.id)
-    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid auction id' })
-
-    const cardId = Number(req.body?.card_id)
-    if (!Number.isFinite(cardId)) return res.status(400).json({ error: 'Invalid card id' })
-
-    const { rows: cardExists } = await pool.query('SELECT 1 FROM public.cards WHERE id = $1', [cardId])
-    if (!cardExists.length) return res.status(400).json({ error: 'Card does not exist' })
-
-    const confidence = normalizeMatchConfidence(req.body?.match_confidence) || 'medium'
-    const method = normalizeMatchMethod(req.body?.match_method) || 'manual'
-    const notes = req.body?.notes ?? null
-
-    const { rows } = await pool.query(
-      `
-        UPDATE public.tradera_sales
-        SET card_id = $2,
-            match_confidence = $3,
-            match_method = $4,
-            notes = COALESCE($5, notes),
-            updated_at = NOW()
-        WHERE item_id = $1
-        RETURNING *
-      `,
-      [id, cardId, confidence, method, notes]
-    )
-
-    if (!rows.length) return res.status(404).json({ error: 'Auction not found' })
-
-    console.log(`[enrichment] ${new Date().toISOString()} linked auction ${id} -> card ${cardId} (${method}/${confidence})`)
-    const auction = await fetchEnrichmentAuctionById(id)
-    res.json(auction)
-  } catch (error) {
-    console.error('Failed to link auction', error)
-    res.status(500).json({ error: 'Failed to link auction' })
-  }
-})
-
-app.post('/api/enrichment/auctions/:id/unlink', async (req, res) => {
-  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
-
-  try {
-    const id = Number(req.params.id)
-    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid auction id' })
-
-    const notes = req.body?.notes ?? null
-
-    const { rows } = await pool.query(
-      `
-        UPDATE public.tradera_sales
-        SET card_id = NULL,
-            match_confidence = NULL,
-            match_method = 'unmatched',
-            notes = COALESCE($2, notes),
-            updated_at = NOW()
-        WHERE item_id = $1
-        RETURNING *
-      `,
-      [id, notes]
-    )
-
-    if (!rows.length) return res.status(404).json({ error: 'Auction not found' })
-
-    console.log(`[enrichment] ${new Date().toISOString()} unlinked auction ${id}`)
-    const auction = await fetchEnrichmentAuctionById(id)
-    res.json(auction)
-  } catch (error) {
-    console.error('Failed to unlink auction', error)
-    res.status(500).json({ error: 'Failed to unlink auction' })
-  }
-})
-
-app.post('/api/enrichment/auctions/reprocess', async (req, res) => {
-  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
-
-  const ok = await ensureCardInfrastructure()
-  if (!ok) return res.status(500).json({ error: 'Card infrastructure unavailable' })
-
-  const limit = Math.min(Math.max(Number(req.body?.limit) || 200, 1), 500)
-  const onlyUnmatched = req.body?.onlyUnmatched !== false
-
-  const client = await pool.connect()
-  try {
-    const { rows } = await client.query(
-      `
-        SELECT item_id, title, description, attributes
-        FROM public.tradera_sales
-        WHERE card_id IS NULL ${onlyUnmatched ? "AND (match_method IS NULL OR match_method = 'unmatched')" : ''}
-        ORDER BY updated_at DESC NULLS LAST
-        LIMIT $1
-      `,
-      [limit]
-    )
-
-    let linked = 0
-    let unmatched = 0
-    let reviewed = 0
-    let collisions = 0
-    let unmatchedWithParsedNumber = 0
-    const totalBuckets = new Map()
-
-    for (const row of rows) {
-      const updates = await tryAutoMatchAuction(client, row)
-      const parsedCard = parseCardNumber(`${row.title || ''} ${row.description || ''}`)
-      if (parsedCard.denominator) {
-        totalBuckets.set(parsedCard.denominator, (totalBuckets.get(parsedCard.denominator) || 0) + 1)
-      }
-
-      await client.query(
-        `
-          UPDATE public.tradera_sales
-          SET card_id = $2,
-              match_confidence = $3,
-              match_method = $4,
-              parsed_name = COALESCE($5, parsed_name),
-              parsed_card_number = COALESCE($6, parsed_card_number),
-              parsed_total_in_set = COALESCE($7, parsed_total_in_set),
-              parsed_set_hint = COALESCE($8, parsed_set_hint),
-              parsed_set_guess = COALESCE($9, parsed_set_guess),
-              parsed_set_confidence = COALESCE($10, parsed_set_confidence),
-              parsed_set_candidates = COALESCE($11, parsed_set_candidates),
-              suggested_cards = COALESCE($12, suggested_cards),
-              enrich_notes = COALESCE($13, enrich_notes),
-              updated_at = NOW()
-          WHERE item_id = $1
-        `,
-        [
-          row.item_id,
-          updates.card_id,
-          updates.match_confidence,
-          updates.match_method,
-          updates.parsed_name,
-          updates.parsed_card_number,
-          updates.parsed_total_in_set,
-          updates.parsed_set_hint,
-          updates.parsed_set_guess ? JSON.stringify(updates.parsed_set_guess) : null,
-          updates.parsed_set_confidence,
-          updates.parsed_set_candidates ? JSON.stringify(updates.parsed_set_candidates) : null,
-          updates.suggested_cards ? JSON.stringify(updates.suggested_cards) : null,
-          updates.enrich_notes ? JSON.stringify(updates.enrich_notes) : null
-        ]
-      )
-
-      if ((updates.parsed_set_candidates || []).length > 1) collisions++
-
-      if (updates.card_id) linked++
-      else if (updates.parsed_name || updates.parsed_card_number) {
-        reviewed++
-        if (updates.parsed_card_number) unmatchedWithParsedNumber++
-      } else unmatched++
-    }
-
-    console.log(
-      `[enrichment] ${new Date().toISOString()} reprocessed ${rows.length} auctions -> linked:${linked} review:${reviewed} unmatched:${unmatched} collisions:${collisions}`
-    )
-    console.log('[enrichment] unmatched with parsed numbers', unmatchedWithParsedNumber)
-
-    const mostCommonTotals = Array.from(totalBuckets.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-    console.log('[enrichment] common totals', mostCommonTotals)
-
-    res.json({ processed: rows.length, linked, reviewed, unmatched, collisions })
-  } catch (error) {
-    console.error('Failed to reprocess auctions', error)
-    res.status(500).json({ error: 'Failed to reprocess auctions' })
-  } finally {
-    client.release()
-  }
-})
-
 app.post('/api/enrichment/run', async (req, res) => {
   if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
 
   const ok = await ensureCardInfrastructure()
   if (!ok) return res.status(500).json({ ok: false, error: 'Card infrastructure unavailable' })
 
+  const limit = Math.min(Math.max(Number(req.body?.limit) || 500, 1), 1000)
+
   const client = await pool.connect()
   try {
-    const limit = Number(req.body?.limit ?? 500)
+    const matcherIndexes = await loadMatcherIndexes()
+    const cardIndex = await buildDatabaseCardIndex()
 
     const { rows } = await client.query(
       `
-        SELECT item_id, title, description, attributes, card_id
+        SELECT item_id, title, attributes, era, pokemon_era
         FROM public.tradera_sales
-        WHERE end_date >= NOW() - INTERVAL '60 days'
         ORDER BY end_date DESC
         LIMIT $1
       `,
       [limit]
     )
 
+    const statusCounts = new Map()
     let linked = 0
-    let needsReview = 0
-    let unmatched = 0
 
     for (const row of rows) {
-      const parsed = parseAuctionTitle(row.title ?? '')
-      const titleNorm = normalize(row.title ?? '')
-      const status = parsed.enrich_status ?? 'unmatched'
-      const confidence = parsed.enrich_confidence ?? null
+      const match = matchAuction(row, matcherIndexes)
+      const confidence = match.match_status?.includes('High')
+        ? 'high'
+        : match.match_status?.includes('Medium')
+          ? 'medium'
+          : match.match_status?.includes('Low')
+            ? 'low'
+            : null
+
+      const matchedCardId =
+        match.matched_card_id ||
+        (match.matched_set_code && match.matched_card_number
+          ? cardIndex?.[match.matched_set_code]?.[match.matched_card_number] || null
+          : null)
+
+      if (matchedCardId) linked++
+
+      const debugPayload = { ...match, matched_card_id: matchedCardId }
 
       await client.query(
         `
           UPDATE public.tradera_sales
           SET
-            parsed_card_name = $2,
-            parsed_number_text = $3,
-            parsed_card_no = $4,
-            parsed_total_in_set = $5,
-            parsed_set_guess = $6,
-            parsed_set_confidence = $7,
-            parsed_set_code = $8,
-            enrich_status = $9,
-            enrich_confidence = $10,
-            enrich_notes = $11
+            match_status = $2,
+            match_confidence = $3,
+            matched_set_code = $4,
+            matched_era = $5,
+            parsed_card_number = $6,
+            parsed_set_total = $7,
+            card_id = $8,
+            match_debug = $9,
+            updated_at = NOW()
           WHERE item_id = $1
         `,
         [
           row.item_id,
-          parsed.parsed_card_name ?? null,
-          parsed.parsed_number_text ?? null,
-          parsed.parsed_card_no ?? null,
-          parsed.parsed_total_in_set ?? null,
-          parsed.parsed_set_guess ?? null,
-          parsed.parsed_set_confidence ?? null,
-          parsed.setCode ?? null,
-          status,
+          match.match_status,
           confidence,
-          JSON.stringify({ source: 'title', title: row.title })
+          match.matched_set_code,
+          match.matched_era,
+          match.parsed_card_number,
+          match.parsed_set_total,
+          matchedCardId,
+          JSON.stringify(debugPayload)
         ]
       )
 
-      if (row.card_id != null) continue
-
-      if (looksLikeLotOrSealed(titleNorm)) {
-        await client.query(
-          `
-            UPDATE public.tradera_sales
-            SET enrich_status = 'needs_review',
-                enrich_confidence = LEAST(COALESCE(enrich_confidence, 0), 20),
-                enrich_notes = COALESCE(enrich_notes, '{}'::jsonb) || jsonb_build_object('skip', 'lot_or_sealed')
-            WHERE item_id = $1
-          `,
-          [row.item_id]
-        )
-        needsReview++
-        continue
-      }
-
-      const autoMatch = await tryAutoMatchAuction(client, row, parsed)
-
-      if (autoMatch.card_id) {
-        await client.query(
-          `
-            UPDATE public.tradera_sales
-            SET card_id = $2,
-                match_confidence = $3,
-                match_method = $4,
-                enrich_status = 'linked',
-                enrich_confidence = GREATEST(COALESCE(enrich_confidence, 0), 80)
-            WHERE item_id = $1
-              AND card_id IS NULL
-          `,
-          [row.item_id, autoMatch.card_id, autoMatch.match_confidence, autoMatch.match_method]
-        )
-        linked++
-      } else {
-        await client.query(
-          `
-            UPDATE public.tradera_sales
-            SET enrich_status = CASE
-                WHEN parsed_card_name IS NOT NULL THEN 'needs_review'
-                ELSE 'unmatched'
-              END,
-              enrich_confidence = COALESCE(enrich_confidence, 0)
-            WHERE item_id = $1
-          `,
-          [row.item_id]
-        )
-
-        if (parsed.parsed_card_name) needsReview++
-        else unmatched++
-      }
+      statusCounts.set(match.match_status || 'Unknown', (statusCounts.get(match.match_status || 'Unknown') || 0) + 1)
     }
 
-    res.json({ processed: rows.length, linked, needsReview, unmatched })
-  } catch (e) {
-    console.error(e)
-    res.status(500).json({ ok: false, error: String(e) })
+    res.json({ ok: true, attempted: rows.length, linked, statusCounts: Object.fromEntries(statusCounts) })
+  } catch (error) {
+    console.error('Failed to run enrichment matcher', error)
+    res.status(500).json({ ok: false, error: String(error) })
   } finally {
     client.release()
   }
@@ -1981,18 +1594,20 @@ app.get('/api/enrichment/summary', async (_req, res) => {
     const { rows } = await pool.query(`
       SELECT
         COUNT(*)::int AS total,
-        COUNT(*) FILTER (WHERE card_id IS NOT NULL)::int AS linked,
-        COUNT(*) FILTER (WHERE enrich_status = 'needs_review')::int AS needs_review,
-        COUNT(*) FILTER (WHERE card_id IS NULL)::int AS unlinked
+        COUNT(*) FILTER (WHERE match_status LIKE 'Matched%')::int AS matched,
+        COUNT(*) FILTER (WHERE match_status = 'Needs review')::int AS needs_review,
+        COUNT(*) FILTER (WHERE match_status = 'Mismatched')::int AS mismatched,
+        COUNT(*) FILTER (WHERE card_id IS NOT NULL)::int AS linked
       FROM public.tradera_sales
     `)
 
     res.json({
       available: true,
       totalAuctions: rows[0].total,
-      linkedAuctions: rows[0].linked,
-      unlinkedAuctions: rows[0].unlinked,
-      needsReview: rows[0].needs_review
+      matched: rows[0].matched,
+      needsReview: rows[0].needs_review,
+      mismatched: rows[0].mismatched,
+      linkedAuctions: rows[0].linked
     })
   } catch (e) {
     res.status(500).json({ available: false, error: String(e) })
@@ -2005,9 +1620,9 @@ app.get('/api/enrichment/unmatched', async (req, res) => {
 
   const { rows } = await pool.query(
     `
-      SELECT item_id, end_date, title, parsed_set_guess, parsed_number_text, enrich_status, enrich_confidence
+      SELECT item_id, end_date, title, match_status, parsed_card_number, parsed_set_total, matched_set_code
       FROM public.tradera_sales
-      WHERE card_id IS NULL
+      WHERE match_status IS NULL OR match_status NOT LIKE 'Matched%'
       ORDER BY end_date DESC
       LIMIT $1
     `,
@@ -2015,7 +1630,6 @@ app.get('/api/enrichment/unmatched', async (req, res) => {
   )
   res.json(rows)
 })
-
 // Bootstrap seed
 if (pool) {
   ensureCardInfrastructure()
