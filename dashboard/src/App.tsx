@@ -7,7 +7,6 @@ import { AuctionsPage } from "./pages/auctions"
 import { BillingPage } from "./pages/billing"
 import { CardPage } from "./pages/card"
 import { LandingPage } from "./pages/landing"
-import { ExpansionsPage } from "./pages/expansions"
 import { LoginPage } from "./pages/login"
 import { PokemonPage } from "./pages/pokemon"
 import { PokemonSetPage } from "./pages/pokemon-set"
@@ -31,7 +30,6 @@ function App(): JSX.Element {
           <Route path="/pokemon/sets/:setCode" element={<PokemonSetPage />} />
           <Route path="/pokemon/cards/:id" element={<CardPage />} />
           <Route path="/cards/:id" element={<CardPage />} />
-          <Route path="/expansions" element={<ExpansionsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/enrichment" element={<DataEnrichmentPage />} />
