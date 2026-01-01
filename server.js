@@ -4,6 +4,7 @@ const compression = require('compression')
 const path = require('path')
 const { spawn } = require('child_process')
 const { Pool } = require('pg')
+const crypto = require('crypto')
 
 const {
   parseAuctionTitle,
@@ -308,12 +309,20 @@ async function ensureImportRunsTable() {
         pages_fetched INTEGER NOT NULL DEFAULT 0,
         requests_used INTEGER NOT NULL DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'running',
-        message TEXT
+        message TEXT,
+        run_uuid TEXT,
+        error_stack TEXT
       )
     `)
-
-    const indexReady = await ensureIndexExists('import_runs', 'idx_import_runs_started_at', '(started_at DESC)')
-    importRunsTableAvailable = Boolean(indexReady)
+    const runUuidColumnReady = await ensureColumnExists('import_runs', 'run_uuid', 'TEXT')
+    const errorStackColumnReady = await ensureColumnExists('import_runs', 'error_stack', 'TEXT')
+    const [startIndexReady, runUuidIndexReady] = await Promise.all([
+      ensureIndexExists('import_runs', 'idx_import_runs_started_at', '(started_at DESC)'),
+      ensureIndexExists('import_runs', 'idx_import_runs_run_uuid', '(run_uuid)'),
+    ])
+    importRunsTableAvailable = Boolean(
+      startIndexReady && runUuidColumnReady && errorStackColumnReady && runUuidIndexReady
+    )
   } catch (error) {
     console.error('Failed to ensure import_runs table exists', error)
     importRunsTableAvailable = false
@@ -1265,11 +1274,33 @@ async function tryAutoMatchAuction(client, row, parsedOverride = null) {
   }
 }
 
-function runImporterScript() {
+function extractImporterError(stdout, stderr) {
+  const lines = `${stdout}\n${stderr}`
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .reverse()
+
+  for (const line of lines) {
+    try {
+      const parsed = JSON.parse(line)
+      if (parsed?.error) return parsed.error
+      if (parsed?.message) return parsed.message
+    } catch (_err) {
+      // not JSON
+    }
+
+    if (line) return line
+  }
+
+  return null
+}
+
+function runImporterScript(runUuid) {
   return new Promise((resolve, reject) => {
     const child = spawn('python', ['scripts/tradera_importer.py'], {
       cwd: __dirname,
-      env: { ...process.env },
+      env: { ...process.env, IMPORT_RUN_UUID: runUuid },
       shell: false
     })
 
@@ -1512,7 +1543,18 @@ app.get('/api/import/runs', async (req, res) => {
     const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100)
     const { rows } = await pool.query(
       `
-        SELECT id, source, started_at, finished_at, status, new_rows, pages_fetched, requests_used, message
+        SELECT
+          id,
+          source,
+          started_at,
+          finished_at,
+          status,
+          new_rows,
+          pages_fetched,
+          requests_used,
+          message,
+          run_uuid,
+          LEFT(error_stack, 500) AS error_stack_preview
         FROM public.import_runs
         ORDER BY started_at DESC
         LIMIT $1
@@ -1527,6 +1569,34 @@ app.get('/api/import/runs', async (req, res) => {
   }
 })
 
+app.get('/api/import/runs/:id', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  try {
+    const ok = await ensureImportRunsTable()
+    if (!ok) return res.status(500).json({ error: 'import_runs table unavailable' })
+
+    const runId = Number(req.params.id)
+    if (!Number.isFinite(runId)) return res.status(400).json({ error: 'Invalid run id' })
+
+    const { rows } = await pool.query(
+      `
+        SELECT id, source, started_at, finished_at, status, new_rows, pages_fetched, requests_used, message, run_uuid, error_stack
+        FROM public.import_runs
+        WHERE id = $1
+      `,
+      [runId]
+    )
+
+    if (!rows.length) return res.status(404).json({ error: 'Not found' })
+
+    res.json(rows[0])
+  } catch (error) {
+    console.error('Failed to fetch import run', error)
+    res.status(500).json({ error: 'Failed to load import run' })
+  }
+})
+
 app.post('/api/import/run', async (_req, res) => {
   if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
 
@@ -1537,11 +1607,12 @@ app.post('/api/import/run', async (_req, res) => {
       return res.status(500).json({ ok: false, error: 'Required tables unavailable' })
 
     const startTime = Date.now()
+    const runUuid = crypto.randomUUID()
     const {
       rows: [before]
     } = await pool.query('SELECT COUNT(*)::int AS count, MAX(fetched_at) AS last_fetched FROM public.tradera_sales')
 
-    const { code, stdout, stderr } = await runImporterScript()
+    const { code, stdout, stderr } = await runImporterScript(runUuid)
     const durationMs = Date.now() - startTime
 
     const {
@@ -1549,6 +1620,10 @@ app.post('/api/import/run', async (_req, res) => {
     } = await pool.query('SELECT COUNT(*)::int AS count, MAX(fetched_at) AS last_fetched FROM public.tradera_sales')
 
     const newRows = after.count - before.count
+    const output = `${stdout}${stderr}`.trim()
+    const errorMessage =
+      code === 0 ? null : extractImporterError(stdout, stderr) || `Importer exited with code ${code}`
+
     const payload = {
       ok: code === 0,
       exitCode: code,
@@ -1556,10 +1631,14 @@ app.post('/api/import/run', async (_req, res) => {
       durationMs,
       startedAt: new Date(startTime).toISOString(),
       lastFetchedAt: after.last_fetched,
-      output: `${stdout}${stderr}`.trim()
+      output,
+      runUuid,
     }
 
-    if (code !== 0) return res.status(500).json(payload)
+    if (code !== 0) {
+      console.error('Importer failed', { exitCode: code, error: errorMessage, stderr })
+      return res.status(500).json({ ...payload, error: errorMessage })
+    }
     return res.json(payload)
   } catch (error) {
     console.error('Failed to run importer', error)

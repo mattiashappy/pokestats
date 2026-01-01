@@ -44,6 +44,12 @@ type AuctionDetailProps = {
   onSelectExpansion?: (id: number | null) => void
 }
 
+function extractPokemonEra(attributes: unknown): string | null {
+  const eraValues = (attributes as Record<string, unknown> | null | undefined)?.pokemon_era
+  if (Array.isArray(eraValues) && eraValues.length > 0) return String(eraValues[0])
+  return null
+}
+
 function AuctionDetail({ auction, onSelectCard, selectedCardId, onSelectExpansion }: AuctionDetailProps): JSX.Element | null {
   const [search, setSearch] = useState('')
   const debounced = useDebouncedValue(search, 250)
@@ -62,15 +68,17 @@ function AuctionDetail({ auction, onSelectCard, selectedCardId, onSelectExpansio
     queryFn: () => searchEnrichmentCards(debounced, selectedExpansionId)
   })
 
-  const createCard = useMutation({
-    mutationFn: () =>
-      createEnrichmentCard({
-        name: newCardName,
-        set_name: newCardSetName,
-        set_code: newCardSetCode || null,
+    const pokemonEra = extractPokemonEra(auction?.attributes)
+
+    const createCard = useMutation({
+      mutationFn: () =>
+        createEnrichmentCard({
+          name: newCardName,
+          set_name: newCardSetName,
+          set_code: newCardSetCode || null,
         card_number: newCardNumber || null,
         image_url: newCardImageUrl || null,
-        era: auction?.attributes?.pokemon_era?.[0] ?? null
+        era: pokemonEra
       }),
     onSuccess: (card) => {
       onSelectCard?.(card.id)
@@ -103,14 +111,14 @@ function AuctionDetail({ auction, onSelectCard, selectedCardId, onSelectExpansio
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auction?.item_id])
 
-  if (!auction) return null
+    if (!auction) return null
 
-  const primaryImage = auction.thumbnail_url || auction.image_urls?.[0] || null
+    const primaryImage = auction.thumbnail_url || auction.image_urls?.[0] || null
   const candidateSets = auction.parsed_set_candidates ?? []
   const suggested = auction.suggested_cards ?? []
 
   const parsedSummary = [
-    auction.attributes?.pokemon_era?.[0] ? `ERA: ${auction.attributes?.pokemon_era?.[0]}` : null,
+    pokemonEra ? `ERA: ${pokemonEra}` : null,
     auction.parsed_card_number ? `Parsed: ${auction.parsed_card_number}` : null,
     auction.parsed_total_in_set ? `Total in set: ${auction.parsed_total_in_set}` : null,
     auction.parsed_name ? `Name: ${auction.parsed_name}` : null,
@@ -557,85 +565,87 @@ export function DataEnrichmentPage(): JSX.Element {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    (data?.items ?? []).map((auction) => (
-                      <TableRow key={auction.item_id} className="align-top">
-                        <TableCell className="w-20">
-                          {auction.thumbnail_url ? (
-                            <img
-                              src={auction.thumbnail_url}
-                              alt={auction.title ?? ''}
-                              className="h-16 w-16 rounded object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-16 w-16 items-center justify-center rounded bg-slate-100 text-slate-400">
-                              <ImageIcon className="h-4 w-4" />
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-medium text-slate-900 dark:text-slate-100">
-                            {auction.title ?? 'Untitled'}
-                          </div>
-                          <div className="text-xs text-slate-500">{auction.item_id}</div>
-                        </TableCell>
-                        <TableCell className="text-sm text-slate-600">
-                          <div>{auction.attributes?.pokemon_era?.[0] ?? '—'}</div>
-                          {auction.parsed_card_number ? (
-                            <div className="text-xs text-slate-500">Parsed: {auction.parsed_card_number}</div>
-                          ) : null}
-                          {(auction.parsed_set_candidates?.length ?? 0) > 0 ? (
-                            <div className="text-xs text-slate-500">
-                              Candidates:{' '}
-                              {(auction.parsed_set_candidates || [])
-                                .map((c) => c.name || c.set_code)
-                                .filter(Boolean)
-                                .join(', ')}
-                            </div>
-                          ) : null}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {auction.card ? (
-                            <div>
-                              <div className="font-medium">{auction.card.name}</div>
-                              <div className="text-xs text-slate-500">
-                                {auction.card.set_name} {auction.card.card_number ? `• ${auction.card.card_number}` : ''}
+                    (data?.items ?? []).map((auction) => {
+                      const rowPokemonEra = extractPokemonEra(auction.attributes)
+
+                      return (
+                        <TableRow key={auction.item_id} className="align-top">
+                          <TableCell className="w-20">
+                            {auction.thumbnail_url ? (
+                              <img
+                                src={auction.thumbnail_url}
+                                alt={auction.title ?? ''}
+                                className="h-16 w-16 rounded object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-16 w-16 items-center justify-center rounded bg-slate-100 text-slate-400">
+                                <ImageIcon className="h-4 w-4" />
                               </div>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-medium text-slate-900 dark:text-slate-100">{auction.title ?? 'Untitled'}</div>
+                            <div className="text-xs text-slate-500">{auction.item_id}</div>
+                          </TableCell>
+                          <TableCell className="text-sm text-slate-600">
+                            <div>{rowPokemonEra ?? '—'}</div>
+                            {auction.parsed_card_number ? (
+                              <div className="text-xs text-slate-500">Parsed: {auction.parsed_card_number}</div>
+                            ) : null}
+                            {(auction.parsed_set_candidates?.length ?? 0) > 0 ? (
+                              <div className="text-xs text-slate-500">
+                                Candidates:{' '}
+                                {(auction.parsed_set_candidates || [])
+                                  .map((c) => c.name || c.set_code)
+                                  .filter(Boolean)
+                                  .join(', ')}
+                              </div>
+                            ) : null}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {auction.card ? (
+                              <div>
+                                <div className="font-medium">{auction.card.name}</div>
+                                <div className="text-xs text-slate-500">
+                                  {auction.card.set_name} {auction.card.card_number ? `• ${auction.card.card_number}` : ''}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-amber-600">Not linked</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs uppercase text-slate-500">
+                            <div>{auction.match_confidence ?? 'unknown'}</div>
+                            <div className="text-[11px] text-slate-400">{auction.match_method ?? 'unmatched'}</div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedAuctionId(auction.item_id)
+                                  setSelectedCardId(null)
+                                  setSelectedExpansionId(auction.parsed_set_guess?.expansion_id ?? null)
+                                  setShowDetailModal(true)
+                                }}
+                              >
+                                View
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => unlinkMutation.mutate(auction.item_id)}
+                                disabled={unlinkMutation.isPending}
+                              >
+                                <Unlink2 className="mr-1 h-4 w-4" />
+                                Unlink
+                              </Button>
                             </div>
-                          ) : (
-                            <span className="text-xs text-amber-600">Not linked</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs uppercase text-slate-500">
-                          <div>{auction.match_confidence ?? 'unknown'}</div>
-                          <div className="text-[11px] text-slate-400">{auction.match_method ?? 'unmatched'}</div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedAuctionId(auction.item_id)
-                                setSelectedCardId(null)
-                                setSelectedExpansionId(auction.parsed_set_guess?.expansion_id ?? null)
-                                setShowDetailModal(true)
-                              }}
-                            >
-                              View
-                            </Button>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => unlinkMutation.mutate(auction.item_id)}
-                              disabled={unlinkMutation.isPending}
-                            >
-                              <Unlink2 className="mr-1 h-4 w-4" />
-                              Unlink
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
                   )}
                 </TableBody>
               </Table>

@@ -40,11 +40,14 @@ DB assumptions:
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import time
+import traceback
+import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import psycopg2
@@ -81,14 +84,41 @@ READ_TIMEOUT = float(os.getenv("TRADERA_READ_TIMEOUT", "60"))
 TOTAL_RETRIES = int(os.getenv("TRADERA_RETRIES", "6"))
 BACKOFF = float(os.getenv("TRADERA_BACKOFF", "0.8"))
 
+RUN_UUID = os.getenv("IMPORT_RUN_UUID") or str(uuid.uuid4())
+
 NS = {
     "soap": "http://schemas.xmlsoap.org/soap/envelope/",
     "t": "http://api.tradera.com",
 }
 
 
-def log(msg: str) -> None:
-    sys.stdout.write(msg + "\n")
+def _iso_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def log(event: str, **fields: Any) -> None:
+    payload: Dict[str, Any] = {
+        "ts": _iso_now(),
+        "level": "info",
+        "event": event,
+        "run_uuid": RUN_UUID,
+    }
+    payload.update(fields)
+    sys.stdout.write(json.dumps(payload) + "\n")
+    sys.stdout.flush()
+
+
+def log_error(event: str, exc: Exception, **fields: Any) -> None:
+    payload: Dict[str, Any] = {
+        "ts": _iso_now(),
+        "level": "error",
+        "event": event,
+        "run_uuid": RUN_UUID,
+        "error": str(exc),
+        "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+    }
+    payload.update(fields)
+    sys.stdout.write(json.dumps(payload) + "\n")
     sys.stdout.flush()
 
 
@@ -504,11 +534,17 @@ def ensure_import_runs_table(conn) -> None:
                 pages_fetched INTEGER NOT NULL DEFAULT 0,
                 requests_used INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL DEFAULT 'running',
-                message TEXT
+                message TEXT,
+                run_uuid TEXT,
+                error_stack TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_import_runs_started_at ON import_runs (started_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_import_runs_run_uuid ON import_runs (run_uuid);
             """
         )
+        cur.execute("ALTER TABLE import_runs ADD COLUMN IF NOT EXISTS run_uuid TEXT;")
+        cur.execute("ALTER TABLE import_runs ADD COLUMN IF NOT EXISTS error_stack TEXT;")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_import_runs_run_uuid ON import_runs (run_uuid);")
     conn.commit()
 
 
@@ -516,10 +552,11 @@ def start_import_run(conn) -> int:
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO import_runs (source, status, started_at)
-            VALUES ('tradera', 'running', NOW())
+            INSERT INTO import_runs (source, status, started_at, run_uuid)
+            VALUES ('tradera', 'running', NOW(), %(run_uuid)s)
             RETURNING id;
-            """
+            """,
+            {"run_uuid": RUN_UUID},
         )
         row = cur.fetchone()
     conn.commit()
@@ -535,6 +572,7 @@ def finalize_import_run(
     pages_fetched: int,
     requests_used: int,
     message: Optional[str] = None,
+    error_stack: Optional[str] = None,
 ) -> None:
     with conn.cursor() as cur:
         cur.execute(
@@ -545,7 +583,8 @@ def finalize_import_run(
                 message = %(message)s,
                 new_rows = %(new_rows)s,
                 pages_fetched = %(pages_fetched)s,
-                requests_used = %(requests_used)s
+                requests_used = %(requests_used)s,
+                error_stack = %(error_stack)s
             WHERE id = %(run_id)s;
             """,
             {
@@ -555,6 +594,7 @@ def finalize_import_run(
                 "pages_fetched": pages_fetched,
                 "requests_used": requests_used,
                 "run_id": run_id,
+                "error_stack": error_stack,
             },
         )
     conn.commit()
@@ -568,61 +608,96 @@ def get_db_watermark_end_date(conn) -> Optional[datetime]:
 
 
 def main() -> None:
-    app_id = require_env("TRADERA_APP_ID")
-    app_key = require_env("TRADERA_APP_KEY")
     db_url = require_env("DATABASE_URL")
 
     order_by = ORDER_BY
     if MODE == "INCREMENTAL" and order_by != "EndDateDescending":
-        log("MODE=INCREMENTAL requires ORDER_BY=EndDateDescending for early-stop. Overriding.")
+        log("import_mode_adjusted", message="MODE=INCREMENTAL requires ORDER_BY=EndDateDescending for early-stop. Overriding.")
         order_by = "EndDateDescending"
 
     log(
-        f"REFRESH(50) category={CATEGORY_ID} items_per_page={ITEMS_PER_PAGE} "
-        f"max_requests={MAX_REQUESTS} bids_min={BIDS_MINIMUM} status={ITEM_STATUS!r} type={ITEM_TYPE!r} "
-        f"timeouts=({CONNECT_TIMEOUT},{READ_TIMEOUT}) retries={TOTAL_RETRIES} backoff={BACKOFF}"
+        "import_start",
+        message="Starting importer run",
+        category_id=CATEGORY_ID,
+        items_per_page=ITEMS_PER_PAGE,
+        max_requests=MAX_REQUESTS,
+        bids_min=BIDS_MINIMUM,
+        item_status=ITEM_STATUS,
+        item_type=ITEM_TYPE,
+        connect_timeout=CONNECT_TIMEOUT,
+        read_timeout=READ_TIMEOUT,
+        total_retries=TOTAL_RETRIES,
+        backoff=BACKOFF,
+        mode=MODE,
+        order_by=order_by,
     )
-    log("SOAP bids_min_xml=" + ("OFF" if BIDS_MINIMUM is None else "ON"))
+    log("import_bids_min", message="SOAP bids minimum toggle", bids_min_enabled=BIDS_MINIMUM is not None)
 
     session = make_session()
 
     with psycopg2.connect(db_url) as conn:
         ensure_import_runs_table(conn)
         run_id = start_import_run(conn)
+        log("import_run_started", run_id=run_id)
 
         imported_total = 0
         pages_fetched = 0
         requests_used = 0
 
         try:
+            app_id = require_env("TRADERA_APP_ID")
+            app_key = require_env("TRADERA_APP_KEY")
             watermark_end_date = get_db_watermark_end_date(conn)
             watermark_cutoff: Optional[datetime] = None
 
             if watermark_end_date is None:
-                log("REFRESH: DB empty -> will import up to MAX_REQUESTS pages starting from newest.")
+                log(
+                    "watermark_missing",
+                    message="DB empty -> will import up to MAX_REQUESTS pages starting from newest.",
+                )
             else:
                 watermark_cutoff = watermark_end_date - timedelta(minutes=INCREMENTAL_OVERLAP_MINUTES)
                 log(
-                    f"REFRESH watermark: max(end_date)={watermark_end_date.isoformat()} UTC, "
-                    f"cutoff(with overlap {INCREMENTAL_OVERLAP_MINUTES}m)={watermark_cutoff.isoformat()} UTC"
+                    "watermark_found",
+                    max_end_date=watermark_end_date.isoformat(),
+                    cutoff=watermark_cutoff.isoformat(),
+                    overlap_minutes=INCREMENTAL_OVERLAP_MINUTES,
                 )
 
             page = START_PAGE
 
             while requests_used < MAX_REQUESTS:
-                log(f"Fetching page {page}... ({requests_used+1}/{MAX_REQUESTS})")
+                log(
+                    "fetch_page",
+                    page=page,
+                    attempt=requests_used + 1,
+                    max_requests=MAX_REQUESTS,
+                )
 
                 envelope = build_envelope(app_id, app_key, page, order_by)
-                xml_resp = post_soap(session, envelope)
-                requests_used += 1
-
-                total_items, total_pages, item_nodes, resp_snippet = parse_response(xml_resp)
+                try:
+                    xml_resp = post_soap(session, envelope)
+                    requests_used += 1
+                    total_items, total_pages, item_nodes, resp_snippet = parse_response(xml_resp)
+                except Exception as exc:
+                    log_error(
+                        "soap_or_parse_failed",
+                        exc,
+                        page=page,
+                        requests_used=requests_used + 1,
+                        max_requests=MAX_REQUESTS,
+                    )
+                    raise
 
                 if page == 1:
-                    log(f"API totals (snapshot): total_items={total_items}, total_pages={total_pages}")
+                    log("api_totals", total_items=total_items, total_pages=total_pages)
 
                 if not item_nodes:
-                    log(f"No items returned; stopping. response_snippet={resp_snippet}")
+                    log(
+                        "no_items_returned",
+                        message="No items returned; stopping.",
+                        response_snippet=resp_snippet,
+                    )
                     break
 
                 rows: List[Row] = []
@@ -646,17 +721,21 @@ def main() -> None:
                 pages_fetched += 1
 
                 log(
-                    f"Page {page}/{total_pages or '?'} received={len(item_nodes)} imported={len(rows)} "
-                    f"total_imported={imported_total}"
-                    + (f" oldest_end_date_on_page={oldest_on_page.isoformat()}" if oldest_on_page else "")
+                    "page_complete",
+                    page=page,
+                    total_pages=total_pages,
+                    received=len(item_nodes),
+                    imported=len(rows),
+                    total_imported=imported_total,
+                    oldest_end_date_on_page=oldest_on_page.isoformat() if oldest_on_page else None,
                 )
 
                 if watermark_cutoff is not None and oldest_on_page is not None and oldest_on_page <= watermark_cutoff:
-                    log("REFRESH: reached already-imported cutoff; stopping early.")
+                    log("watermark_stop", message="Reached already-imported cutoff; stopping early.")
                     break
 
                 if total_pages and page >= total_pages:
-                    log("Reached last page.")
+                    log("last_page_reached")
                     break
 
                 page += 1
@@ -674,6 +753,14 @@ def main() -> None:
             )
 
         except Exception as exc:
+            tb = traceback.format_exc()
+            log_error(
+                "import_failed",
+                exc,
+                pages_fetched=pages_fetched,
+                requests_used=requests_used,
+                imported_total=imported_total,
+            )
             finalize_import_run(
                 conn,
                 run_id,
@@ -682,15 +769,21 @@ def main() -> None:
                 pages_fetched=pages_fetched,
                 requests_used=requests_used,
                 message=str(exc),
+                error_stack=tb[:20000],
             )
             raise
 
-    log(f"DONE: requests_used={requests_used}, pages_fetched={pages_fetched}, total_imported={imported_total}")
+    log(
+        "import_done",
+        requests_used=requests_used,
+        pages_fetched=pages_fetched,
+        total_imported=imported_total,
+    )
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        log(f"FAILED: {e}")
+        log_error("import_crash", e)
         sys.exit(1)

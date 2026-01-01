@@ -6,8 +6,17 @@ import { History } from 'lucide-react'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from '../components/ui/dialog'
+import { ScrollArea } from '../components/ui/scroll-area'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
-import { fetchImportRuns, runImporter } from '../lib/api'
+import { fetchImportRun, fetchImportRuns, runImporter } from '../lib/api'
 import type { ImportRun } from '../lib/api'
 
 export function AuctionImportsPage(): JSX.Element {
@@ -15,10 +24,28 @@ export function AuctionImportsPage(): JSX.Element {
     data: importRuns,
     refetch: refetchImportRuns,
     isFetching: isFetchingImportRuns
-  } = useQuery<ImportRun[]>({ queryKey: ['import-runs'], queryFn: () => fetchImportRuns(15) })
+  } = useQuery<ImportRun[]>({
+    queryKey: ['import-runs'],
+    queryFn: () => fetchImportRuns(15),
+    refetchInterval: (query) => (query.state.data?.[0]?.status === 'running' ? 3000 : false)
+  })
 
   const [importRunResult, setImportRunResult] = useState<string | null>(null)
   const [importRunPending, setImportRunPending] = useState(false)
+  const [selectedRunId, setSelectedRunId] = useState<number | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+
+  const {
+    data: selectedRunDetails,
+    isFetching: isFetchingRunDetails
+  } = useQuery<ImportRun>({
+    queryKey: ['import-run', selectedRunId],
+    queryFn: () => fetchImportRun(selectedRunId || 0),
+    enabled: detailsOpen && selectedRunId != null
+  })
+
+  const selectedRun = (importRuns ?? []).find((run) => run.id === selectedRunId) || null
+  const runForDetails = selectedRunDetails || selectedRun || null
 
   const handleRunImporter = async (): Promise<void> => {
     setImportRunResult(null)
@@ -121,6 +148,7 @@ export function AuctionImportsPage(): JSX.Element {
                   <TableHead className="text-left">New rows</TableHead>
                   <TableHead className="text-left">Requests</TableHead>
                   <TableHead className="text-left">Notes</TableHead>
+                  <TableHead className="text-left">Details</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -135,11 +163,65 @@ export function AuctionImportsPage(): JSX.Element {
                     </TableCell>
                     <TableCell className="text-left text-slate-600 dark:text-slate-300">{run.requests_used}</TableCell>
                     <TableCell className="text-left text-slate-600 dark:text-slate-300">{run.message ?? '—'}</TableCell>
+                    <TableCell className="text-left">
+                      <Dialog open={detailsOpen && selectedRunId === run.id} onOpenChange={setDetailsOpen}>
+                        <DialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedRunId(run.id)}
+                            className="min-w-[72px]"
+                          >
+                            View
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader className="space-y-1">
+                            <DialogTitle>Import run #{run.id}</DialogTitle>
+                            <DialogDescription className="text-xs">
+                              {run.started_at ? format(new Date(run.started_at), 'PPpp') : 'Unknown start time'}
+                            </DialogDescription>
+                          </DialogHeader>
+
+                          <div className="space-y-3 text-sm text-slate-700 dark:text-slate-200">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="rounded-md bg-slate-100 p-3 dark:bg-slate-900/70">
+                                <p className="text-xs uppercase tracking-wide text-slate-500">Status</p>
+                                <p className="font-semibold capitalize">{runForDetails?.status ?? run.status}</p>
+                              </div>
+                              <div className="rounded-md bg-slate-100 p-3 dark:bg-slate-900/70">
+                                <p className="text-xs uppercase tracking-wide text-slate-500">Run UUID</p>
+                                <p className="font-semibold break-all">{runForDetails?.run_uuid ?? run.run_uuid ?? '—'}</p>
+                              </div>
+                            </div>
+
+                            <div className="rounded-md border border-slate-200 bg-white p-3 text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-200">
+                              <p className="text-xs uppercase tracking-wide text-slate-500">Message</p>
+                              <p className="mt-1 whitespace-pre-wrap text-sm">{runForDetails?.message ?? run.message ?? '—'}</p>
+                            </div>
+
+                            <div className="rounded-md border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/40">
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs uppercase tracking-wide text-slate-500">Traceback</p>
+                                {isFetchingRunDetails ? (
+                                  <span className="text-xs text-slate-500">Loading…</span>
+                                ) : null}
+                              </div>
+                              <ScrollArea className="mt-2 max-h-[300px] rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-800 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                                <pre className="whitespace-pre-wrap">
+                                  {runForDetails?.error_stack || run.error_stack_preview || 'No traceback recorded.'}
+                                </pre>
+                              </ScrollArea>
+                            </div>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </TableCell>
                   </TableRow>
                 ))}
                 {(!importRuns || importRuns.length === 0) && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-slate-600 dark:text-slate-300">
+                    <TableCell colSpan={6} className="text-center text-slate-600 dark:text-slate-300">
                       No import runs logged yet.
                     </TableCell>
                   </TableRow>
