@@ -104,11 +104,11 @@ def log(event: str, **fields: Any) -> None:
         "run_uuid": RUN_UUID,
     }
     payload.update(fields)
-    sys.stdout.write(json.dumps(payload) + "\n")
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
     sys.stdout.flush()
 
 
-def log_error(event: str, exc: Exception, **fields: Any) -> None:
+def log_error(event: str, exc: BaseException, **fields: Any) -> None:
     payload: Dict[str, Any] = {
         "ts": _iso_now(),
         "level": "error",
@@ -118,7 +118,7 @@ def log_error(event: str, exc: Exception, **fields: Any) -> None:
         "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
     }
     payload.update(fields)
-    sys.stdout.write(json.dumps(payload) + "\n")
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
     sys.stdout.flush()
 
 
@@ -153,7 +153,6 @@ BIDS_MINIMUM = normalize_bids_minimum(BIDS_MINIMUM_RAW)
 def build_envelope(app_id: str, app_key: str, page_number: int, order_by: str) -> str:
     item_status_xml = f"<ItemStatus>{ITEM_STATUS}</ItemStatus>" if ITEM_STATUS else ""
     item_type_xml = f"<ItemType>{ITEM_TYPE}</ItemType>" if ITEM_TYPE else ""
-
     bids_min_xml = "" if BIDS_MINIMUM is None else f"<BidsMinimum>{BIDS_MINIMUM}</BidsMinimum>"
 
     return f"""<?xml version="1.0" encoding="utf-8"?>
@@ -350,7 +349,9 @@ def build_attributes_payload(item_el: ET.Element) -> Dict[str, Any]:
         "is_ended": is_ended,
         "item_type": find_child_text(item_el, "ItemType") or find_any_text(item_el, "ItemType"),
         "next_bid": parse_int_text(find_child_text(item_el, "NextBid") or find_any_text(item_el, "NextBid")),
-        "buy_it_now_price": parse_float_text(find_child_text(item_el, "BuyItNowPrice") or find_any_text(item_el, "BuyItNowPrice")),
+        "buy_it_now_price": parse_float_text(
+            find_child_text(item_el, "BuyItNowPrice") or find_any_text(item_el, "BuyItNowPrice")
+        ),
     }
     meta = {k: v for k, v in meta.items() if v is not None}
     if meta:
@@ -405,7 +406,9 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
     if end_date is None:
         return None
 
-    category_id = parse_int_text(find_child_text(item_el, "CategoryId") or find_any_text(item_el, "CategoryId")) or CATEGORY_ID
+    category_id = (
+        parse_int_text(find_child_text(item_el, "CategoryId") or find_any_text(item_el, "CategoryId")) or CATEGORY_ID
+    )
     price = parse_int_text(find_child_text(item_el, "MaxBid") or find_any_text(item_el, "MaxBid"))
     bid_count = parse_int_text(find_child_text(item_el, "BidCount") or find_any_text(item_el, "BidCount"))
     seller_id = parse_int_text(find_child_text(item_el, "SellerId") or find_any_text(item_el, "SellerId"))
@@ -538,12 +541,15 @@ def ensure_import_runs_table(conn) -> None:
                 run_uuid TEXT,
                 error_stack TEXT
             );
-            CREATE INDEX IF NOT EXISTS idx_import_runs_started_at ON import_runs (started_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_import_runs_run_uuid ON import_runs (run_uuid);
             """
         )
+
+        # Keep schema compatible if table existed before these columns were added
         cur.execute("ALTER TABLE import_runs ADD COLUMN IF NOT EXISTS run_uuid TEXT;")
         cur.execute("ALTER TABLE import_runs ADD COLUMN IF NOT EXISTS error_stack TEXT;")
+
+        # Indexes
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_import_runs_started_at ON import_runs (started_at DESC);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_import_runs_run_uuid ON import_runs (run_uuid);")
     conn.commit()
 
@@ -612,7 +618,11 @@ def main() -> None:
 
     order_by = ORDER_BY
     if MODE == "INCREMENTAL" and order_by != "EndDateDescending":
-        log("import_mode_adjusted", message="MODE=INCREMENTAL requires ORDER_BY=EndDateDescending for early-stop. Overriding.")
+        log(
+            "import_mode_adjusted",
+            message="MODE=INCREMENTAL requires ORDER_BY=EndDateDescending for early-stop. Overriding.",
+            requested_order_by=order_by,
+        )
         order_by = "EndDateDescending"
 
     log(
@@ -630,6 +640,7 @@ def main() -> None:
         backoff=BACKOFF,
         mode=MODE,
         order_by=order_by,
+        tz=TZ_NAME,
     )
     log("import_bids_min", message="SOAP bids minimum toggle", bids_min_enabled=BIDS_MINIMUM is not None)
 
@@ -647,14 +658,12 @@ def main() -> None:
         try:
             app_id = require_env("TRADERA_APP_ID")
             app_key = require_env("TRADERA_APP_KEY")
+
             watermark_end_date = get_db_watermark_end_date(conn)
             watermark_cutoff: Optional[datetime] = None
 
             if watermark_end_date is None:
-                log(
-                    "watermark_missing",
-                    message="DB empty -> will import up to MAX_REQUESTS pages starting from newest.",
-                )
+                log("watermark_missing", message="DB empty -> will import up to MAX_REQUESTS pages starting from newest.")
             else:
                 watermark_cutoff = watermark_end_date - timedelta(minutes=INCREMENTAL_OVERLAP_MINUTES)
                 log(
@@ -667,12 +676,7 @@ def main() -> None:
             page = START_PAGE
 
             while requests_used < MAX_REQUESTS:
-                log(
-                    "fetch_page",
-                    page=page,
-                    attempt=requests_used + 1,
-                    max_requests=MAX_REQUESTS,
-                )
+                log("fetch_page", page=page, attempt=requests_used + 1, max_requests=MAX_REQUESTS)
 
                 envelope = build_envelope(app_id, app_key, page, order_by)
                 try:
@@ -680,24 +684,14 @@ def main() -> None:
                     requests_used += 1
                     total_items, total_pages, item_nodes, resp_snippet = parse_response(xml_resp)
                 except Exception as exc:
-                    log_error(
-                        "soap_or_parse_failed",
-                        exc,
-                        page=page,
-                        requests_used=requests_used + 1,
-                        max_requests=MAX_REQUESTS,
-                    )
+                    log_error("soap_or_parse_failed", exc, page=page, requests_used=requests_used, max_requests=MAX_REQUESTS)
                     raise
 
                 if page == 1:
                     log("api_totals", total_items=total_items, total_pages=total_pages)
 
                 if not item_nodes:
-                    log(
-                        "no_items_returned",
-                        message="No items returned; stopping.",
-                        response_snippet=resp_snippet,
-                    )
+                    log("no_items_returned", message="No items returned; stopping.", response_snippet=resp_snippet)
                     break
 
                 rows: List[Row] = []
@@ -773,12 +767,7 @@ def main() -> None:
             )
             raise
 
-    log(
-        "import_done",
-        requests_used=requests_used,
-        pages_fetched=pages_fetched,
-        total_imported=imported_total,
-    )
+    log("import_done", requests_used=requests_used, pages_fetched=pages_fetched, total_imported=imported_total)
 
 
 if __name__ == "__main__":
