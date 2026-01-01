@@ -544,11 +544,9 @@ def ensure_import_runs_table(conn) -> None:
             """
         )
 
-        # Keep schema compatible if table existed before these columns were added
         cur.execute("ALTER TABLE import_runs ADD COLUMN IF NOT EXISTS run_uuid TEXT;")
         cur.execute("ALTER TABLE import_runs ADD COLUMN IF NOT EXISTS error_stack TEXT;")
 
-        # Indexes
         cur.execute("CREATE INDEX IF NOT EXISTS idx_import_runs_started_at ON import_runs (started_at DESC);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_import_runs_run_uuid ON import_runs (run_uuid);")
     conn.commit()
@@ -748,6 +746,13 @@ def main() -> None:
 
         except Exception as exc:
             tb = traceback.format_exc()
+
+            # Safe rollback: if anything failed mid-transaction, ensure connection isn't left aborted
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
             log_error(
                 "import_failed",
                 exc,
