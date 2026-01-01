@@ -1663,6 +1663,36 @@ app.get('/api/enrichment/unmatched', async (req, res) => {
   res.json(rows)
 })
 
+app.get('/api/enrichment/recent', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+  const limit = Math.min(Math.max(Number(req.query.limit ?? 25), 1), 200)
+
+  const { rows } = await pool.query(
+    `
+      SELECT
+        s.item_id,
+        s.end_date,
+        s.title,
+        s.match_status,
+        s.parsed_card_number,
+        s.parsed_set_total,
+        s.matched_set_code,
+        s.card_id,
+        c.name AS card_name,
+        c.card_number,
+        c.set_code AS card_set_code
+      FROM public.tradera_sales s
+      LEFT JOIN public.cards c ON c.id = s.card_id
+      WHERE s.match_status IS NOT NULL
+      ORDER BY s.updated_at DESC NULLS LAST, s.end_date DESC
+      LIMIT $1
+    `,
+    [limit]
+  )
+
+  res.json(rows)
+})
+
 app.post('/api/enrichment/manual-match', async (req, res) => {
   if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
 
