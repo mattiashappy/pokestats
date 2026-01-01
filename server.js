@@ -423,6 +423,7 @@ async function ensureSalesEnrichmentColumnsAvailable() {
       ensureColumnExists('tradera_sales', 'updated_at', 'TIMESTAMPTZ NOT NULL DEFAULT NOW()')
     ])
 
+
     hasEnsuredEnrichmentColumns = results.every(Boolean)
   } catch (error) {
     console.error('Failed to ensure enrichment columns on tradera_sales', error)
@@ -565,17 +566,16 @@ async function buildDatabaseCardIndex() {
   )
 
   const bySetAndNumber = {}
-  for (const row of rows) {
-    const setCode = row.set_code?.trim()
-    const numeric = parseInt(String(row.card_number).split(/[\s/]/)[0], 10)
-    if (!setCode || !Number.isFinite(numeric)) continue
+for (const row of rows) {
+  const setCode = row.set_code?.trim()
+  const numeric = parseInt(String(row.card_number).split(/[\s/]/)[0], 10)
+  if (!setCode || !Number.isFinite(numeric)) continue
 
-    if (!bySetAndNumber[setCode]) bySetAndNumber[setCode] = {}
-    bySetAndNumber[setCode][numeric] = row.id
-  }
-
-  return bySetAndNumber
+  if (!bySetAndNumber[setCode]) bySetAndNumber[setCode] = {}
+  bySetAndNumber[setCode][numeric] = row.id
 }
+
+return bySetAndNumber
 
 // --------------------
 // Query helpers
@@ -1542,65 +1542,65 @@ app.post('/api/enrichment/run', async (req, res) => {
     )
 
     const statusCounts = new Map()
-    let linked = 0
+let linked = 0
+let processed = 0
 
-    let processed = 0
+for (const row of rows) {
+  const match = matchAuction(row, matcherIndexes)
 
-    for (const row of rows) {
-      const match = matchAuction(row, matcherIndexes)
-      const confidence = match.match_status?.includes('High')
-        ? 'high'
-        : match.match_status?.includes('Medium')
-          ? 'medium'
-          : match.match_status?.includes('Low')
-            ? 'low'
-            : null
+  const confidence = match.match_status?.includes('High')
+    ? 'high'
+    : match.match_status?.includes('Medium')
+      ? 'medium'
+      : match.match_status?.includes('Low')
+        ? 'low'
+        : null
 
-      const matchedCardId =
-        match.matched_card_id ||
-        (match.matched_set_code && match.matched_card_number
-          ? cardIndex?.[match.matched_set_code]?.[match.matched_card_number] || null
-          : null)
+  const matchedCardId =
+    match.matched_card_id ||
+    (match.matched_set_code && match.matched_card_number
+      ? cardIndex?.[match.matched_set_code]?.[match.matched_card_number] || null
+      : null)
 
-      if (matchedCardId) linked++
+  if (matchedCardId) linked++
 
-      const debugPayload = { ...match, matched_card_id: matchedCardId }
+  const debugPayload = { ...match, matched_card_id: matchedCardId }
 
-      await client.query(
-        `
-          UPDATE public.tradera_sales
-          SET
-            match_status = $2,
-            match_confidence = $3,
-            matched_set_code = $4,
-            matched_era = $5,
-            parsed_card_number = $6,
-            parsed_set_total = $7,
-            card_id = $8,
-            match_debug = $9,
-            updated_at = NOW()
-          WHERE item_id = $1
-        `,
-        [
-          row.item_id,
-          match.match_status,
-          confidence,
-          match.matched_set_code,
-          match.matched_era,
-          match.parsed_card_number,
-          match.parsed_set_total,
-          matchedCardId,
-          JSON.stringify(debugPayload)
-        ]
-      )
+  await client.query(
+    `
+      UPDATE public.tradera_sales
+      SET
+        match_status = $2,
+        match_confidence = $3,
+        matched_set_code = $4,
+        matched_era = $5,
+        parsed_card_number = $6,
+        parsed_set_total = $7,
+        card_id = $8,
+        match_debug = $9,
+        updated_at = NOW()
+      WHERE item_id = $1
+    `,
+    [
+      row.item_id,
+      match.match_status,
+      confidence,
+      match.matched_set_code,
+      match.matched_era,
+      match.parsed_card_number,
+      match.parsed_set_total,
+      matchedCardId,
+      JSON.stringify(debugPayload)
+    ]
+  )
 
-      statusCounts.set(match.match_status || 'Unknown', (statusCounts.get(match.match_status || 'Unknown') || 0) + 1)
+  statusCounts.set(match.match_status || 'Unknown', (statusCounts.get(match.match_status || 'Unknown') || 0) + 1)
 
-      processed++
-      if (processed % 50 === 0) {
-        console.info(`${logPrefix} Progress: processed ${processed}/${rows.length}`)
-      }
-    }
+  processed++
+  if (processed % 50 === 0) {
+    console.info(`${logPrefix} Progress: processed ${processed}/${rows.length}`)
+  }
+}
 
     const payload = { ok: true, attempted: rows.length, linked, statusCounts: Object.fromEntries(statusCounts) }
     console.info(

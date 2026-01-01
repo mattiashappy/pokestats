@@ -114,9 +114,10 @@ function resolveEraKey(rawEra, setsByEraAndTotal) {
 
 function matchAuction(auctionRow, indexes) {
   const { setsByEraAndTotal, setHintIndex, cardsBySetAndNumber } = indexes
-  const rawEra =
-    auctionRow?.era || auctionRow?.pokemon_era || auctionRow?.attributes?.pokemon_era?.[0]
+
+  const rawEra = auctionRow?.era || auctionRow?.pokemon_era || auctionRow?.attributes?.pokemon_era?.[0]
   const { key: eraKey, resolution: eraResolution } = resolveEraKey(rawEra, setsByEraAndTotal)
+
   if (!eraKey || !setsByEraAndTotal[eraKey]) {
     return {
       match_status: 'Mismatched',
@@ -144,7 +145,7 @@ function matchAuction(auctionRow, indexes) {
       matched_card_number: null,
       matched_card_id: null,
       candidate_sets: candidateSets,
-      debug: { reason: 'missing_card_number', candidates: candidateSets }
+      debug: { reason: 'missing_card_number', candidates: candidateSets, era_resolution: eraResolution }
     }
   }
 
@@ -160,7 +161,7 @@ function matchAuction(auctionRow, indexes) {
       matched_card_number: null,
       matched_card_id: null,
       candidate_sets: candidateSets,
-      debug: { reason, candidates: candidateSets }
+      debug: { reason, candidates: candidateSets, era_resolution: eraResolution }
     }
   }
 
@@ -174,7 +175,7 @@ function matchAuction(auctionRow, indexes) {
     matched_card_number: cardNumber,
     matched_card_id: null,
     candidate_sets: candidateSets,
-    debug: { reason, candidates: candidateSets }
+    debug: { reason, candidates: candidateSets, era_resolution: eraResolution }
   }
 
   if (card) {
