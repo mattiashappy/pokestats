@@ -1134,30 +1134,100 @@
     "name": "Stellar Crown",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 142,
+    "set_total": 175,
     "release_date": "2024-09-13",
     "image_url": "/sets/1920px-SV7_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Stellarcrown.json"
+  },
+  {
+    "set_code": "SURGING_SPARKS",
+    "name": "Surging Sparks",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": 252,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": "Surgingsparks.json"
+  },
+  {
+    "set_code": "PRISMATIC_EVOLUTIONS",
+    "name": "Prismatic Evolutions",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": 180,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": "Prismaticevolutions.json"
+  },
+  {
+    "set_code": "JOURNEY_TOGETHER",
+    "name": "Journey Together",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": 190,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": "Journeytogether.json"
+  },
+  {
+    "set_code": "STELLAR_MIRACLE",
+    "name": "Stellar Miracle",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": 135,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": "Stellarmiracle.json"
+  },
+  {
+    "set_code": "DESTINED_RIVALS",
+    "name": "Destined Rivals",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": 244,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": "destinedrivals.json"
+  },
+  {
+    "set_code": "WHITE_FLARE",
+    "name": "White Flame",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": 173,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": "whiteflare.json"
+  },
+  {
+    "set_code": "BLACK_BOLD",
+    "name": "Black & Bold",
+    "era": "Scarlet & Violet",
+    "language": "EN",
+    "set_total": 172,
+    "release_date": null,
+    "image_url": null,
+    "cards_file": "blackbold.json"
   },
   {
     "set_code": "MEGA_EVOLUTION",
     "name": "Mega Evolution",
     "era": "Mega Evolution",
     "language": "EN",
-    "set_total": null,
+    "set_total": 188,
     "release_date": "2025-09-26",
     "image_url": "/sets/ME1_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "megaevelutions.json"
   },
   {
     "set_code": "PHANTASMAL_FLAMES",
     "name": "Phantasmal Flames",
     "era": "Mega Evolution",
     "language": "EN",
-    "set_total": null,
+    "set_total": 130,
     "release_date": "2025-11-14",
     "image_url": "/sets/ME2_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "phantasmalflames.json"
   },
   {
     "set_code": "ASCENDED_HEROES",
