@@ -412,6 +412,7 @@ async function ensureSalesEnrichmentColumnsAvailable() {
     const results = await Promise.all([
       ensureColumnExists('tradera_sales', 'era', 'TEXT'),
       ensureColumnExists('tradera_sales', 'pokemon_era', 'TEXT'),
+
       ensureColumnExists('tradera_sales', 'match_status', 'TEXT'),
       ensureColumnExists('tradera_sales', 'match_confidence', 'TEXT'),
       ensureColumnExists('tradera_sales', 'match_method', 'TEXT'),
@@ -1543,11 +1544,11 @@ app.post('/api/enrichment/run', async (req, res) => {
 
     const statusCounts = new Map()
     let linked = 0
-
     let processed = 0
 
     for (const row of rows) {
       const match = matchAuction(row, matcherIndexes)
+
       const confidence = match.match_status?.includes('High')
         ? 'high'
         : match.match_status?.includes('Medium')
