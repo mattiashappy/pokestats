@@ -5,8 +5,16 @@ import { AlertCircle, RefreshCcw, Rocket, Search } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
+import { Select } from '../components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
-import { fetchEnrichmentSummary, fetchUnmatchedAuctions, runEnrichment } from '../lib/api'
+import {
+  fetchCardsForSet,
+  fetchEnrichmentSummary,
+  fetchUnmatchedAuctions,
+  manuallyMatchAuction,
+  runEnrichment,
+  type UnmatchedAuction
+} from '../lib/api'
 
 const matchingSteps = [
   'Validate ERA; missing or garbage eras are marked as Mismatched.',
@@ -172,6 +180,7 @@ export function DataEnrichmentPage(): JSX.Element {
                 <TableHead>Set total</TableHead>
                 <TableHead>Set hint</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Manual match</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -183,6 +192,9 @@ export function DataEnrichmentPage(): JSX.Element {
                   <TableCell>{row.parsed_set_total ?? '—'}</TableCell>
                   <TableCell>{row.matched_set_code ?? '—'}</TableCell>
                   <TableCell>{row.match_status ?? '—'}</TableCell>
+                  <TableCell>
+                    <ManualMatchCell auction={row} onMatched={() => unmatchedQuery.refetch()} />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -192,6 +204,87 @@ export function DataEnrichmentPage(): JSX.Element {
           ) : null}
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+type ManualMatchCellProps = {
+  auction: UnmatchedAuction
+  onMatched: () => void
+}
+
+function ManualMatchCell({ auction, onMatched }: ManualMatchCellProps) {
+  const [search, setSearch] = useState('')
+  const [selectedCardId, setSelectedCardId] = useState<number | ''>('')
+
+  const cardsQuery = useQuery({
+    queryKey: ['cards-for-set', auction.matched_set_code],
+    queryFn: () => fetchCardsForSet(auction.matched_set_code || ''),
+    enabled: Boolean(auction.matched_set_code)
+  })
+
+  const mutation = useMutation({
+    mutationFn: (cardId: number) => manuallyMatchAuction(auction.item_id, cardId),
+    onSuccess: () => {
+      setSelectedCardId('')
+      onMatched()
+    }
+  })
+
+  const filteredCards = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    const cards = cardsQuery.data || []
+    if (!query) return cards
+    return cards.filter((card) => {
+      const name = card.name?.toLowerCase() || ''
+      const number = card.card_number?.toLowerCase() || ''
+      return name.includes(query) || number.includes(query)
+    })
+  }, [cardsQuery.data, search])
+
+  if (!auction.matched_set_code) {
+    return <p className="text-xs text-slate-500">No set hint available.</p>
+  }
+
+  return (
+    <div className="space-y-2 text-xs">
+      <Input
+        className="h-8"
+        placeholder="Search card name/#"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+      <div className="flex items-center gap-2">
+        <Select
+          value={selectedCardId === '' ? '' : String(selectedCardId)}
+          disabled={cardsQuery.isFetching || (cardsQuery.data?.length || 0) === 0}
+          onChange={(e) => setSelectedCardId(Number(e.target.value) || '')}
+        >
+          <option value="">{cardsQuery.isFetching ? 'Loading cards…' : 'Select a card'}</option>
+          {filteredCards.map((card) => (
+            <option key={card.id} value={card.id}>
+              {card.card_number ? `${card.card_number} — ` : ''}
+              {card.name || 'Unnamed card'}
+            </option>
+          ))}
+          {!cardsQuery.isFetching && filteredCards.length === 0 ? (
+            <option disabled value="">
+              No matches for “{search}”
+            </option>
+          ) : null}
+        </Select>
+        <Button
+          size="sm"
+          disabled={!selectedCardId || mutation.isPending}
+          onClick={() => typeof selectedCardId === 'number' && mutation.mutate(selectedCardId)}
+        >
+          {mutation.isPending ? 'Linking…' : 'Link'}
+        </Button>
+      </div>
+      {mutation.isError ? (
+        <p className="text-[11px] text-red-500">{(mutation.error as Error).message}</p>
+      ) : null}
+      {mutation.isSuccess ? <p className="text-[11px] text-green-600">Linked!</p> : null}
     </div>
   )
 }
