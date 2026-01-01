@@ -47,7 +47,7 @@ import time
 import traceback
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import psycopg2
@@ -93,7 +93,7 @@ NS = {
 
 
 def _iso_now() -> str:
-    return datetime.utcnow().isoformat() + "Z"
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def log(event: str, **fields: Any) -> None:
@@ -537,12 +537,18 @@ def ensure_import_runs_table(conn) -> None:
                 pages_fetched INTEGER NOT NULL DEFAULT 0,
                 requests_used INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL DEFAULT 'running',
-                message TEXT
+                message TEXT,
+                run_uuid TEXT,
+                error_stack TEXT
             );
             """
         )
+
+        # Keep schema compatible if table existed before these columns were added
         cur.execute("ALTER TABLE import_runs ADD COLUMN IF NOT EXISTS run_uuid TEXT;")
         cur.execute("ALTER TABLE import_runs ADD COLUMN IF NOT EXISTS error_stack TEXT;")
+
+        # Indexes
         cur.execute("CREATE INDEX IF NOT EXISTS idx_import_runs_started_at ON import_runs (started_at DESC);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_import_runs_run_uuid ON import_runs (run_uuid);")
     conn.commit()
@@ -657,10 +663,7 @@ def main() -> None:
             watermark_cutoff: Optional[datetime] = None
 
             if watermark_end_date is None:
-                log(
-                    "watermark_missing",
-                    message="DB empty -> will import up to MAX_REQUESTS pages starting from newest.",
-                )
+                log("watermark_missing", message="DB empty -> will import up to MAX_REQUESTS pages starting from newest.")
             else:
                 watermark_cutoff = watermark_end_date - timedelta(minutes=INCREMENTAL_OVERLAP_MINUTES)
                 log(
@@ -681,13 +684,7 @@ def main() -> None:
                     requests_used += 1
                     total_items, total_pages, item_nodes, resp_snippet = parse_response(xml_resp)
                 except Exception as exc:
-                    log_error(
-                        "soap_or_parse_failed",
-                        exc,
-                        page=page,
-                        requests_used=requests_used + 1,
-                        max_requests=MAX_REQUESTS,
-                    )
+                    log_error("soap_or_parse_failed", exc, page=page, requests_used=requests_used, max_requests=MAX_REQUESTS)
                     raise
 
                 if page == 1:
