@@ -1197,6 +1197,9 @@ async function fetchExpansionSummaries() {
     const ok = await ensureCardInfrastructure()
     if (!ok) return getStaticExpansionSummaries()
 
+    const staticExpansions = await getStaticExpansionSummaries()
+    const staticByCode = new Map(staticExpansions.map((expansion) => [expansion.set_code, expansion]))
+
     const query = `
       SELECT
         e.id,
@@ -1213,10 +1216,72 @@ async function fetchExpansionSummaries() {
       LEFT JOIN public.cards c ON c.expansion_id = e.id
       LEFT JOIN public.tradera_sales ts ON ts.card_id = c.id
       GROUP BY e.id
-      ORDER BY e.era, e.release_date NULLS LAST, e.set_code
     `
     const result = await pool.query(query)
-    return result.rows
+    if (result.rows.length === 0) return staticExpansions
+
+    const mergedByCode = new Map()
+
+    const mergeRows = (current, incoming) => {
+      if (!current) return incoming
+
+      return {
+        id: current.id ?? incoming.id ?? null,
+        set_code: current.set_code ?? incoming.set_code ?? null,
+        name: current.name ?? incoming.name ?? null,
+        era: current.era ?? incoming.era ?? null,
+        language: current.language ?? incoming.language ?? null,
+        set_total: current.set_total ?? incoming.set_total ?? null,
+        release_date: current.release_date ?? incoming.release_date ?? null,
+        image_url: current.image_url ?? incoming.image_url ?? null,
+        cards_total: (current.cards_total ?? 0) + (incoming.cards_total ?? 0),
+        linked_auctions: (current.linked_auctions ?? 0) + (incoming.linked_auctions ?? 0)
+      }
+    }
+
+    for (const row of result.rows) {
+      const current = mergedByCode.get(row.set_code)
+      mergedByCode.set(row.set_code, mergeRows(current, row))
+    }
+
+    const orderedResults = staticExpansions.map((expansion) => {
+      const mergedRow = mergedByCode.get(expansion.set_code)
+      const row = mergedRow ?? {}
+      const fallback = staticByCode.get(expansion.set_code)
+
+      return {
+        ...row,
+        set_code: expansion.set_code,
+        name: row?.name ?? fallback?.name ?? null,
+        era: row?.era ?? fallback?.era ?? null,
+        language: row?.language ?? fallback?.language ?? null,
+        set_total: row?.set_total ?? fallback?.set_total ?? null,
+        release_date: row?.release_date ?? fallback?.release_date ?? null,
+        image_url: row?.image_url ?? fallback?.image_url ?? null,
+        cards_total: row?.cards_total ?? fallback?.cards_total ?? 0,
+        linked_auctions: row?.linked_auctions ?? fallback?.linked_auctions ?? 0
+      }
+    })
+
+    for (const [setCode, row] of mergedByCode.entries()) {
+      if (staticByCode.has(setCode)) continue
+
+      const fallback = staticByCode.get(setCode)
+      orderedResults.push({
+        ...row,
+        set_code: setCode,
+        name: row?.name ?? fallback?.name ?? null,
+        era: row?.era ?? fallback?.era ?? null,
+        language: row?.language ?? fallback?.language ?? null,
+        set_total: row?.set_total ?? fallback?.set_total ?? null,
+        release_date: row?.release_date ?? fallback?.release_date ?? null,
+        image_url: row?.image_url ?? fallback?.image_url ?? null,
+        cards_total: row?.cards_total ?? fallback?.cards_total ?? 0,
+        linked_auctions: row?.linked_auctions ?? fallback?.linked_auctions ?? 0
+      })
+    }
+
+    return orderedResults
   } catch (error) {
     console.error('Falling back to canonical expansions due to DB error', error)
     return getStaticExpansionSummaries()

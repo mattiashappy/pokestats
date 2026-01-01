@@ -30,36 +30,64 @@ async function loadCatalog() {
     }
     setCodes.add(expansion.set_code)
 
-    if (!expansion.cards_file) {
-      throw new Error(`Expansion ${expansion.set_code} is missing cards_file`)
+    const cardsFile = expansion.cards_file
+    const cardsPath = cardsFile ? path.join(cardsRoot, cardsFile) : null
+
+    if (!cardsFile) {
+      console.warn(`Expansion ${expansion.set_code} is missing cards_file; continuing with empty cards`)
+      cardsBySetCode[expansion.set_code] = {
+        set_code: expansion.set_code,
+        cards: []
+      }
+      continue
     }
 
-    const cardsPath = path.join(cardsRoot, expansion.cards_file)
+    let cardData = null
     try {
       await fs.promises.access(cardsPath, fs.constants.R_OK)
+      cardData = await readJson(cardsPath)
     } catch (error) {
-      throw new Error(`Cards file not found or unreadable for ${expansion.set_code}: ${expansion.cards_file}`)
+      console.warn(
+        `Cards file not found, unreadable, or invalid for ${expansion.set_code}: ${cardsFile} (${error.message})`
+      )
+      cardsBySetCode[expansion.set_code] = {
+        set_code: expansion.set_code,
+        cards: []
+      }
+      continue
     }
 
-    const cardData = await readJson(cardsPath)
-    if (!cardData || cardData.set_code !== expansion.set_code) {
-      throw new Error(`Cards file ${expansion.cards_file} has mismatched set_code`)
+    if (!cardData || (cardData.set_code && cardData.set_code !== expansion.set_code)) {
+      console.warn(`Cards file ${cardsFile} has mismatched set_code; continuing with empty cards`)
+      cardsBySetCode[expansion.set_code] = {
+        set_code: expansion.set_code,
+        cards: []
+      }
+      continue
     }
 
     const cards = Array.isArray(cardData.cards) ? cardData.cards : []
     if (cards.length === 0) {
-      throw new Error(`Cards file ${expansion.cards_file} does not include any cards`)
+      console.warn(`Cards file ${cardsFile} does not include any cards; continuing with empty cards`)
+      cardsBySetCode[expansion.set_code] = {
+        ...cardData,
+        set_code: cardData.set_code ?? expansion.set_code,
+        cards: []
+      }
+      continue
     }
 
     const cardNumbers = new Set()
     const validatedCards = cards.map((card) => {
       if (!card?.name || !card?.card_number) {
-        throw new Error(`Card missing name or card_number in ${expansion.cards_file}`)
+        console.warn(`Card missing name or card_number in ${cardsFile}; skipping card`)
+        return null
       }
 
       const cardNumber = String(card.card_number)
       if (cardNumbers.has(cardNumber)) {
-        throw new Error(`Duplicate card_number ${cardNumber} in set ${expansion.set_code}`)
+        console.warn(`Duplicate card_number ${cardNumber} in set ${expansion.set_code}; skipping card`)
+        return null
       }
       cardNumbers.add(cardNumber)
 
@@ -71,7 +99,8 @@ async function loadCatalog() {
 
     cardsBySetCode[expansion.set_code] = {
       ...cardData,
-      cards: validatedCards
+      set_code: cardData.set_code ?? expansion.set_code,
+      cards: validatedCards.filter(Boolean)
     }
   }
 
