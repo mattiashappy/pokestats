@@ -108,6 +108,21 @@ export async function fetchUnmatchedAuctions(limit = 25) {
   return res.json() as Promise<UnmatchedAuction[]>
 }
 
+export async function manuallyMatchAuction(itemId: number, cardId: number) {
+  const res = await fetch('/api/enrichment/manual-match', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ itemId, cardId })
+  })
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || 'Failed to apply manual match')
+  }
+
+  return res.json() as Promise<{ ok: boolean; itemId: number; cardId: number }>
+}
+
 export async function fetchImportRuns(limit = 15) {
   const res = await fetch(`/api/import/runs?limit=${limit}`)
   if (!res.ok) throw new Error('Failed to fetch import runs')
