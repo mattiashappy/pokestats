@@ -27,3 +27,7 @@ npm run dev
 ```
 
 The dev server runs on `http://localhost:5173`. The Express server in the repo root serves the built SPA and exposes `/api/sales` and `/api/health` when running `npm start` from the root.
+
+## Static assets
+
+- Place set artwork or related images in `dashboard/public/sets/`. Files there are served from `/sets/<filename>` in the built app.
