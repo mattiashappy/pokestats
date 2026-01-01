@@ -1138,5 +1138,35 @@
     "release_date": "2024-09-13",
     "image_url": "/sets/1920px-SV7_Logo_EN.png",
     "cards_file": null
+  },
+  {
+    "set_code": "MEGA_EVOLUTION",
+    "name": "Mega Evolution",
+    "era": "Mega Evolution",
+    "language": "EN",
+    "set_total": null,
+    "release_date": "2025-09-26",
+    "image_url": "/sets/ME1_Logo_EN.png",
+    "cards_file": null
+  },
+  {
+    "set_code": "PHANTASMAL_FLAMES",
+    "name": "Phantasmal Flames",
+    "era": "Mega Evolution",
+    "language": "EN",
+    "set_total": null,
+    "release_date": "2025-11-14",
+    "image_url": "/sets/ME2_Logo_EN.png",
+    "cards_file": null
+  },
+  {
+    "set_code": "ASCENDED_HEROES",
+    "name": "Ascended Heroes",
+    "era": "Mega Evolution",
+    "language": "EN",
+    "set_total": null,
+    "release_date": "2026-01-30",
+    "image_url": "/sets/1920px-ME2.5_Logo_EN.png",
+    "cards_file": null
   }
 ]
