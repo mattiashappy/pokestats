@@ -15,6 +15,7 @@ const {
   canonicalNumberText,
   looksLikeLotOrSealed
 } = require('./server/enrichment/titleParser')
+
 const {
   resolveAuctionMatch,
   normalizeEraLabel,
@@ -33,6 +34,9 @@ app.use(express.json())
 const DATABASE_URL = process.env.DATABASE_URL
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 
+// --------------------
+// Card metadata overrides
+// --------------------
 const CARD_METADATA_OVERRIDES = new Map([
   [
     22888,
@@ -61,6 +65,9 @@ function applyCardOverrides(card) {
   }
 }
 
+// --------------------
+// Static catalog cache
+// --------------------
 let cachedCatalogPromise = null
 
 async function getStaticCatalog() {
@@ -132,7 +139,10 @@ async function findExpansionByCode(setCode) {
   const trimmed = String(setCode || '').trim()
   if (!trimmed) return null
 
-  const { rows } = await pool.query('SELECT id, name, era, set_code FROM public.expansions WHERE set_code = $1', [trimmed])
+  const { rows } = await pool.query(
+    'SELECT id, name, era, set_code FROM public.expansions WHERE set_code = $1',
+    [trimmed]
+  )
   return rows[0] || null
 }
 
@@ -213,7 +223,7 @@ async function ensureImportRunsTable() {
     const errorStackColumnReady = await ensureColumnExists('import_runs', 'error_stack', 'TEXT')
     const [startIndexReady, runUuidIndexReady] = await Promise.all([
       ensureIndexExists('import_runs', 'idx_import_runs_started_at', '(started_at DESC)'),
-      ensureIndexExists('import_runs', 'idx_import_runs_run_uuid', '(run_uuid)'),
+      ensureIndexExists('import_runs', 'idx_import_runs_run_uuid', '(run_uuid)')
     ])
     importRunsTableAvailable = Boolean(
       startIndexReady && runUuidColumnReady && errorStackColumnReady && runUuidIndexReady
@@ -239,7 +249,7 @@ async function ensureSalesTableAvailable() {
   return salesTableAvailable
 }
 
-// ✅ single, canonical definition (no duplicates)
+// ✅ single canonical expansions definition
 async function ensureExpansionsTableAvailable() {
   if (!pool) return false
   if (hasCheckedExpansionsTable) return expansionsTableAvailable
@@ -293,21 +303,19 @@ async function ensureCardsTableAvailable() {
       )
     `)
 
-    // Ensure key columns exist (in case older schema)
     const setCodeOk = await ensureColumnExists('cards', 'set_code', 'TEXT')
     const setTotalOk = await ensureColumnExists('cards', 'set_total', 'INTEGER')
     const expansionOk = await ensureColumnExists('cards', 'expansion_id', 'INTEGER REFERENCES public.expansions(id)')
     const imageUrlOk = await ensureColumnExists('cards', 'image_url', 'TEXT')
     const productDetailsOk = await ensureColumnExists('cards', 'product_details', 'TEXT')
+    const cardNumberOk = await ensureColumnExists('cards', 'card_number', 'TEXT')
 
-    // Ensure uniqueness by (expansion_id, card_number) when present
     const uniqueByExpansionNumber = await ensureIndexExists(
       'cards',
       'cards_unique_expansion_number',
       'UNIQUE (expansion_id, card_number) WHERE expansion_id IS NOT NULL AND card_number IS NOT NULL'
     )
 
-    // Helpful indexes
     const setCodeIdx = await ensureIndexExists('cards', 'idx_cards_set_code', '(set_code)')
     const numberIdx = await ensureIndexExists('cards', 'idx_cards_card_number', '(card_number)')
 
@@ -317,6 +325,7 @@ async function ensureCardsTableAvailable() {
         expansionOk &&
         imageUrlOk &&
         productDetailsOk &&
+        cardNumberOk &&
         uniqueByExpansionNumber &&
         setCodeIdx &&
         numberIdx
@@ -402,7 +411,9 @@ async function ensureSalesEnrichmentColumnsAvailable() {
   if (!salesTableAvailable) return false
 
   try {
+    // NOTE: Include any column referenced by queries/endpoints below to avoid runtime SQL errors.
     const results = await Promise.all([
+      // used by /api/enrichment/auctions
       ensureColumnExists('tradera_sales', 'match_confidence', 'TEXT'),
       ensureColumnExists('tradera_sales', 'match_method', 'TEXT'),
       ensureColumnExists('tradera_sales', 'parsed_name', 'TEXT'),
@@ -415,7 +426,16 @@ async function ensureSalesEnrichmentColumnsAvailable() {
       ensureColumnExists('tradera_sales', 'suggested_cards', 'JSONB'),
       ensureColumnExists('tradera_sales', 'enrich_notes', 'JSONB'),
       ensureColumnExists('tradera_sales', 'notes', 'TEXT'),
-      ensureColumnExists('tradera_sales', 'updated_at', 'TIMESTAMPTZ NOT NULL DEFAULT NOW()')
+      ensureColumnExists('tradera_sales', 'updated_at', 'TIMESTAMPTZ NOT NULL DEFAULT NOW()'),
+
+      // used by /api/enrichment/run + older titleParser flow
+      ensureColumnExists('tradera_sales', 'description', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'image_urls', 'JSONB'),
+      ensureColumnExists('tradera_sales', 'parsed_card_name', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'parsed_number_text', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'parsed_card_no', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'enrich_status', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'enrich_confidence', 'INTEGER')
     ])
 
     hasEnsuredEnrichmentColumns = results.every(Boolean)
@@ -438,7 +458,8 @@ async function ensureSalesEnrichmentIndexes() {
     const results = await Promise.all([
       ensureIndexExists('tradera_sales', 'idx_tradera_sales_card_id', '(card_id)'),
       ensureIndexExists('tradera_sales', 'idx_tradera_sales_match_confidence', '(match_confidence)'),
-      ensureIndexExists('tradera_sales', 'idx_tradera_sales_updated_at', '(updated_at DESC)')
+      ensureIndexExists('tradera_sales', 'idx_tradera_sales_updated_at', '(updated_at DESC)'),
+      ensureIndexExists('tradera_sales', 'idx_tradera_sales_end_date', '(end_date DESC)')
     ])
 
     hasEnsuredEnrichmentIndexes = results.every(Boolean)
@@ -456,7 +477,11 @@ async function ensureSalesCardIndexAvailable() {
   const salesAvailable = await ensureSalesTableAvailable()
   if (!salesAvailable) return false
 
-  const indexReady = await ensureIndexExists('tradera_sales', 'idx_tradera_sales_card_id_end_date', '(card_id, end_date DESC)')
+  const indexReady = await ensureIndexExists(
+    'tradera_sales',
+    'idx_tradera_sales_card_id_end_date',
+    '(card_id, end_date DESC)'
+  )
 
   hasEnsuredSalesCardIndex = indexReady
   return indexReady
@@ -541,9 +566,7 @@ function buildExpansionFilters(candidateExpansions, eraHint, startIndex = 1) {
   let index = startIndex
 
   const expansionIds = candidateExpansions.map((expansion) => expansion.id).filter(Boolean)
-  const expansionCodes = candidateExpansions
-    .map((expansion) => normalizeEra(expansion.set_code))
-    .filter(Boolean)
+  const expansionCodes = candidateExpansions.map((expansion) => normalizeEra(expansion.set_code)).filter(Boolean)
 
   const clauses = []
 
@@ -627,11 +650,8 @@ function extractCardPayload(row) {
   }
 }
 
-// NOTE: this can create “unknown” cards from Tradera filters.
+// NOTE: intentionally no-op now (avoid noisy "unknown" cards)
 async function ensureMissingSalesAreLinkedToCards() {
-  // Previous versions auto-created "unknown" cards to backfill missing links. That caused noisy data,
-  // so the enrichment flow now intentionally leaves auctions unmatched unless a real card exists.
-  // This helper is kept as a no-op to avoid reintroducing the old behavior while keeping call sites intact.
   hasBackfilledSalesCards = true
 }
 
@@ -667,14 +687,7 @@ function buildCardPreview(row) {
 
 function buildAuctionWithCard(row) {
   const card = buildCardPreview(row)
-  const {
-    card_name,
-    card_set_code,
-    card_set_name,
-    card_number,
-    card_image_url,
-    ...rest
-  } = row
+  const { card_name, card_set_code, card_set_name, card_number, card_image_url, ...rest } = row
 
   return {
     ...rest,
@@ -940,7 +953,6 @@ async function fetchEnrichmentAuctions({
   const where = []
   const params = []
 
-  // linkedOnly: true -> only linked, false -> only unlinked, null -> all
   if (linkedOnly === true) where.push('ts.card_id IS NOT NULL')
   else if (linkedOnly === false) where.push('ts.card_id IS NULL')
 
@@ -956,7 +968,9 @@ async function fetchEnrichmentAuctions({
   if (q) {
     params.push(`%${q}%`)
     const idx = params.length
-    where.push(`(ts.title ILIKE $${idx} OR ts.description ILIKE $${idx} OR ts.item_url ILIKE $${idx} OR ts.seller_alias ILIKE $${idx})`)
+    where.push(
+      `(ts.title ILIKE $${idx} OR ts.description ILIKE $${idx} OR ts.item_url ILIKE $${idx} OR ts.seller_alias ILIKE $${idx})`
+    )
   }
 
   if (hasImage === true) {
@@ -1079,8 +1093,14 @@ async function tryAutoMatchAuction(client, row, parsedOverride = null) {
 
   return {
     parsed_name: updateFields.parsed_name ?? parsedOverride?.parsed_name ?? parseCardName(text),
-    parsed_card_number: updateFields.parsed_card_number ?? parsedOverride?.parsed_card_number ?? parseCardNumber(text).cardNumber,
-    parsed_total_in_set: updateFields.parsed_total_in_set ?? parsedOverride?.parsed_total_in_set ?? parseCardNumber(text).denominator,
+    parsed_card_number:
+      updateFields.parsed_card_number ??
+      parsedOverride?.parsed_card_number ??
+      parseCardNumber(text).cardNumber,
+    parsed_total_in_set:
+      updateFields.parsed_total_in_set ??
+      parsedOverride?.parsed_total_in_set ??
+      parseCardNumber(text).denominator,
     parsed_set_hint: updateFields.parsed_set_hint ?? parsedOverride?.parsed_set_hint ?? parseSetHint(text),
     parsed_set_guess: updateFields.parsed_set_guess ?? null,
     parsed_set_confidence: updateFields.parsed_set_confidence ?? null,
@@ -1200,6 +1220,32 @@ async function fetchExpansionSummaries() {
     const staticExpansions = await getStaticExpansionSummaries()
     const staticByCode = new Map(staticExpansions.map((expansion) => [expansion.set_code, expansion]))
 
+    // Canonical set_code resolution (handles alias set_code / name variants from DB)
+    const normalizeKey = (value) =>
+      value ? String(value).trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : ''
+
+    const aliasToCanonicalCode = new Map()
+    for (const expansion of staticExpansions) {
+      const canonicalCode = expansion.set_code
+      const normalizedCanonical = normalizeKey(canonicalCode)
+
+      aliasToCanonicalCode.set(canonicalCode, canonicalCode)
+      aliasToCanonicalCode.set(normalizedCanonical, canonicalCode)
+
+      if (expansion.name) {
+        aliasToCanonicalCode.set(normalizeKey(expansion.name), canonicalCode)
+      }
+    }
+
+    const resolveCanonicalCode = (candidate) => {
+      if (!candidate) return null
+      const direct = aliasToCanonicalCode.get(candidate)
+      if (direct) return direct
+
+      const normalized = normalizeKey(candidate)
+      return aliasToCanonicalCode.get(normalized) ?? null
+    }
+
     const query = `
       SELECT
         e.id,
@@ -1220,13 +1266,10 @@ async function fetchExpansionSummaries() {
     const result = await pool.query(query)
     if (result.rows.length === 0) return staticExpansions
 
-    // Merge DB rows onto the static catalog so the API always returns the full canonical list.
-    // DB contributes live counts + any seeded metadata; static provides the source-of-truth catalog.
     const mergedByCode = new Map()
 
     const mergeRows = (current, incoming) => {
       if (!current) return incoming
-
       return {
         id: current.id ?? incoming.id ?? null,
         set_code: current.set_code ?? incoming.set_code ?? null,
@@ -1236,19 +1279,21 @@ async function fetchExpansionSummaries() {
         set_total: current.set_total ?? incoming.set_total ?? null,
         release_date: current.release_date ?? incoming.release_date ?? null,
         image_url: current.image_url ?? incoming.image_url ?? null,
-        // counts are additive if the query ever returns duplicates for some reason
         cards_total: (current.cards_total ?? 0) + (incoming.cards_total ?? 0),
         linked_auctions: (current.linked_auctions ?? 0) + (incoming.linked_auctions ?? 0)
       }
     }
 
     for (const row of result.rows) {
-      const code = row.set_code
-      const current = mergedByCode.get(code)
-      mergedByCode.set(code, mergeRows(current, row))
+      const canonicalCode =
+        resolveCanonicalCode(row.set_code) ?? resolveCanonicalCode(row.name) ?? row.set_code
+
+      const normalizedRow = { ...row, set_code: canonicalCode ?? row.set_code }
+      const current = mergedByCode.get(normalizedRow.set_code)
+      mergedByCode.set(normalizedRow.set_code, mergeRows(current, normalizedRow))
     }
 
-    // 1) Start with the canonical static list (stable ordering)
+    // 1) Stable canonical ordering from static catalog
     const orderedResults = staticExpansions.map((expansion) => {
       const mergedRow = mergedByCode.get(expansion.set_code)
       const row = mergedRow ?? {}
@@ -1268,7 +1313,7 @@ async function fetchExpansionSummaries() {
       }
     })
 
-    // 2) Append any DB-only expansions that are not in the static catalog
+    // 2) Append DB-only expansions not in static catalog
     for (const [setCode, row] of mergedByCode.entries()) {
       if (staticByCode.has(setCode)) continue
 
@@ -1423,6 +1468,9 @@ app.get('/api/sales/diagnostic', async (_req, res) => {
   }
 })
 
+// --------------------
+// Import runs
+// --------------------
 app.get('/api/import/runs', async (req, res) => {
   if (!pool) return res.json([])
 
@@ -1498,6 +1546,7 @@ app.post('/api/import/run', async (_req, res) => {
 
     const startTime = Date.now()
     const runUuid = crypto.randomUUID()
+
     const {
       rows: [before]
     } = await pool.query('SELECT COUNT(*)::int AS count, MAX(fetched_at) AS last_fetched FROM public.tradera_sales')
@@ -1522,7 +1571,7 @@ app.post('/api/import/run', async (_req, res) => {
       startedAt: new Date(startTime).toISOString(),
       lastFetchedAt: after.last_fetched,
       output,
-      runUuid,
+      runUuid
     }
 
     if (code !== 0) {
@@ -1599,7 +1648,7 @@ app.get('/api/enrichment/cards/search', async (req, res) => {
 })
 
 /**
- * ✅ Kept from Codex branch (used by the UI “Add new card manually”)
+ * ✅ Used by UI: “Add new card manually”
  * POST /api/enrichment/cards
  */
 app.post('/api/enrichment/cards', async (req, res) => {
