@@ -1332,10 +1332,9 @@ async function fetchExpansionSummaries() {
         COALESCE(e.release_date, c.release_date) AS release_date,
         COALESCE(e.image_url, c.image_url) AS image_url,
         COUNT(DISTINCT c.id)::int AS cards_total,
-        COUNT(ts.item_id)::int AS linked_auctions
+        0::int AS linked_auctions
       FROM public.cards c
       LEFT JOIN public.expansions e ON c.expansion_id = e.id
-      LEFT JOIN public.tradera_sales ts ON ts.card_id = c.id
       GROUP BY 2, 3, 4, 5, 6, 7, 8
     `
 
@@ -1354,12 +1353,23 @@ async function fetchExpansionSummaries() {
       FROM public.expansions e
     `
 
-    const [cardRowsResult, expansionsResult] = await Promise.all([
+    const salesRowsQuery = `
+      SELECT
+        COALESCE(s.matched_set_code, s.parsed_set_code, c.set_code, c.set_name) AS set_code,
+        COUNT(s.item_id)::int AS linked_auctions
+      FROM public.tradera_sales s
+      LEFT JOIN public.cards c ON c.id = s.card_id
+      WHERE s.card_id IS NOT NULL
+      GROUP BY 1
+    `
+
+    const [cardRowsResult, expansionsResult, salesRowsResult] = await Promise.all([
       pool.query(cardRowsQuery),
-      pool.query(expansionsQuery)
+      pool.query(expansionsQuery),
+      pool.query(salesRowsQuery)
     ])
 
-    const mergedRows = [...cardRowsResult.rows, ...expansionsResult.rows]
+    const mergedRows = [...cardRowsResult.rows, ...expansionsResult.rows, ...salesRowsResult.rows]
     if (mergedRows.length === 0) return staticExpansions
 
     const mergedByCode = new Map()
