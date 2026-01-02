@@ -306,6 +306,18 @@ function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
     }
   })
 
+  const normalizeCardNumber = (value: string | null | undefined) => {
+    if (!value) return null
+    const match = String(value).match(/^(\d+)/)
+    return match ? Number(match[1]) : null
+  }
+
+  const cardsMatchingParsedNumber = useMemo(() => {
+    if (auction.parsed_card_number === null) return []
+    const target = auction.parsed_card_number
+    return (cardsQuery.data || []).filter((card) => normalizeCardNumber(card.card_number) === target)
+  }, [auction.parsed_card_number, cardsQuery.data])
+
   const filteredCards = useMemo(() => {
     const query = search.trim().toLowerCase()
     const cards = cardsQuery.data || []
@@ -317,34 +329,53 @@ function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
     })
   }, [cardsQuery.data, search])
 
+  const cardsForSelect = useMemo(() => {
+    if (auction.parsed_card_number !== null && search.trim() === '') {
+      if (cardsMatchingParsedNumber.length > 0) return cardsMatchingParsedNumber
+    }
+    return filteredCards
+  }, [auction.parsed_card_number, cardsMatchingParsedNumber, filteredCards, search])
+
   const canMatch = Boolean(auction.matched_set_code)
 
   return (
     <div className="space-y-2 text-xs">
       {canMatch ? (
-        <>
+        <div className="space-y-1">
+          {auction.parsed_card_number !== null ? (
+            <p className="text-[11px] text-slate-500">
+              Showing cards numbered {auction.parsed_card_number}
+              {cardsMatchingParsedNumber.length === 0 ? ' (none found; search to pick manually)' : ''}.
+            </p>
+          ) : null}
           <Input
             className="h-8"
-            placeholder="Search card name/#"
+            placeholder={
+              auction.parsed_card_number !== null
+                ? 'Optional search (fallback)' 
+                : 'Search card name/#'
+            }
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           <div className="flex items-center gap-2">
             <Select
               value={selectedCardId === '' ? '' : String(selectedCardId)}
-              disabled={cardsQuery.isFetching || (cardsQuery.data?.length || 0) === 0}
+              disabled={cardsQuery.isFetching || (cardsForSelect.length || 0) === 0}
               onChange={(e) => setSelectedCardId(Number(e.target.value) || '')}
             >
               <option value="">{cardsQuery.isFetching ? 'Loading cards…' : 'Select a card'}</option>
-              {filteredCards.map((card) => (
+              {cardsForSelect.map((card) => (
                 <option key={card.id} value={card.id}>
                   {card.card_number ? `${card.card_number} — ` : ''}
                   {card.name || 'Unnamed card'}
                 </option>
               ))}
-              {!cardsQuery.isFetching && filteredCards.length === 0 ? (
+              {!cardsQuery.isFetching && cardsForSelect.length === 0 ? (
                 <option disabled value="">
-                  No matches for “{search}”
+                  {auction.parsed_card_number !== null && search.trim() === ''
+                    ? `No cards numbered ${auction.parsed_card_number}`
+                    : `No matches for “${search}”`}
                 </option>
               ) : null}
             </Select>
@@ -356,7 +387,7 @@ function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
               {manualMatchMutation.isPending ? 'Linking…' : 'Link'}
             </Button>
           </div>
-        </>
+        </div>
       ) : (
         <p className="text-[11px] text-slate-500">No set hint available yet.</p>
       )}
