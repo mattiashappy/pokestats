@@ -1321,7 +1321,24 @@ async function fetchExpansionSummaries() {
       return aliasToCanonicalCode.get(normalized) ?? null
     }
 
-    const query = `
+    const cardRowsQuery = `
+      SELECT
+        NULL::int AS id,
+        COALESCE(e.set_code, c.set_code, c.set_name) AS set_code,
+        COALESCE(e.name, c.set_name) AS name,
+        COALESCE(e.era, c.era) AS era,
+        COALESCE(e.language, c.language) AS language,
+        COALESCE(e.set_total, c.set_total) AS set_total,
+        COALESCE(e.release_date, c.release_date) AS release_date,
+        COALESCE(e.image_url, c.image_url) AS image_url,
+        COUNT(DISTINCT c.id)::int AS cards_total,
+        0::int AS linked_auctions
+      FROM public.cards c
+      LEFT JOIN public.expansions e ON c.expansion_id = e.id
+      GROUP BY 2, 3, 4, 5, 6, 7, 8
+    `
+
+    const expansionsQuery = `
       SELECT
         e.id,
         e.set_code,
@@ -1331,15 +1348,37 @@ async function fetchExpansionSummaries() {
         e.set_total,
         e.release_date,
         e.image_url,
-        COUNT(DISTINCT c.id)::int AS cards_total,
-        COUNT(ts.item_id)::int AS linked_auctions
+        0::int AS cards_total,
+        0::int AS linked_auctions
       FROM public.expansions e
-      LEFT JOIN public.cards c ON c.expansion_id = e.id
-      LEFT JOIN public.tradera_sales ts ON ts.card_id = c.id
-      GROUP BY e.id
     `
-    const result = await pool.query(query)
-    if (result.rows.length === 0) return staticExpansions
+
+    const salesRowsQuery = `
+      SELECT
+        COALESCE(
+          s.matched_set_code,
+          s.parsed_set_code,
+          c.set_code,
+          e.set_code,
+          c.set_name,
+          e.name
+        ) AS set_code,
+        COUNT(s.item_id)::int AS linked_auctions
+      FROM public.tradera_sales s
+      LEFT JOIN public.cards c ON c.id = s.card_id
+      LEFT JOIN public.expansions e ON e.id = c.expansion_id
+      WHERE s.card_id IS NOT NULL
+      GROUP BY 1
+    `
+
+    const [cardRowsResult, expansionsResult, salesRowsResult] = await Promise.all([
+      pool.query(cardRowsQuery),
+      pool.query(expansionsQuery),
+      pool.query(salesRowsQuery)
+    ])
+
+    const mergedRows = [...cardRowsResult.rows, ...expansionsResult.rows, ...salesRowsResult.rows]
+    if (mergedRows.length === 0) return staticExpansions
 
     const mergedByCode = new Map()
 
@@ -1359,11 +1398,16 @@ async function fetchExpansionSummaries() {
       }
     }
 
-    for (const row of result.rows) {
+    for (const row of mergedRows) {
       const canonicalCode =
         resolveCanonicalCode(row.set_code) ?? resolveCanonicalCode(row.name) ?? row.set_code
 
-      const normalizedRow = { ...row, set_code: canonicalCode ?? row.set_code }
+      if (!canonicalCode && !row.set_code && !row.name) continue
+
+      const normalizedRow = {
+        ...row,
+        set_code: canonicalCode ?? row.set_code ?? row.name ?? null
+      }
       const current = mergedByCode.get(normalizedRow.set_code)
       mergedByCode.set(normalizedRow.set_code, mergeRows(current, normalizedRow))
     }
