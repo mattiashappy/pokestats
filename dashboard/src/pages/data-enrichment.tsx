@@ -361,7 +361,7 @@ function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
           <div className="flex items-center gap-2">
             <Select
               value={selectedCardId === '' ? '' : String(selectedCardId)}
-              disabled={cardsQuery.isFetching || (cardsForSelect.length || 0) === 0}
+              disabled={cardsQuery.isFetching}
               onChange={(e) => setSelectedCardId(Number(e.target.value) || '')}
             >
               <option value="">{cardsQuery.isFetching ? 'Loading cards…' : 'Select a card'}</option>
@@ -407,6 +407,9 @@ function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
       </div>
       {manualMatchMutation.isError ? (
         <p className="text-[11px] text-red-500">{(manualMatchMutation.error as Error).message}</p>
+      ) : null}
+      {cardsQuery.isError ? (
+        <p className="text-[11px] text-red-500">Failed to load cards for set {auction.matched_set_code}.</p>
       ) : null}
       {discardMutation.isError ? (
         <p className="text-[11px] text-red-500">{(discardMutation.error as Error).message}</p>
