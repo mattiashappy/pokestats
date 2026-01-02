@@ -1,8 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { AlertCircle, RefreshCcw, Rocket, Search } from 'lucide-react'
-import { Link } from 'react-router-dom'
-
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
@@ -10,8 +8,8 @@ import { Select } from '../components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import {
   fetchCardsForSet,
+  discardAuction,
   fetchEnrichmentSummary,
-  fetchRecentEnrichment,
   fetchUnmatchedAuctions,
   manuallyMatchAuction,
   runEnrichment,
@@ -40,11 +38,6 @@ export function DataEnrichmentPage(): JSX.Element {
     queryFn: () => fetchUnmatchedAuctions(25)
   })
 
-  const recentQuery = useQuery({
-    queryKey: ['enrichment-recent'],
-    queryFn: () => fetchRecentEnrichment(50)
-  })
-
   const mutation = useMutation({
     mutationFn: () => runEnrichment(runLimit),
     onSuccess: () => {
@@ -63,6 +56,24 @@ export function DataEnrichmentPage(): JSX.Element {
       { label: 'Linked auctions', value: summary.linkedAuctions ?? 0 }
     ]
   }, [summaryQuery.data])
+
+  const unmatchedAuctions = unmatchedQuery.data ?? []
+  const readyForManualMatch = useMemo(
+    () =>
+      unmatchedAuctions.filter(
+        (auction) =>
+          Boolean(auction.matched_set_code) && (auction.parsed_card_number !== null || auction.parsed_set_total !== null)
+      ),
+    [unmatchedAuctions]
+  )
+  const needsMoreInfo = useMemo(
+    () => unmatchedAuctions.filter((auction) => !readyForManualMatch.includes(auction)),
+    [readyForManualMatch, unmatchedAuctions]
+  )
+
+  const refetchEnrichmentTables = () => {
+    unmatchedQuery.refetch()
+  }
 
   return (
     <div className="space-y-6">
@@ -174,98 +185,90 @@ export function DataEnrichmentPage(): JSX.Element {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Recent enrichment activity</CardTitle>
-          {recentQuery.isFetching ? <span className="text-xs text-slate-500">Loading…</span> : null}
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Title</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Parsed number</TableHead>
-                <TableHead>Set total</TableHead>
-                <TableHead>Set hint</TableHead>
-                <TableHead>Matched card</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(recentQuery.data ?? []).map((row) => (
-                <TableRow key={row.item_id}>
-                  <TableCell className="font-mono text-xs">{row.item_id}</TableCell>
-                  <TableCell className="max-w-xs truncate text-sm">{row.title}</TableCell>
-                  <TableCell>{row.match_status ?? '—'}</TableCell>
-                  <TableCell>{row.parsed_card_number ?? '—'}</TableCell>
-                  <TableCell>{row.parsed_set_total ?? '—'}</TableCell>
-                  <TableCell>{row.matched_set_code ?? '—'}</TableCell>
-                  <TableCell>
-                    {row.card_id ? (
-                      <Link
-                        to={`/cards/${row.card_id}`}
-                        className="text-indigo-600 hover:underline dark:text-indigo-300"
-                      >
-                        {row.card_set_code ? `${row.card_set_code} ` : ''}
-                        {row.card_number ? `${row.card_number} — ` : ''}
-                        {row.card_name || 'Card detail'}
-                      </Link>
-                    ) : (
-                      <span className="text-slate-500">—</span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {recentQuery.data?.length === 0 ? (
-            <p className="text-sm text-slate-500">No enrichment activity yet.</p>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Items needing review</CardTitle>
           {unmatchedQuery.isFetching ? <span className="text-xs text-slate-500">Loading…</span> : null}
         </CardHeader>
-        <CardContent className="space-y-3">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Title</TableHead>
-                <TableHead>Parsed number</TableHead>
-                <TableHead>Set total</TableHead>
-                <TableHead>Set hint</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Manual match</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(unmatchedQuery.data ?? []).map((row) => (
-                <TableRow key={row.item_id}>
-                  <TableCell className="font-mono text-xs">{row.item_id}</TableCell>
-                  <TableCell className="max-w-xs truncate text-sm">{row.title}</TableCell>
-                  <TableCell>{row.parsed_card_number ?? '—'}</TableCell>
-                  <TableCell>{row.parsed_set_total ?? '—'}</TableCell>
-                  <TableCell>{row.matched_set_code ?? '—'}</TableCell>
-                  <TableCell>{row.match_status ?? '—'}</TableCell>
-                  <TableCell>
-                    <ManualMatchCell
-                      auction={row}
-                      onMatched={() => {
-                        unmatchedQuery.refetch()
-                        recentQuery.refetch()
-                      }}
-                    />
-                  </TableCell>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Ready for manual match</p>
+                <p className="text-xs text-slate-500">Prioritized rows with parsed set hints and card numbers.</p>
+              </div>
+              {unmatchedQuery.isFetching ? <span className="text-xs text-slate-500">Refreshing…</span> : null}
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Parsed number</TableHead>
+                  <TableHead>Set total</TableHead>
+                  <TableHead>Set hint</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Manual actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {unmatchedQuery.data?.length === 0 ? (
-            <p className="text-sm text-slate-500">No unmatched auctions at the moment.</p>
-          ) : null}
+              </TableHeader>
+              <TableBody>
+                {readyForManualMatch.map((row) => (
+                  <TableRow key={row.item_id}>
+                    <TableCell className="font-mono text-xs">{row.item_id}</TableCell>
+                    <TableCell className="max-w-xs truncate text-sm">{row.title}</TableCell>
+                    <TableCell>{row.parsed_card_number ?? '—'}</TableCell>
+                    <TableCell>{row.parsed_set_total ?? '—'}</TableCell>
+                    <TableCell>{row.matched_set_code ?? '—'}</TableCell>
+                    <TableCell>{row.match_status ?? '—'}</TableCell>
+                    <TableCell>
+                      <ManualMatchCell auction={row} onUpdated={refetchEnrichmentTables} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {readyForManualMatch.length === 0 ? (
+              <p className="text-sm text-slate-500">No auctions with enough detail to match right now.</p>
+            ) : null}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Need more info / discard</p>
+                <p className="text-xs text-slate-500">Items without reliable set hints can be discarded when unmatchable.</p>
+              </div>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Parsed number</TableHead>
+                  <TableHead>Set total</TableHead>
+                  <TableHead>Set hint</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Manual actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {needsMoreInfo.map((row) => (
+                  <TableRow key={row.item_id}>
+                    <TableCell className="font-mono text-xs">{row.item_id}</TableCell>
+                    <TableCell className="max-w-xs truncate text-sm">{row.title}</TableCell>
+                    <TableCell>{row.parsed_card_number ?? '—'}</TableCell>
+                    <TableCell>{row.parsed_set_total ?? '—'}</TableCell>
+                    <TableCell>{row.matched_set_code ?? '—'}</TableCell>
+                    <TableCell>{row.match_status ?? '—'}</TableCell>
+                    <TableCell>
+                      <ManualMatchCell auction={row} onUpdated={refetchEnrichmentTables} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {needsMoreInfo.length === 0 ? (
+              <p className="text-sm text-slate-500">No remaining items awaiting review.</p>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -274,10 +277,10 @@ export function DataEnrichmentPage(): JSX.Element {
 
 type ManualMatchCellProps = {
   auction: UnmatchedAuction
-  onMatched: () => void
+  onUpdated: () => void
 }
 
-function ManualMatchCell({ auction, onMatched }: ManualMatchCellProps) {
+function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
   const [search, setSearch] = useState('')
   const [selectedCardId, setSelectedCardId] = useState<number | ''>('')
 
@@ -287,11 +290,19 @@ function ManualMatchCell({ auction, onMatched }: ManualMatchCellProps) {
     enabled: Boolean(auction.matched_set_code)
   })
 
-  const mutation = useMutation({
+  const manualMatchMutation = useMutation({
     mutationFn: (cardId: number) => manuallyMatchAuction(auction.item_id, cardId),
     onSuccess: () => {
       setSelectedCardId('')
-      onMatched()
+      onUpdated()
+    }
+  })
+
+  const discardMutation = useMutation({
+    mutationFn: () => discardAuction(auction.item_id),
+    onSuccess: () => {
+      setSelectedCardId('')
+      onUpdated()
     }
   })
 
@@ -306,49 +317,69 @@ function ManualMatchCell({ auction, onMatched }: ManualMatchCellProps) {
     })
   }, [cardsQuery.data, search])
 
-  if (!auction.matched_set_code) {
-    return <p className="text-xs text-slate-500">No set hint available.</p>
-  }
+  const canMatch = Boolean(auction.matched_set_code)
 
   return (
     <div className="space-y-2 text-xs">
-      <Input
-        className="h-8"
-        placeholder="Search card name/#"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
-      <div className="flex items-center gap-2">
-        <Select
-          value={selectedCardId === '' ? '' : String(selectedCardId)}
-          disabled={cardsQuery.isFetching || (cardsQuery.data?.length || 0) === 0}
-          onChange={(e) => setSelectedCardId(Number(e.target.value) || '')}
-        >
-          <option value="">{cardsQuery.isFetching ? 'Loading cards…' : 'Select a card'}</option>
-          {filteredCards.map((card) => (
-            <option key={card.id} value={card.id}>
-              {card.card_number ? `${card.card_number} — ` : ''}
-              {card.name || 'Unnamed card'}
-            </option>
-          ))}
-          {!cardsQuery.isFetching && filteredCards.length === 0 ? (
-            <option disabled value="">
-              No matches for “{search}”
-            </option>
-          ) : null}
-        </Select>
+      {canMatch ? (
+        <>
+          <Input
+            className="h-8"
+            placeholder="Search card name/#"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <div className="flex items-center gap-2">
+            <Select
+              value={selectedCardId === '' ? '' : String(selectedCardId)}
+              disabled={cardsQuery.isFetching || (cardsQuery.data?.length || 0) === 0}
+              onChange={(e) => setSelectedCardId(Number(e.target.value) || '')}
+            >
+              <option value="">{cardsQuery.isFetching ? 'Loading cards…' : 'Select a card'}</option>
+              {filteredCards.map((card) => (
+                <option key={card.id} value={card.id}>
+                  {card.card_number ? `${card.card_number} — ` : ''}
+                  {card.name || 'Unnamed card'}
+                </option>
+              ))}
+              {!cardsQuery.isFetching && filteredCards.length === 0 ? (
+                <option disabled value="">
+                  No matches for “{search}”
+                </option>
+              ) : null}
+            </Select>
+            <Button
+              size="sm"
+              disabled={!selectedCardId || manualMatchMutation.isPending}
+              onClick={() => typeof selectedCardId === 'number' && manualMatchMutation.mutate(selectedCardId)}
+            >
+              {manualMatchMutation.isPending ? 'Linking…' : 'Link'}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <p className="text-[11px] text-slate-500">No set hint available yet.</p>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
         <Button
+          variant="outline"
           size="sm"
-          disabled={!selectedCardId || mutation.isPending}
-          onClick={() => typeof selectedCardId === 'number' && mutation.mutate(selectedCardId)}
+          disabled={discardMutation.isPending}
+          onClick={() => discardMutation.mutate()}
         >
-          {mutation.isPending ? 'Linking…' : 'Link'}
+          {discardMutation.isPending ? 'Discarding…' : 'Discard'}
         </Button>
+        {manualMatchMutation.isSuccess ? (
+          <span className="text-[11px] text-green-600">Linked!</span>
+        ) : null}
+        {discardMutation.isSuccess ? <span className="text-[11px] text-green-600">Discarded.</span> : null}
       </div>
-      {mutation.isError ? (
-        <p className="text-[11px] text-red-500">{(mutation.error as Error).message}</p>
+      {manualMatchMutation.isError ? (
+        <p className="text-[11px] text-red-500">{(manualMatchMutation.error as Error).message}</p>
       ) : null}
-      {mutation.isSuccess ? <p className="text-[11px] text-green-600">Linked!</p> : null}
+      {discardMutation.isError ? (
+        <p className="text-[11px] text-red-500">{(discardMutation.error as Error).message}</p>
+      ) : null}
     </div>
   )
 }
