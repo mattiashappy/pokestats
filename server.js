@@ -119,6 +119,8 @@ let hasBackfilledSalesCards = false
 let hasEnsuredSalesCardIndex = false
 let hasEnsuredEnrichmentColumns = false
 let hasEnsuredEnrichmentIndexes = false
+let hasSeededStaticCatalog = false
+let seedingCatalogPromise = null
 let hasCheckedImportRunsTable = false
 let importRunsTableAvailable = false
 
@@ -485,12 +487,15 @@ async function ensureCardInfrastructure() {
   const enrichmentColumnsAvailable = await ensureSalesEnrichmentColumnsAvailable()
   const enrichmentIndexesAvailable = await ensureSalesEnrichmentIndexes()
 
+  const catalogSeeded = await ensureStaticCatalogSeeded()
+
   return Boolean(
     cardColumnAvailable &&
       parsedSetCodeAvailable &&
       cardIndexAvailable &&
       enrichmentColumnsAvailable &&
-      enrichmentIndexesAvailable
+      enrichmentIndexesAvailable &&
+      catalogSeeded
   )
 }
 
@@ -517,6 +522,120 @@ function extractEraHint(row) {
 
 let cachedExpansions = null
 let lastExpansionFetch = 0
+
+async function ensureStaticCatalogSeeded() {
+  if (!pool) return false
+  if (hasSeededStaticCatalog) return true
+  if (seedingCatalogPromise) return seedingCatalogPromise
+
+  seedingCatalogPromise = (async () => {
+    const expansionsReady = await ensureExpansionsTableAvailable()
+    const cardsReady = await ensureCardsTableAvailable()
+    if (!expansionsReady || !cardsReady) return false
+
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+
+      const { expansions, cardsBySetCode } = await getStaticCatalog()
+      const expansionIdByCode = new Map()
+
+      for (const expansion of expansions) {
+        const { rows } = await client.query(
+          `
+            INSERT INTO public.expansions (set_code, name, era, language, set_total, release_date, image_url)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (set_code) DO UPDATE SET
+              name = COALESCE(EXCLUDED.name, expansions.name),
+              era = COALESCE(EXCLUDED.era, expansions.era),
+              language = COALESCE(EXCLUDED.language, expansions.language),
+              set_total = COALESCE(EXCLUDED.set_total, expansions.set_total),
+              release_date = COALESCE(EXCLUDED.release_date, expansions.release_date),
+              image_url = COALESCE(EXCLUDED.image_url, expansions.image_url)
+            RETURNING id
+          `,
+          [
+            expansion.set_code,
+            expansion.name ?? null,
+            expansion.era ?? null,
+            expansion.language ?? 'EN',
+            expansion.set_total ?? null,
+            expansion.release_date ?? null,
+            expansion.image_url ?? null
+          ]
+        )
+
+        const expansionId = rows?.[0]?.id
+        if (expansionId) {
+          expansionIdByCode.set(expansion.set_code, expansionId)
+        }
+      }
+
+      for (const expansion of expansions) {
+        const catalogEntry = cardsBySetCode?.[expansion.set_code]
+        const cards = catalogEntry?.cards ?? []
+        const setTotal = catalogEntry?.set_total ?? expansion.set_total ?? null
+        const expansionId = expansionIdByCode.get(expansion.set_code) ?? null
+
+        if (!expansionId) continue
+
+        for (const card of cards) {
+          await client.query(
+            `
+              INSERT INTO public.cards (
+                name,
+                era,
+                set_name,
+                image_url,
+                product_details,
+                set_code,
+                set_total,
+                card_number,
+                expansion_id
+              )
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+              ON CONFLICT (expansion_id, card_number) DO UPDATE SET
+                name = EXCLUDED.name,
+                set_name = EXCLUDED.set_name,
+                era = COALESCE(EXCLUDED.era, cards.era),
+                set_total = COALESCE(EXCLUDED.set_total, cards.set_total),
+                set_code = COALESCE(EXCLUDED.set_code, cards.set_code),
+                image_url = COALESCE(EXCLUDED.image_url, cards.image_url),
+                product_details = COALESCE(EXCLUDED.product_details, cards.product_details)
+            `,
+            [
+              card.name,
+              card.era ?? expansion.era ?? null,
+              card.set_name ?? expansion.name ?? null,
+              card.image_url ?? null,
+              card.product_details ?? null,
+              catalogEntry?.set_code ?? expansion.set_code ?? null,
+              setTotal,
+              card.card_number,
+              expansionId
+            ]
+          )
+        }
+      }
+
+      await client.query('COMMIT')
+      cachedExpansions = null
+      lastExpansionFetch = 0
+      hasSeededStaticCatalog = true
+      return true
+    } catch (error) {
+      await client.query('ROLLBACK')
+      console.error('Failed to seed static catalog into database', error)
+      hasSeededStaticCatalog = false
+      return false
+    } finally {
+      seedingCatalogPromise = null
+      client.release()
+    }
+  })()
+
+  return seedingCatalogPromise
+}
 
 async function fetchCachedExpansions(db) {
   const now = Date.now()
