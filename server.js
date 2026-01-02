@@ -482,22 +482,26 @@ async function ensureCardInfrastructure() {
   const cardsAvailable = await ensureCardsTableAvailable()
   if (!salesAvailable || !cardsAvailable || !expansionsAvailable) return false
 
+  // Critical columns needed for the read queries used by the API.
   const cardColumnAvailable = await ensureSalesCardColumnAvailable()
   const parsedSetCodeAvailable = await ensureSalesParsedSetCodeColumnAvailable()
-  const cardIndexAvailable = await ensureSalesCardIndexAvailable()
-  const enrichmentColumnsAvailable = await ensureSalesEnrichmentColumnsAvailable()
-  const enrichmentIndexesAvailable = await ensureSalesEnrichmentIndexes()
+  if (!cardColumnAvailable || !parsedSetCodeAvailable) return false
 
-  const catalogSeeded = await ensureStaticCatalogSeeded()
+  // Best-effort helpers that improve matching performance but should not block read access.
+  const optionalTasks = [
+    ensureSalesCardIndexAvailable(),
+    ensureSalesEnrichmentColumnsAvailable(),
+    ensureSalesEnrichmentIndexes(),
+    ensureStaticCatalogSeeded()
+  ]
 
-  return Boolean(
-    cardColumnAvailable &&
-      parsedSetCodeAvailable &&
-      cardIndexAvailable &&
-      enrichmentColumnsAvailable &&
-      enrichmentIndexesAvailable &&
-      catalogSeeded
-  )
+  const optionalResults = await Promise.allSettled(optionalTasks)
+  const optionalFailures = optionalResults.filter((result) => result.status !== 'fulfilled')
+  if (optionalFailures.length) {
+    console.warn('Continuing with degraded card infrastructure; optional setup failed')
+  }
+
+  return true
 }
 
 // --------------------
