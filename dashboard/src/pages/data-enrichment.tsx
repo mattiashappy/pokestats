@@ -1,8 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { AlertCircle, RefreshCcw, Rocket, Search } from 'lucide-react'
-import { Link } from 'react-router-dom'
-
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
@@ -12,7 +10,6 @@ import {
   fetchCardsForSet,
   discardAuction,
   fetchEnrichmentSummary,
-  fetchRecentEnrichment,
   fetchUnmatchedAuctions,
   manuallyMatchAuction,
   runEnrichment,
@@ -39,11 +36,6 @@ export function DataEnrichmentPage(): JSX.Element {
   const unmatchedQuery = useQuery({
     queryKey: ['enrichment-unmatched'],
     queryFn: () => fetchUnmatchedAuctions(25)
-  })
-
-  const recentQuery = useQuery({
-    queryKey: ['enrichment-recent'],
-    queryFn: () => fetchRecentEnrichment(50)
   })
 
   const mutation = useMutation({
@@ -81,7 +73,6 @@ export function DataEnrichmentPage(): JSX.Element {
 
   const refetchEnrichmentTables = () => {
     unmatchedQuery.refetch()
-    recentQuery.refetch()
   }
 
   return (
@@ -191,57 +182,6 @@ export function DataEnrichmentPage(): JSX.Element {
           </CardContent>
         </Card>
       </div>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Recent enrichment activity</CardTitle>
-          {recentQuery.isFetching ? <span className="text-xs text-slate-500">Loading…</span> : null}
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Title</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Parsed number</TableHead>
-                <TableHead>Set total</TableHead>
-                <TableHead>Set hint</TableHead>
-                <TableHead>Matched card</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(recentQuery.data ?? []).map((row) => (
-                <TableRow key={row.item_id}>
-                  <TableCell className="font-mono text-xs">{row.item_id}</TableCell>
-                  <TableCell className="max-w-xs truncate text-sm">{row.title}</TableCell>
-                  <TableCell>{row.match_status ?? '—'}</TableCell>
-                  <TableCell>{row.parsed_card_number ?? '—'}</TableCell>
-                  <TableCell>{row.parsed_set_total ?? '—'}</TableCell>
-                  <TableCell>{row.matched_set_code ?? '—'}</TableCell>
-                  <TableCell>
-                    {row.card_id ? (
-                      <Link
-                        to={`/cards/${row.card_id}`}
-                        className="text-indigo-600 hover:underline dark:text-indigo-300"
-                      >
-                        {row.card_set_code ? `${row.card_set_code} ` : ''}
-                        {row.card_number ? `${row.card_number} — ` : ''}
-                        {row.card_name || 'Card detail'}
-                      </Link>
-                    ) : (
-                      <span className="text-slate-500">—</span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {recentQuery.data?.length === 0 ? (
-            <p className="text-sm text-slate-500">No enrichment activity yet.</p>
-          ) : null}
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
