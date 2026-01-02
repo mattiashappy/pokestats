@@ -5,6 +5,7 @@ const path = require('path')
 const { spawn } = require('child_process')
 const { Pool } = require('pg')
 const crypto = require('crypto')
+const mockAuctions = require('./server/mock-auctions.json')
 
 const { loadCatalog } = require('./server/catalog/catalogLoader')
 const { seedCatalog } = require('./server/catalog/catalogSeeder')
@@ -880,6 +881,34 @@ async function fetchAuctionsFromDatabase(filters = {}) {
   return rows.map(normalizeAuctionRow)
 }
 
+function filterMockAuctions(filters = {}) {
+  const {
+    era = null,
+    language = null,
+    gradingIssuer = null,
+    grade = null,
+    minPrice = null,
+    maxPrice = null
+  } = filters
+
+  const matchesFilter = (value, expected) => {
+    if (!expected) return true
+    const normalizedValue = String(value || '').toLowerCase()
+    return normalizedValue === String(expected).toLowerCase()
+  }
+
+  return mockAuctions.filter((auction) => {
+    const matchesEra = !era || matchesFilter(auction.cardEra, era)
+    const matchesLanguage = !language || matchesFilter(auction.language, language)
+    const matchesGradingIssuer = !gradingIssuer || matchesFilter(auction.gradingCompany, gradingIssuer)
+    const matchesGrade = !grade || matchesFilter(auction.grade, grade)
+    const matchesMinPrice = !minPrice || (auction.finalPrice ?? 0) >= Number(minPrice)
+    const matchesMaxPrice = !maxPrice || (auction.finalPrice ?? 0) <= Number(maxPrice)
+
+    return matchesEra && matchesLanguage && matchesGradingIssuer && matchesGrade && matchesMinPrice && matchesMaxPrice
+  })
+}
+
 async function fetchCard(cardId) {
   if (!pool) return null
   const ok = await ensureCardInfrastructure()
@@ -1397,7 +1426,7 @@ app.get('/api/sales', async (req, res) => {
     const limit = Number.isFinite(parsedLimit) ? parsedLimit : null
     const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0
 
-    const auctions = await fetchAuctionsFromDatabase({
+    const filters = {
       era: req.query.era || null,
       language: req.query.language || null,
       gradingIssuer: req.query.gradingIssuer || null,
@@ -1406,10 +1435,33 @@ app.get('/api/sales', async (req, res) => {
       maxPrice: req.query.maxPrice ? Number(req.query.maxPrice) : null,
       limit,
       offset
-    })
-    return res.json(auctions)
+    }
+
+    const auctions = await fetchAuctionsFromDatabase(filters)
+
+    if (auctions.length) {
+      return res.json(auctions)
+    }
+
+    const fallback = filterMockAuctions(filters)
+    console.warn('Serving mock auctions because database rows were unavailable')
+    return res.json(fallback)
   } catch (error) {
     console.error('Failed to fetch auctions', error)
+    const fallback = filterMockAuctions({
+      era: req.query.era || null,
+      language: req.query.language || null,
+      gradingIssuer: req.query.gradingIssuer || null,
+      grade: req.query.grade || null,
+      minPrice: req.query.minPrice ? Number(req.query.minPrice) : null,
+      maxPrice: req.query.maxPrice ? Number(req.query.maxPrice) : null
+    })
+
+    if (fallback.length) {
+      console.warn('Falling back to mock auctions due to error while fetching from database')
+      return res.json(fallback)
+    }
+
     return res.status(500).json({ error: 'Failed to load auctions' })
   }
 })
@@ -1504,7 +1556,11 @@ app.get('/api/cards/:id/auctions', async (req, res) => {
 app.get('/api/sales/diagnostic', async (_req, res) => {
   try {
     const auctions = await fetchAuctionsFromDatabase()
-    res.json({ source: 'database', count: auctions.length, auctions })
+    if (auctions.length) {
+      return res.json({ source: 'database', count: auctions.length, auctions })
+    }
+
+    return res.json({ source: 'mock', count: mockAuctions.length, auctions: mockAuctions })
   } catch (error) {
     res.status(500).json({ source: 'database', error: error?.message || String(error) })
   }
