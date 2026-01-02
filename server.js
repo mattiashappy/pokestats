@@ -1619,6 +1619,50 @@ for (const row of rows) {
   }
 })
 
+app.post('/api/enrichment/discard', async (req, res) => {
+  if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
+
+  const itemId = Number(req.body?.itemId)
+
+  if (!Number.isFinite(itemId)) {
+    return res.status(400).json({ ok: false, error: 'Invalid itemId' })
+  }
+
+  const client = await pool.connect()
+
+  try {
+    const { rows: saleRows } = await client.query(
+      'SELECT item_id FROM public.tradera_sales WHERE item_id = $1 LIMIT 1',
+      [itemId]
+    )
+
+    if (saleRows.length === 0) {
+      return res.status(404).json({ ok: false, error: 'Auction not found' })
+    }
+
+    await client.query(
+      `
+        UPDATE public.tradera_sales
+        SET
+          card_id = NULL,
+          match_status = 'Discarded (manual)',
+          match_confidence = 'manual',
+          match_method = 'manual_discard',
+          updated_at = NOW()
+        WHERE item_id = $1
+      `,
+      [itemId]
+    )
+
+    return res.json({ ok: true, itemId })
+  } catch (error) {
+    console.error('Failed to discard auction', error)
+    return res.status(500).json({ ok: false, error: 'Failed to discard auction' })
+  } finally {
+    client.release()
+  }
+})
+
 app.get('/api/enrichment/summary', async (_req, res) => {
   if (!pool) return res.status(500).json({ available: false, error: 'DATABASE_URL not set' })
 
@@ -1654,8 +1698,12 @@ app.get('/api/enrichment/unmatched', async (req, res) => {
     `
       SELECT item_id, end_date, title, match_status, parsed_card_number, parsed_set_total, matched_set_code
       FROM public.tradera_sales
-      WHERE match_status IS NULL OR match_status NOT LIKE 'Matched%'
-      ORDER BY end_date DESC
+      WHERE (match_status IS NULL OR match_status NOT LIKE 'Matched%')
+        AND match_status <> 'Discarded (manual)'
+      ORDER BY
+        (matched_set_code IS NOT NULL) DESC,
+        (parsed_card_number IS NOT NULL) DESC,
+        end_date DESC
       LIMIT $1
     `,
     [limit]
