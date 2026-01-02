@@ -1,0 +1,28 @@
+{
+  "set_code": "DRAGON_VAULT",
+  "set_name": "Dragon Vault",
+  "set_total": 20,
+  "cards": [
+    { "card_number": "1/20", "name": "Dratini" },
+    { "card_number": "2/20", "name": "Dratini" },
+    { "card_number": "3/20", "name": "Dragonair" },
+    { "card_number": "4/20", "name": "Dragonair" },
+    { "card_number": "5/20", "name": "Dragonite" },
+    { "card_number": "6/20", "name": "Bagon" },
+    { "card_number": "7/20", "name": "Shelgon" },
+    { "card_number": "8/20", "name": "Salamence" },
+    { "card_number": "9/20", "name": "Latias" },
+    { "card_number": "10/20", "name": "Latios" },
+    { "card_number": "11/20", "name": "Rayquaza" },
+    { "card_number": "12/20", "name": "Axew" },
+    { "card_number": "13/20", "name": "Axew" },
+    { "card_number": "14/20", "name": "Fraxure" },
+    { "card_number": "15/20", "name": "Fraxure" },
+    { "card_number": "16/20", "name": "Haxorus" },
+    { "card_number": "17/20", "name": "Druddigon" },
+    { "card_number": "18/20", "name": "Exp. Share" },
+    { "card_number": "19/20", "name": "First Ticket" },
+    { "card_number": "20/20", "name": "Super Rod" },
+    { "card_number": "21/20", "name": "Kyurem" }
+  ]
+}
