@@ -143,6 +143,21 @@ export async function manuallyMatchAuction(itemId: number, cardId: number) {
   return res.json() as Promise<{ ok: boolean; itemId: number; cardId: number }>
 }
 
+export async function discardAuction(itemId: number) {
+  const res = await fetch('/api/enrichment/discard', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ itemId })
+  })
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || 'Failed to discard auction')
+  }
+
+  return res.json() as Promise<{ ok: boolean; itemId: number }>
+}
+
 export async function fetchImportRuns(limit = 15) {
   const res = await fetch(`/api/import/runs?limit=${limit}`)
   if (!res.ok) throw new Error('Failed to fetch import runs')
