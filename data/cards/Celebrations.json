@@ -1,0 +1,32 @@
+{
+  "set_code": "CELEBRATIONS",
+  "set_name": "",
+  "set_total": 25,
+  "cards": [
+    { "card_number": "001/025", "name": "Ho-Oh" },
+    { "card_number": "002/025", "name": "Reshiram" },
+    { "card_number": "003/025", "name": "Kyogre" },
+    { "card_number": "004/025", "name": "Palkia" },
+    { "card_number": "005/025", "name": "Pikachu" },
+    { "card_number": "006/025", "name": "Flying Pikachu V" },
+    { "card_number": "007/025", "name": "Flying Pikachu VMAX" },
+    { "card_number": "008/025", "name": "Surfing Pikachu V" },
+    { "card_number": "009/025", "name": "Surfing Pikachu VMAX" },
+    { "card_number": "010/025", "name": "Zekrom" },
+    { "card_number": "011/025", "name": "Mew" },
+    { "card_number": "012/025", "name": "Xerneas" },
+    { "card_number": "013/025", "name": "Cosmog" },
+    { "card_number": "014/025", "name": "Cosmoem" },
+    { "card_number": "015/025", "name": "Lunala" },
+    { "card_number": "016/025", "name": "Zacian V" },
+    { "card_number": "017/025", "name": "Groudon" },
+    { "card_number": "018/025", "name": "Zamazenta V" },
+    { "card_number": "019/025", "name": "Yveltal" },
+    { "card_number": "020/025", "name": "Dialga" },
+    { "card_number": "021/025", "name": "Solgaleo" },
+    { "card_number": "022/025", "name": "Lugia" },
+    { "card_number": "023/025", "name": "Professor's Research [Professor Oak]" },
+    { "card_number": "024/025", "name": "Professor's Research [Professor Oak]" },
+    { "card_number": "025/025", "name": "Mew" }
+  ]
+}
