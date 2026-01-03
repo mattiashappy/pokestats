@@ -1905,6 +1905,7 @@ async function runEnrichmentJob({ limit = 500, logPrefix } = {}) {
         SELECT COUNT(*)::int AS count
         FROM public.tradera_sales
         WHERE card_id IS NULL
+          AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')
           AND (match_status IS NULL OR match_status = '')
           AND COALESCE(match_status, '') <> 'Discarded (manual)'
       `
@@ -1915,6 +1916,7 @@ async function runEnrichmentJob({ limit = 500, logPrefix } = {}) {
         SELECT item_id, title, attributes, era, pokemon_era
         FROM public.tradera_sales
         WHERE card_id IS NULL
+          AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')
           AND (match_status IS NULL OR match_status = '')
           AND COALESCE(match_status, '') <> 'Discarded (manual)'
         ORDER BY end_date ASC NULLS LAST
@@ -1991,6 +1993,7 @@ async function runEnrichmentJob({ limit = 500, logPrefix } = {}) {
         SELECT COUNT(*)::int AS count
         FROM public.tradera_sales
         WHERE card_id IS NULL
+          AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')
           AND (match_status IS NULL OR match_status = '')
           AND COALESCE(match_status, '') <> 'Discarded (manual)'
       `
