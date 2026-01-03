@@ -10,10 +10,15 @@ const mockAuctions = require('./server/mock-auctions.json')
 const { loadCatalog } = require('./server/catalog/catalogLoader')
 const { seedCatalog } = require('./server/catalog/catalogSeeder')
 
+const { matchAuction, loadMatcherIndexes } = require('./server/enrichment/matcher')
+
+// ✅ Needed by tryAutoMatchAuction (even if currently unused elsewhere)
 const {
-  matchAuction,
-  loadMatcherIndexes
-} = require('./server/enrichment/matcher')
+  resolveAuctionMatch,
+  parseCardNumber,
+  parseSetHint,
+  parseCardName
+} = require('./server/enrichment/numberFirstMatcher')
 
 const app = express()
 const PORT = process.env.PORT || 8000
@@ -208,10 +213,9 @@ async function findExpansionByCode(setCode) {
   const trimmed = String(setCode || '').trim()
   if (!trimmed) return null
 
-  const { rows } = await pool.query(
-    'SELECT id, name, era, set_code FROM public.expansions WHERE set_code = $1',
-    [trimmed]
-  )
+  const { rows } = await pool.query('SELECT id, name, era, set_code FROM public.expansions WHERE set_code = $1', [
+    trimmed
+  ])
   return rows[0] || null
 }
 
@@ -429,10 +433,7 @@ async function ensureCardsTableAvailable() {
     const productDetailsOk = await ensureColumnExists('cards', 'product_details', 'TEXT')
     const cardNumberOk = await ensureColumnExists('cards', 'card_number', 'TEXT')
 
-    const removedNameSetConstraint = await dropConstraintIfExists(
-      'cards',
-      'cards_unique_name_set'
-    )
+    const removedNameSetConstraint = await dropConstraintIfExists('cards', 'cards_unique_name_set')
 
     const uniqueByExpansionNumber = await ensureConstraintExists(
       'cards',
@@ -558,7 +559,6 @@ async function ensureSalesEnrichmentColumnsAvailable() {
       ensureColumnExists('tradera_sales', 'updated_at', 'TIMESTAMPTZ NOT NULL DEFAULT NOW()')
     ])
 
-
     hasEnsuredEnrichmentColumns = results.every(Boolean)
   } catch (error) {
     console.error('Failed to ensure enrichment columns on tradera_sales', error)
@@ -628,7 +628,7 @@ async function ensureCardInfrastructure() {
   ]
 
   const optionalResults = await Promise.allSettled(optionalTasks)
-  const optionalFailures = optionalResults.filter((result) => result.status !== 'fulfilled')
+  const optionalFailures = optionalResults.filter((r) => r.status !== 'fulfilled')
   if (optionalFailures.length) {
     console.warn('Continuing with degraded card infrastructure; optional setup failed')
   }
@@ -808,31 +808,31 @@ async function ensureMissingSalesAreLinkedToCards() {
   hasBackfilledSalesCards = true
 }
 
-  async function buildDatabaseCardIndex() {
-    if (!pool) return {}
-    const { rows } = await pool.query(
-      `
-        SELECT
+async function buildDatabaseCardIndex() {
+  if (!pool) return {}
+  const { rows } = await pool.query(
+    `
+      SELECT
         c.id,
         c.card_number,
         COALESCE(e.set_code, c.set_code) AS set_code
       FROM public.cards c
-        LEFT JOIN public.expansions e ON e.id = c.expansion_id
-      `
-    )
+      LEFT JOIN public.expansions e ON e.id = c.expansion_id
+    `
+  )
 
-    const bySetAndNumber = {}
-    for (const row of rows) {
-      const setCode = row.set_code?.trim()
-      const numeric = parseInt(String(row.card_number).split(/[\s/]/)[0], 10)
-      if (!setCode || !Number.isFinite(numeric)) continue
+  const bySetAndNumber = {}
+  for (const row of rows) {
+    const setCode = row.set_code?.trim()
+    const numeric = parseInt(String(row.card_number).split(/[\s/]/)[0], 10)
+    if (!setCode || !Number.isFinite(numeric)) continue
 
-      if (!bySetAndNumber[setCode]) bySetAndNumber[setCode] = {}
-      bySetAndNumber[setCode][numeric] = row.id
-    }
-
-    return bySetAndNumber
+    if (!bySetAndNumber[setCode]) bySetAndNumber[setCode] = {}
+    bySetAndNumber[setCode][numeric] = row.id
   }
+
+  return bySetAndNumber
+}
 
 // --------------------
 // Query helpers
@@ -921,11 +921,7 @@ function normalizeAuctionRow(row) {
     cardId: row.card_id,
     title: row.title || 'Untitled listing',
     cardName: row.card_name || attributeValue('Card name', row.title || 'Unknown card'),
-    cardEra:
-      row.card_era ||
-      row.pokemon_era ||
-      attributeValue('pokemon_era') ||
-      attributeValue('Era', 'Unknown era'),
+    cardEra: row.card_era || row.pokemon_era || attributeValue('pokemon_era') || attributeValue('Era', 'Unknown era'),
     cardSetName: row.card_set_name || attributeValue('Series', 'Unknown set'),
     cardSetCode: row.card_set_code || null,
     cardNumber: row.card_number || attributeValue('Card number', null),
@@ -1018,14 +1014,7 @@ async function fetchAuctionsFromDatabase(filters = {}) {
 }
 
 function filterMockAuctions(filters = {}) {
-  const {
-    era = null,
-    language = null,
-    gradingIssuer = null,
-    grade = null,
-    minPrice = null,
-    maxPrice = null
-  } = filters
+  const { era = null, language = null, gradingIssuer = null, grade = null, minPrice = null, maxPrice = null } = filters
 
   const matchesFilter = (value, expected) => {
     if (!expected) return true
@@ -1439,8 +1428,7 @@ async function fetchExpansionSummaries() {
     const staticByCode = new Map(staticExpansions.map((expansion) => [expansion.set_code, expansion]))
 
     // Canonical set_code resolution (handles alias set_code / name variants from DB)
-    const normalizeKey = (value) =>
-      value ? String(value).trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : ''
+    const normalizeKey = (value) => (value ? String(value).trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : '')
 
     const aliasToCanonicalCode = new Map()
     for (const expansion of staticExpansions) {
@@ -1542,15 +1530,10 @@ async function fetchExpansionSummaries() {
     }
 
     for (const row of mergedRows) {
-      const canonicalCode =
-        resolveCanonicalCode(row.set_code) ?? resolveCanonicalCode(row.name) ?? row.set_code
-
+      const canonicalCode = resolveCanonicalCode(row.set_code) ?? resolveCanonicalCode(row.name) ?? row.set_code
       if (!canonicalCode && !row.set_code && !row.name) continue
 
-      const normalizedRow = {
-        ...row,
-        set_code: canonicalCode ?? row.set_code ?? row.name ?? null
-      }
+      const normalizedRow = { ...row, set_code: canonicalCode ?? row.set_code ?? row.name ?? null }
       const current = mergedByCode.get(normalizedRow.set_code)
       mergedByCode.set(normalizedRow.set_code, mergeRows(current, normalizedRow))
     }
@@ -1578,7 +1561,6 @@ async function fetchExpansionSummaries() {
     // 2) Append DB-only expansions not in static catalog
     for (const [setCode, row] of mergedByCode.entries()) {
       if (staticByCode.has(setCode)) continue
-
       orderedResults.push({
         ...row,
         set_code: setCode,
@@ -1750,7 +1732,6 @@ app.get('/api/sales/diagnostic', async (_req, res) => {
     if (auctions.length) {
       return res.json({ source: 'database', count: auctions.length, auctions })
     }
-
     return res.json({ source: 'mock', count: mockAuctions.length, auctions: mockAuctions })
   } catch (error) {
     res.status(500).json({ source: 'database', error: error?.message || String(error) })
@@ -1849,8 +1830,7 @@ app.post('/api/import/run', async (_req, res) => {
 
     const newRows = after.count - before.count
     const output = `${stdout}${stderr}`.trim()
-    const errorMessage =
-      code === 0 ? null : extractImporterError(stdout, stderr) || `Importer exited with code ${code}`
+    const errorMessage = code === 0 ? null : extractImporterError(stdout, stderr) || `Importer exited with code ${code}`
 
     const payload = {
       ok: code === 0,
@@ -1884,11 +1864,11 @@ async function runEnrichmentJob({ limit = 500, logPrefix, runStartedAt } = {}) {
   if (!ok) throw new Error('Card infrastructure unavailable')
 
   const safeLimit = Math.min(Math.max(Number(limit) || 500, 1), 1000)
+  const startedAt = runStartedAt ? new Date(runStartedAt) : new Date()
+  const logLabel = logPrefix || `[Enrichment run @ ${startedAt.toISOString()}]`
+
   const client = await pool.connect()
   try {
-    const startedAt = runStartedAt ? new Date(runStartedAt) : (await client.query('SELECT NOW()')).rows[0].now
-    const logLabel = logPrefix || `[Enrichment run @ ${startedAt.toISOString()}]`
-
     console.info(`${logLabel} Preparing matcher for up to ${safeLimit} auctions`)
 
     const matcherIndexes = await loadMatcherIndexes()
@@ -2010,6 +1990,7 @@ async function runEnrichmentJob({ limit = 500, logPrefix, runStartedAt } = {}) {
       remainingBefore: before?.count ?? null,
       remainingAfter: after?.count ?? null
     }
+
     console.info(
       `${logLabel} Completed matcher run. Attempted ${payload.attempted}, linked ${payload.linked}, ` +
         `remaining ${payload.remainingAfter}/${payload.remainingBefore} before next run, status counts: ${JSON.stringify(
@@ -2033,11 +2014,14 @@ app.post('/api/enrichment/run', async (req, res) => {
   }
 })
 
+// ✅ FIXED: no duplicate declarations, valid object literal, no undefined vars
 app.post('/api/enrichment/run-all', async (req, res) => {
+  if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
+
   const batchSize = Math.max(1, Math.min(Number(req.body?.batchSize) || 100, 1000))
   const maxBatches = Math.max(1, Math.min(Number(req.body?.maxBatches) || 1000, 5000))
-  const rerunStartedAtQuery = await pool.query('SELECT NOW()')
-  const rerunStartedAt = rerunStartedAtQuery.rows[0]?.now ?? new Date()
+
+  const runStartedAt = new Date()
 
   let totalAttempted = 0
   let totalLinked = 0
@@ -2050,8 +2034,8 @@ app.post('/api/enrichment/run-all', async (req, res) => {
     while (batches < maxBatches) {
       const result = await runEnrichmentJob({
         limit: batchSize,
-        runStartedAt: rerunStartedAt,
-        logPrefix: `[Enrichment run @ ${rerunStartedAt.toISOString()}]`
+        runStartedAt,
+        logPrefix: `[Enrichment run @ ${runStartedAt.toISOString()}]`
       })
 
       totalAttempted += result.attempted
@@ -2065,9 +2049,7 @@ app.post('/api/enrichment/run-all', async (req, res) => {
 
       batches += 1
 
-      if (!result.remainingAfter || result.remainingAfter <= 0 || result.attempted === 0) {
-        break
-      }
+      if (!result.remainingAfter || result.remainingAfter <= 0 || result.attempted === 0) break
     }
 
     res.json({
@@ -2090,22 +2072,15 @@ app.post('/api/enrichment/discard', async (req, res) => {
   if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
 
   const itemId = Number(req.body?.itemId)
-
-  if (!Number.isFinite(itemId)) {
-    return res.status(400).json({ ok: false, error: 'Invalid itemId' })
-  }
+  if (!Number.isFinite(itemId)) return res.status(400).json({ ok: false, error: 'Invalid itemId' })
 
   const client = await pool.connect()
-
   try {
-    const { rows: saleRows } = await client.query(
-      'SELECT item_id FROM public.tradera_sales WHERE item_id = $1 LIMIT 1',
-      [itemId]
-    )
+    const { rows: saleRows } = await client.query('SELECT item_id FROM public.tradera_sales WHERE item_id = $1 LIMIT 1', [
+      itemId
+    ])
 
-    if (saleRows.length === 0) {
-      return res.status(404).json({ ok: false, error: 'Auction not found' })
-    }
+    if (saleRows.length === 0) return res.status(404).json({ ok: false, error: 'Auction not found' })
 
     await client.query(
       `
@@ -2224,14 +2199,11 @@ app.post('/api/enrichment/manual-match', async (req, res) => {
   const client = await pool.connect()
 
   try {
-    const { rows: saleRows } = await client.query(
-      'SELECT item_id FROM public.tradera_sales WHERE item_id = $1 LIMIT 1',
-      [itemId]
-    )
+    const { rows: saleRows } = await client.query('SELECT item_id FROM public.tradera_sales WHERE item_id = $1 LIMIT 1', [
+      itemId
+    ])
 
-    if (saleRows.length === 0) {
-      return res.status(404).json({ ok: false, error: 'Auction not found' })
-    }
+    if (saleRows.length === 0) return res.status(404).json({ ok: false, error: 'Auction not found' })
 
     const { rows: cardRows } = await client.query(
       `
@@ -2243,9 +2215,7 @@ app.post('/api/enrichment/manual-match', async (req, res) => {
       [cardId]
     )
 
-    if (cardRows.length === 0) {
-      return res.status(404).json({ ok: false, error: 'Card not found' })
-    }
+    if (cardRows.length === 0) return res.status(404).json({ ok: false, error: 'Card not found' })
 
     const card = cardRows[0]
     const parsedSetTotal = Number(card.set_total)
@@ -2277,6 +2247,7 @@ app.post('/api/enrichment/manual-match', async (req, res) => {
     client.release()
   }
 })
+
 // Bootstrap seed
 if (pool) {
   ensureCardInfrastructure()
