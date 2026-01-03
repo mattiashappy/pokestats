@@ -1356,12 +1356,12 @@ async function fetchExpansionSummaries() {
     const salesRowsQuery = `
       SELECT
         COALESCE(
-          s.matched_set_code,
-          s.parsed_set_code,
           c.set_code,
           e.set_code,
           c.set_name,
-          e.name
+          e.name,
+          s.matched_set_code,
+          s.parsed_set_code
         ) AS set_code,
         COUNT(s.item_id)::int AS linked_auctions
       FROM public.tradera_sales s
