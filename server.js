@@ -60,12 +60,88 @@ function applyCardOverrides(card) {
 // Static catalog cache
 // --------------------
 let cachedCatalogPromise = null
+let cachedStaticCardsIndex = null
 
 async function getStaticCatalog() {
   if (!cachedCatalogPromise) {
     cachedCatalogPromise = loadCatalog()
   }
   return cachedCatalogPromise
+}
+
+function computeStaticCardId(setCode, cardNumber, fallbackSeed = '') {
+  const normalizedSetCode = String(setCode || '').trim().toUpperCase() || 'UNKNOWN'
+  const normalizedCardNumber = String(cardNumber || fallbackSeed || '0')
+
+  // Use a deterministic hash to ensure stable IDs across requests and deployments
+  const hash = crypto
+    .createHash('md5')
+    .update(`${normalizedSetCode}::${normalizedCardNumber}`)
+    .digest('hex')
+    .slice(0, 12)
+
+  return Number.parseInt(hash, 16)
+}
+
+async function getStaticCardsForSet(setCode) {
+  const code = String(setCode || '').trim()
+  if (!code) return []
+
+  const normalized = code.toLowerCase()
+  const { expansions, cardsBySetCode } = await getStaticCatalog()
+
+  const expansion = expansions.find((expansion) => expansion.set_code?.toLowerCase() === normalized) ?? null
+  const cardsEntry =
+    Object.entries(cardsBySetCode || {}).find(([key]) => key.toLowerCase() === normalized)?.[1] ?? null
+
+  if (!cardsEntry?.cards?.length) return []
+
+  const setTotal = cardsEntry.set_total ?? expansion?.set_total ?? null
+
+  return cardsEntry.cards.map((card, index) => {
+    const setCodeValue = cardsEntry.set_code ?? expansion?.set_code ?? code
+    const stableId = Number.isFinite(card.id)
+      ? card.id
+      : computeStaticCardId(setCodeValue, card.card_number, `${index}`)
+
+    return applyCardOverrides({
+      id: stableId,
+      name: card.name ?? 'Unknown card',
+      era: expansion?.era ?? null,
+      set_name: expansion?.name ?? cardsEntry.set_name ?? null,
+      set_code: setCodeValue,
+      set_total: card.set_total ?? setTotal ?? null,
+      card_number: card.card_number ?? null,
+      image_url: card.image_url ?? null,
+      product_details: card.product_details ?? null,
+      expansion_id: null,
+      created_at: new Date(0).toISOString(),
+      linked_auctions: 0,
+      last_seen: null
+    })
+  })
+}
+
+async function getStaticCardsIndex() {
+  if (cachedStaticCardsIndex) return cachedStaticCardsIndex
+
+  const { expansions } = await getStaticCatalog()
+  const index = new Map()
+
+  for (const expansion of expansions || []) {
+    const cards = await getStaticCardsForSet(expansion.set_code)
+    for (const card of cards) {
+      index.set(card.id, card)
+    }
+  }
+
+  cachedStaticCardsIndex = index
+  return index
+}
+
+async function getStaticCardById(cardId) {
+  const index = await getStaticCardsIndex()
+  return index.get(cardId) || null
 }
 
 async function getStaticExpansionSummaries() {
@@ -914,9 +990,11 @@ function filterMockAuctions(filters = {}) {
 }
 
 async function fetchCard(cardId) {
-  if (!pool) return null
+  if (!Number.isFinite(cardId)) return null
+  if (!pool) return getStaticCardById(cardId)
+
   const ok = await ensureCardInfrastructure()
-  if (!ok) return null
+  if (!ok) return getStaticCardById(cardId)
 
   const query = `
     SELECT
@@ -1236,9 +1314,9 @@ function runImporterScript(runUuid) {
 }
 
 async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
-  if (!pool) return []
+  if (!pool) return getStaticCardsForSet(setCode)
   const ok = await ensureCardInfrastructure()
-  if (!ok) return []
+  if (!ok) return getStaticCardsForSet(setCode)
 
   let whereClause = ''
   const params = []
@@ -1282,7 +1360,16 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
       c.card_number
   `
   const result = await pool.query(query, params)
-  return result.rows.map(applyCardOverrides)
+  const dbCards = result.rows.map(applyCardOverrides)
+
+  // If the database has no cards for this set, fall back to the static catalog so
+  // set pages still render cards instead of an empty list.
+  if (dbCards.length === 0 && setCode) {
+    const staticCards = await getStaticCardsForSet(setCode)
+    if (staticCards.length) return staticCards
+  }
+
+  return dbCards
 }
 
 async function fetchExpansionSummaries() {
