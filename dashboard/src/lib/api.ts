@@ -63,7 +63,7 @@ export async function runEnrichment(limit = 300) {
   }>
 }
 
-export async function runFullEnrichment(batchSize = 100) {
+export async function runFullEnrichment(batchSize = 500) {
   const res = await fetch('/api/enrichment/run-all', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

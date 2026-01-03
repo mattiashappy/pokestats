@@ -26,6 +26,8 @@ const matchingSteps = [
   'Store match status, parsed number, set total, and matched set/card identifiers with debug details.'
 ]
 
+const FULL_RUN_BATCH_SIZE = 500
+
 export function DataEnrichmentPage(): JSX.Element {
   const [runLimit, setRunLimit] = useState(300)
 
@@ -48,7 +50,7 @@ export function DataEnrichmentPage(): JSX.Element {
   })
 
   const fullRunMutation = useMutation({
-    mutationFn: () => runFullEnrichment(100),
+    mutationFn: () => runFullEnrichment(FULL_RUN_BATCH_SIZE),
     onSuccess: () => {
       summaryQuery.refetch()
       unmatchedQuery.refetch()
@@ -160,7 +162,8 @@ export function DataEnrichmentPage(): JSX.Element {
               totals, and debug metadata for every row.
             </p>
             <p className="text-xs text-slate-500">
-              Use the full re-run to process all auctions in batches of 100 without overloading the matcher.
+              Use the full re-run to process all auctions in manageable batches (currently {FULL_RUN_BATCH_SIZE.toLocaleString()} at a time) without
+              overloading the matcher.
             </p>
             <label className="text-xs uppercase text-slate-500">Batch size</label>
             <div className="flex items-center gap-2">
@@ -182,10 +185,12 @@ export function DataEnrichmentPage(): JSX.Element {
                 onClick={() => fullRunMutation.mutate()}
                 disabled={fullRunMutation.isPending}
               >
-                {fullRunMutation.isPending ? 'Re-running all…' : 'Re-run all auctions (100 at a time)'}
+                {fullRunMutation.isPending ? 'Re-running all…' : 'Re-run all auctions'}
               </Button>
               {fullRunMutation.isPending ? (
-                <span className="text-xs text-slate-500">Working through every auction in 100-item batches…</span>
+                <span className="text-xs text-slate-500">
+                  Working through every auction in {FULL_RUN_BATCH_SIZE.toLocaleString()}-item batches…
+                </span>
               ) : null}
             </div>
             {mutation.data ? (
