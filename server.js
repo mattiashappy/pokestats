@@ -1966,6 +1966,86 @@ app.post('/api/enrichment/run', async (req, res) => {
   }
 })
 
+app.post('/api/enrichment/run-all', async (req, res) => {
+  if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
+
+  const batchSize = Math.max(1, Math.min(Number(req.body?.batchSize) || 100, 1000))
+  const maxBatches = Math.max(1, Math.min(Number(req.body?.maxBatches) || 1000, 5000))
+
+  const client = await pool.connect()
+
+  let resetCount = 0
+
+  let totalAttempted = 0
+  let totalLinked = 0
+  let batches = 0
+  let remainingBefore = null
+  let remainingAfter = null
+  const statusCounts = new Map()
+
+  try {
+    const { rows: resetRows } = await client.query(
+      `
+        WITH reset AS (
+          UPDATE public.tradera_sales
+          SET
+            card_id = NULL,
+            match_status = NULL,
+            match_confidence = NULL,
+            match_method = NULL,
+            matched_set_code = NULL,
+            matched_era = NULL,
+            parsed_card_number = NULL,
+            parsed_set_total = NULL,
+            updated_at = NOW()
+          WHERE (match_method IS NULL OR match_method NOT LIKE 'manual%')
+            AND match_status <> 'Discarded (manual)'
+          RETURNING 1
+        )
+        SELECT COUNT(*)::int AS reset_count FROM reset
+      `
+    )
+
+    resetCount = resetRows?.[0]?.reset_count ?? 0
+
+    while (batches < maxBatches) {
+      const result = await runEnrichmentJob({ limit: batchSize })
+
+      totalAttempted += result.attempted
+      totalLinked += result.linked
+      remainingBefore = remainingBefore ?? result.remainingBefore
+      remainingAfter = result.remainingAfter
+
+      for (const [status, count] of Object.entries(result.statusCounts || {})) {
+        statusCounts.set(status, (statusCounts.get(status) || 0) + count)
+      }
+
+      batches += 1
+
+      if (!result.remainingAfter || result.remainingAfter <= 0 || result.attempted === 0) {
+        break
+      }
+    }
+
+    res.json({
+      ok: true,
+      batchSize,
+      batches,
+      totalAttempted,
+      totalLinked,
+      remainingBefore,
+      remainingAfter,
+      resetCount,
+      statusCounts: Object.fromEntries(statusCounts)
+    })
+  } catch (error) {
+    console.error('Failed to run full enrichment pass', error)
+    res.status(500).json({ ok: false, error: String(error) })
+  } finally {
+    client.release()
+  }
+})
+
 app.post('/api/enrichment/discard', async (req, res) => {
   if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
 
