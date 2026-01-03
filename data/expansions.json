@@ -1240,16 +1240,16 @@
     "image_url": null,
     "cards_file": "blackbold.json"
   },
-  {
-    "set_code": "MEGA_EVOLUTION",
-    "name": "Mega Evolution",
-    "era": "Mega Evolution",
-    "language": "EN",
-    "set_total": 188,
-    "release_date": "2025-09-26",
-    "image_url": "/sets/ME1_Logo_EN.png",
-    "cards_file": "megaevelutions.json"
-  },
+    {
+      "set_code": "MEGA_EVOLUTION",
+      "name": "Mega Evolution",
+      "era": "Mega Evolution",
+      "language": "EN",
+      "set_total": 132,
+      "release_date": "2025-09-26",
+      "image_url": "/sets/ME1_Logo_EN.png",
+      "cards_file": "megaevelutions.json"
+    },
   {
     "set_code": "PHANTASMAL_FLAMES",
     "name": "Phantasmal Flames",
