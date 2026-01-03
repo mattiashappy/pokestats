@@ -418,7 +418,7 @@ async function ensureCardsTableAvailable() {
         card_number TEXT,
         expansion_id INTEGER REFERENCES public.expansions(id),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        CONSTRAINT cards_unique_name_set UNIQUE (name, set_name)
+        CONSTRAINT cards_expansion_card_number_key UNIQUE (expansion_id, card_number)
       )
     `)
 
