@@ -72,16 +72,12 @@ export function DataEnrichmentPage(): JSX.Element {
 
   const unmatchedAuctions = unmatchedQuery.data ?? []
   const readyForManualMatch = useMemo(
-    () =>
-      unmatchedAuctions.filter(
-        (auction) =>
-          Boolean(auction.matched_set_code) && (auction.parsed_card_number !== null || auction.parsed_set_total !== null)
-      ),
+    () => unmatchedAuctions.filter((auction) => Boolean(auction.matched_set_code)),
     [unmatchedAuctions]
   )
   const needsMoreInfo = useMemo(
-    () => unmatchedAuctions.filter((auction) => !readyForManualMatch.includes(auction)),
-    [readyForManualMatch, unmatchedAuctions]
+    () => unmatchedAuctions.filter((auction) => !Boolean(auction.matched_set_code)),
+    [unmatchedAuctions]
   )
 
   const refetchEnrichmentTables = () => {
@@ -280,7 +276,10 @@ export function DataEnrichmentPage(): JSX.Element {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Ready for manual match</p>
-                <p className="text-xs text-slate-500">Prioritized rows with parsed set hints and card numbers.</p>
+                <p className="text-xs text-slate-500">
+                  Rows with a detected set hint that you can link manually; parsed numbers surface the easiest wins
+                  first.
+                </p>
               </div>
               {unmatchedQuery.isFetching ? <span className="text-xs text-slate-500">Refreshing…</span> : null}
             </div>
