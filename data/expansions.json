@@ -447,7 +447,7 @@
     "set_total": 91,
     "release_date": "2010-08-18",
     "image_url": "/sets/HS3_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Undaunted.json"
   },
   {
     "set_code": "HGSS_TRIUMPHANT",
@@ -787,7 +787,7 @@
     "set_total": 111,
     "release_date": "2017-11-03",
     "image_url": "/sets/SM4_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Crimsoninvasion.json"
   },
   {
     "set_code": "ULTRA_PRISM",
