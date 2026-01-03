@@ -2041,6 +2041,8 @@ app.post('/api/enrichment/run', async (req, res) => {
 app.post('/api/enrichment/run-all', async (req, res) => {
   const batchSize = Math.max(1, Math.min(Number(req.body?.batchSize) || 100, 1000))
   const maxBatches = Math.max(1, Math.min(Number(req.body?.maxBatches) || 1000, 5000))
+  const runAllStartedAtQuery = await pool.query('SELECT NOW()')
+  const runAllStartedAt = runAllStartedAtQuery.rows[0]?.now ?? new Date()
   const runStartedAtQuery = await pool.query('SELECT NOW()')
   const runStartedAt = runStartedAtQuery.rows[0]?.now ?? new Date()
   const runStartedAt = new Date()
@@ -2056,6 +2058,8 @@ app.post('/api/enrichment/run-all', async (req, res) => {
     while (batches < maxBatches) {
       const result = await runEnrichmentJob({
         limit: batchSize,
+        runStartedAt: runAllStartedAt,
+        logPrefix: `[Enrichment run @ ${runAllStartedAt.toISOString()}]`
         runStartedAt,
         logPrefix: `[Enrichment run @ ${runStartedAt.toISOString()}]`
       })
