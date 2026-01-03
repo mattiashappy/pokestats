@@ -160,8 +160,7 @@ export function DataEnrichmentPage(): JSX.Element {
               totals, and debug metadata for every row.
             </p>
             <p className="text-xs text-slate-500">
-              Use the full re-run to re-queue every non-manual auction, then process them in batches of 100 without
-              overloading the matcher.
+              Use the full re-run to process all auctions in batches of 100 without overloading the matcher.
             </p>
             <label className="text-xs uppercase text-slate-500">Batch size</label>
             <div className="flex items-center gap-2">
@@ -218,7 +217,6 @@ export function DataEnrichmentPage(): JSX.Element {
                 <div className="flex items-center gap-2 font-semibold">
                   <AlertCircle className="h-4 w-4" /> Full re-run completed
                 </div>
-                <p className="mt-1">Re-queued {fullRunMutation.data.resetCount.toLocaleString()} auctions for matching.</p>
                 <p className="mt-1">Processed {fullRunMutation.data.totalAttempted.toLocaleString()} auctions across {fullRunMutation.data.batches} batches of {fullRunMutation.data.batchSize}.</p>
                 <p className="mt-1">Linked {fullRunMutation.data.totalLinked.toLocaleString()} auctions. Remaining: {fullRunMutation.data.remainingAfter ?? '–'} (previously {fullRunMutation.data.remainingBefore ?? '–'}).</p>
                 {Object.keys(fullRunMutation.data.statusCounts || {}).length ? (
