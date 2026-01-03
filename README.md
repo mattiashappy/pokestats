@@ -88,3 +88,21 @@ npm start                             # /api/sales now returns the imported rows
 ```
 
 If the database is empty or unavailable, `/api/sales` falls back to the baked-in mock data.
+
+## Automating enrichment runs
+
+After new auctions are imported, run the enrichment matcher to link them to catalogued cards:
+
+```bash
+# Run locally (uses DATABASE_URL)
+npm run enrich -- 500   # optional limit argument
+```
+
+On Heroku, add a Scheduler job that executes the same command so new auctions are automatically matched without manual clicks:
+
+```bash
+heroku addons:create scheduler:standard
+# In the Heroku Scheduler UI, create a job like:
+#   Command: npm run enrich -- 750
+#   Frequency: Every hour (or whatever cadence you prefer)
+```
