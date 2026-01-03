@@ -904,7 +904,7 @@
     "name": "Sword & Shield",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 202,
+    "set_total": 216,
     "release_date": "2020-02-07",
     "image_url": "/sets/SWSH1_Logo_EN.png",
     "cards_file": "Swordshield.json"
@@ -914,7 +914,7 @@
     "name": "Rebel Clash",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 192,
+    "set_total": 209,
     "release_date": "2020-05-01",
     "image_url": "/sets/SWSH2_Logo_EN.png",
     "cards_file": "Rebelclash.json"
@@ -924,7 +924,7 @@
     "name": "Darkness Ablaze",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 189,
+    "set_total": 201,
     "release_date": "2020-08-14",
     "image_url": "/sets/SWSH3_Logo_EN.png",
     "cards_file": "Darknessablaze.json"
@@ -934,7 +934,7 @@
     "name": "Champion's Path",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 73,
+    "set_total": 80,
     "release_date": "2020-09-25",
     "image_url": "/sets/Champion_Path_Logo_EN.png",
     "cards_file": "Championspath.json"
@@ -944,7 +944,7 @@
     "name": "Vivid Voltage",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 185,
+    "set_total": 203,
     "release_date": "2020-11-13",
     "image_url": "/sets/SWSH4_Logo_EN.png",
     "cards_file": "Vividvoltage.json"
@@ -954,7 +954,7 @@
     "name": "Shining Fates",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 73,
+    "set_total": 195,
     "release_date": "2021-02-19",
     "image_url": "/sets/Shining_Fates_Logo_EN.png",
     "cards_file": "Shiningfates.json"
@@ -974,7 +974,7 @@
     "name": "Chilling Reign",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 198,
+    "set_total": 233,
     "release_date": "2021-06-18",
     "image_url": "/sets/SWSH6_Logo_EN.png",
     "cards_file": "Chillingreign.json"
@@ -984,7 +984,7 @@
     "name": "Evolving Skies",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 203,
+    "set_total": 237,
     "release_date": "2021-08-27",
     "image_url": "/sets/SWSH7_Logo_EN.png",
     "cards_file": "Evolvingskies.json"
@@ -1004,7 +1004,7 @@
     "name": "Fusion Strike",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 264,
+    "set_total": 284,
     "release_date": "2021-11-12",
     "image_url": "/sets/SWSH8_Logo_EN.png",
     "cards_file": "Fusionstrike.json"
@@ -1014,7 +1014,7 @@
     "name": "Brilliant Stars",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 172,
+    "set_total": 216,
     "release_date": "2022-02-25",
     "image_url": "/sets/SWSH9_Logo_EN.png",
     "cards_file": "Brilliantstars.json"
@@ -1024,7 +1024,7 @@
     "name": "Astral Radiance",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 189,
+    "set_total": 246,
     "release_date": "2022-05-27",
     "image_url": "/sets/SWSH10_Logo_EN.png",
     "cards_file": "Astraltadiance.json"
@@ -1044,7 +1044,7 @@
     "name": "Lost Origin",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 196,
+    "set_total": 247,
     "release_date": "2022-09-09",
     "image_url": "/sets/SWSH11_Logo_EN.png",
     "cards_file": "Lostorigin.json"
@@ -1054,7 +1054,7 @@
     "name": "Silver Tempest",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 195,
+    "set_total": 245,
     "release_date": "2022-11-11",
     "image_url": "/sets/SWSH12_Logo_EN.png",
     "cards_file": "Silvertempest.json"
@@ -1064,7 +1064,7 @@
     "name": "Crown Zenith",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 159,
+    "set_total": 230,
     "release_date": "2023-01-20",
     "image_url": "/sets/Crown_Zenith_Logo_EN.png",
     "cards_file": "Crownzenith.json"
