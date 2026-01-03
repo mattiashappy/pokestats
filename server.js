@@ -1821,16 +1821,16 @@ app.post('/api/import/run', async (_req, res) => {
 // --------------------
 // Enrichment
 // --------------------
-app.post('/api/enrichment/run', async (req, res) => {
-  if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
+async function runEnrichmentJob({ limit = 500, logPrefix } = {}) {
+  if (!pool) throw new Error('DATABASE_URL not set')
 
   const ok = await ensureCardInfrastructure()
-  if (!ok) return res.status(500).json({ ok: false, error: 'Card infrastructure unavailable' })
+  if (!ok) throw new Error('Card infrastructure unavailable')
 
-  const limit = Math.min(Math.max(Number(req.body?.limit) || 500, 1), 1000)
+  const safeLimit = Math.min(Math.max(Number(limit) || 500, 1), 1000)
+  const logLabel = logPrefix || `[Enrichment run @ ${new Date().toISOString()}]`
 
-  const logPrefix = `[Enrichment run @ ${new Date().toISOString()}]`
-  console.info(`${logPrefix} Preparing matcher for up to ${limit} auctions`)
+  console.info(`${logLabel} Preparing matcher for up to ${safeLimit} auctions`)
 
   const client = await pool.connect()
   try {
@@ -1838,7 +1838,7 @@ app.post('/api/enrichment/run', async (req, res) => {
     const cardIndex = await buildDatabaseCardIndex()
 
     console.info(
-      `${logPrefix} Loaded matcher indexes (eras: ${Object.keys(matcherIndexes.setsByEraAndTotal || {}).length}, ` +
+      `${logLabel} Loaded matcher indexes (eras: ${Object.keys(matcherIndexes.setsByEraAndTotal || {}).length}, ` +
         `sets: ${Object.keys(matcherIndexes.cardsBySetAndNumber || {}).length})`
     )
 
@@ -1861,69 +1861,69 @@ app.post('/api/enrichment/run', async (req, res) => {
         ORDER BY end_date ASC NULLS LAST
         LIMIT $1
       `,
-      [limit]
+      [safeLimit]
     )
 
     const statusCounts = new Map()
-let linked = 0
-let processed = 0
+    let linked = 0
+    let processed = 0
 
-for (const row of rows) {
-  const match = matchAuction(row, matcherIndexes)
+    for (const row of rows) {
+      const match = matchAuction(row, matcherIndexes)
 
-  const confidence = match.match_status?.includes('High')
-    ? 'high'
-    : match.match_status?.includes('Medium')
-      ? 'medium'
-      : match.match_status?.includes('Low')
-        ? 'low'
-        : null
+      const confidence = match.match_status?.includes('High')
+        ? 'high'
+        : match.match_status?.includes('Medium')
+          ? 'medium'
+          : match.match_status?.includes('Low')
+            ? 'low'
+            : null
 
-  const matchedCardId =
-    match.matched_card_id ||
-    (match.matched_set_code && match.matched_card_number
-      ? cardIndex?.[match.matched_set_code]?.[match.matched_card_number] || null
-      : null)
+      const matchedCardId =
+        match.matched_card_id ||
+        (match.matched_set_code && match.matched_card_number
+          ? cardIndex?.[match.matched_set_code]?.[match.matched_card_number] || null
+          : null)
 
-  if (matchedCardId) linked++
+      if (matchedCardId) linked++
 
-  const debugPayload = { ...match, matched_card_id: matchedCardId }
+      const debugPayload = { ...match, matched_card_id: matchedCardId }
 
-  await client.query(
-    `
-      UPDATE public.tradera_sales
-      SET
-        match_status = $2,
-        match_confidence = $3,
-        matched_set_code = $4,
-        matched_era = $5,
-        parsed_card_number = $6,
-        parsed_set_total = $7,
-        card_id = $8,
-        match_debug = $9,
-        updated_at = NOW()
-      WHERE item_id = $1
-    `,
-    [
-      row.item_id,
-      match.match_status,
-      confidence,
-      match.matched_set_code,
-      match.matched_era,
-      match.parsed_card_number,
-      match.parsed_set_total,
-      matchedCardId,
-      JSON.stringify(debugPayload)
-    ]
-  )
+      await client.query(
+        `
+          UPDATE public.tradera_sales
+          SET
+            match_status = $2,
+            match_confidence = $3,
+            matched_set_code = $4,
+            matched_era = $5,
+            parsed_card_number = $6,
+            parsed_set_total = $7,
+            card_id = $8,
+            match_debug = $9,
+            updated_at = NOW()
+          WHERE item_id = $1
+        `,
+        [
+          row.item_id,
+          match.match_status,
+          confidence,
+          match.matched_set_code,
+          match.matched_era,
+          match.parsed_card_number,
+          match.parsed_set_total,
+          matchedCardId,
+          JSON.stringify(debugPayload)
+        ]
+      )
 
-  statusCounts.set(match.match_status || 'Unknown', (statusCounts.get(match.match_status || 'Unknown') || 0) + 1)
+      statusCounts.set(match.match_status || 'Unknown', (statusCounts.get(match.match_status || 'Unknown') || 0) + 1)
 
-  processed++
-  if (processed % 50 === 0) {
-    console.info(`${logPrefix} Progress: processed ${processed}/${rows.length}`)
-  }
-}
+      processed++
+      if (processed % 50 === 0) {
+        console.info(`${logLabel} Progress: processed ${processed}/${rows.length}`)
+      }
+    }
 
     const {
       rows: [after]
@@ -1944,18 +1944,25 @@ for (const row of rows) {
       remainingAfter: after?.count ?? null
     }
     console.info(
-      `${logPrefix} Completed matcher run. Attempted ${payload.attempted}, linked ${payload.linked}, ` +
+      `${logLabel} Completed matcher run. Attempted ${payload.attempted}, linked ${payload.linked}, ` +
         `remaining ${payload.remainingAfter}/${payload.remainingBefore} before next run, status counts: ${JSON.stringify(
           payload.statusCounts
         )}`
     )
 
+    return payload
+  } finally {
+    client.release()
+  }
+}
+
+app.post('/api/enrichment/run', async (req, res) => {
+  try {
+    const payload = await runEnrichmentJob({ limit: req.body?.limit })
     res.json(payload)
   } catch (error) {
     console.error('Failed to run enrichment matcher', error)
     res.status(500).json({ ok: false, error: String(error) })
-  } finally {
-    client.release()
   }
 })
 
@@ -2171,6 +2178,10 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(distPath, 'index.html'))
 })
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
-})
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`)
+  })
+}
+
+module.exports = { app, pool, runEnrichmentJob }
