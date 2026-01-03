@@ -82,7 +82,8 @@ export function DataEnrichmentPage(): JSX.Element {
           <p className="text-xs uppercase text-slate-500">Data Enrichment</p>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Auction → Card matcher</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Rebuilt to rely on ERA + set totals + set hints for deterministic matching.
+            Rebuilt to rely on ERA + set totals + set hints for deterministic matching. Oldest unseen auctions are
+            processed first to work through the backlog.
           </p>
         </div>
         <Button
@@ -146,7 +147,8 @@ export function DataEnrichmentPage(): JSX.Element {
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
             <p>
-              The matcher processes recent auctions and records match status, set totals, and debug metadata for every row.
+              The matcher processes the next batch of untouched auctions (oldest first) and records match status, set
+              totals, and debug metadata for every row.
             </p>
             <label className="text-xs uppercase text-slate-500">Batch size</label>
             <div className="flex items-center gap-2">
@@ -167,7 +169,14 @@ export function DataEnrichmentPage(): JSX.Element {
                 <div className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
                   <AlertCircle className="h-4 w-4" /> Matcher result
                 </div>
-                <p className="mt-1">Processed {mutation.data.attempted} auctions; linked {mutation.data.linked} cards.</p>
+                <p className="mt-1">
+                  Processed {mutation.data.attempted} auctions; linked {mutation.data.linked} cards.
+                </p>
+                {mutation.data.remainingBefore !== null && mutation.data.remainingAfter !== null ? (
+                  <p className="mt-1">
+                    Remaining in queue: {mutation.data.remainingAfter} (previously {mutation.data.remainingBefore}).
+                  </p>
+                ) : null}
                 {Object.keys(mutation.data.statusCounts || {}).length ? (
                   <ul className="mt-2 list-disc space-y-1 pl-4">
                     {Object.entries(mutation.data.statusCounts).map(([status, count]) => (
