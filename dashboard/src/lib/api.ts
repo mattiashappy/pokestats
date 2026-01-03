@@ -58,6 +58,8 @@ export async function runEnrichment(limit = 300) {
     attempted: number
     linked: number
     statusCounts: Record<string, number>
+    remainingBefore: number | null
+    remainingAfter: number | null
   }>
 }
 

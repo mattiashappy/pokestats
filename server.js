@@ -1830,7 +1830,7 @@ app.post('/api/enrichment/run', async (req, res) => {
   const limit = Math.min(Math.max(Number(req.body?.limit) || 500, 1), 1000)
 
   const logPrefix = `[Enrichment run @ ${new Date().toISOString()}]`
-  console.info(`${logPrefix} Starting matcher for ${limit} auctions`)
+  console.info(`${logPrefix} Preparing matcher for up to ${limit} auctions`)
 
   const client = await pool.connect()
   try {
@@ -1842,11 +1842,23 @@ app.post('/api/enrichment/run', async (req, res) => {
         `sets: ${Object.keys(matcherIndexes.cardsBySetAndNumber || {}).length})`
     )
 
+    const {
+      rows: [before]
+    } = await client.query(
+      `
+        SELECT COUNT(*)::int AS count
+        FROM public.tradera_sales
+        WHERE match_status IS NULL AND card_id IS NULL AND COALESCE(match_status, '') <> 'Discarded (manual)'
+      `
+    )
+
     const { rows } = await client.query(
       `
         SELECT item_id, title, attributes, era, pokemon_era
         FROM public.tradera_sales
-        ORDER BY end_date DESC
+        WHERE match_status IS NULL AND card_id IS NULL
+        AND COALESCE(match_status, '') <> 'Discarded (manual)'
+        ORDER BY end_date ASC NULLS LAST
         LIMIT $1
       `,
       [limit]
@@ -1913,11 +1925,29 @@ for (const row of rows) {
   }
 }
 
-    const payload = { ok: true, attempted: rows.length, linked, statusCounts: Object.fromEntries(statusCounts) }
+    const {
+      rows: [after]
+    } = await client.query(
+      `
+        SELECT COUNT(*)::int AS count
+        FROM public.tradera_sales
+        WHERE match_status IS NULL AND card_id IS NULL AND COALESCE(match_status, '') <> 'Discarded (manual)'
+      `
+    )
+
+    const payload = {
+      ok: true,
+      attempted: rows.length,
+      linked,
+      statusCounts: Object.fromEntries(statusCounts),
+      remainingBefore: before?.count ?? null,
+      remainingAfter: after?.count ?? null
+    }
     console.info(
-      `${logPrefix} Completed matcher run. Attempted ${payload.attempted}, linked ${payload.linked}, status counts: ${JSON.stringify(
-        payload.statusCounts
-      )}`
+      `${logPrefix} Completed matcher run. Attempted ${payload.attempted}, linked ${payload.linked}, ` +
+        `remaining ${payload.remainingAfter}/${payload.remainingBefore} before next run, status counts: ${JSON.stringify(
+          payload.statusCounts
+        )}`
     )
 
     res.json(payload)
