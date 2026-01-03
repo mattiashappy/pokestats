@@ -1877,19 +1877,20 @@ app.post('/api/import/run', async (_req, res) => {
 // --------------------
 // Enrichment
 // --------------------
-async function runEnrichmentJob({ limit = 500, logPrefix } = {}) {
+async function runEnrichmentJob({ limit = 500, logPrefix, runStartedAt } = {}) {
   if (!pool) throw new Error('DATABASE_URL not set')
 
   const ok = await ensureCardInfrastructure()
   if (!ok) throw new Error('Card infrastructure unavailable')
 
   const safeLimit = Math.min(Math.max(Number(limit) || 500, 1), 1000)
-  const logLabel = logPrefix || `[Enrichment run @ ${new Date().toISOString()}]`
-
-  console.info(`${logLabel} Preparing matcher for up to ${safeLimit} auctions`)
-
   const client = await pool.connect()
   try {
+    const startedAt = runStartedAt ? new Date(runStartedAt) : (await client.query('SELECT NOW()')).rows[0].now
+    const logLabel = logPrefix || `[Enrichment run @ ${startedAt.toISOString()}]`
+
+    console.info(`${logLabel} Preparing matcher for up to ${safeLimit} auctions`)
+
     const matcherIndexes = await loadMatcherIndexes()
     const cardIndex = await buildDatabaseCardIndex()
 
@@ -1906,9 +1907,10 @@ async function runEnrichmentJob({ limit = 500, logPrefix } = {}) {
         FROM public.tradera_sales
         WHERE card_id IS NULL
           AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')
-          AND (match_status IS NULL OR match_status = '')
           AND COALESCE(match_status, '') <> 'Discarded (manual)'
-      `
+          AND (updated_at IS NULL OR updated_at < $1)
+      `,
+      [startedAt]
     )
 
     const { rows } = await client.query(
@@ -1917,12 +1919,12 @@ async function runEnrichmentJob({ limit = 500, logPrefix } = {}) {
         FROM public.tradera_sales
         WHERE card_id IS NULL
           AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')
-          AND (match_status IS NULL OR match_status = '')
           AND COALESCE(match_status, '') <> 'Discarded (manual)'
+          AND (updated_at IS NULL OR updated_at < $2)
         ORDER BY end_date ASC NULLS LAST
         LIMIT $1
       `,
-      [safeLimit]
+      [safeLimit, startedAt]
     )
 
     const statusCounts = new Map()
@@ -1994,9 +1996,10 @@ async function runEnrichmentJob({ limit = 500, logPrefix } = {}) {
         FROM public.tradera_sales
         WHERE card_id IS NULL
           AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')
-          AND (match_status IS NULL OR match_status = '')
           AND COALESCE(match_status, '') <> 'Discarded (manual)'
-      `
+          AND (updated_at IS NULL OR updated_at < $1)
+      `,
+      [startedAt]
     )
 
     const payload = {
@@ -2033,6 +2036,8 @@ app.post('/api/enrichment/run', async (req, res) => {
 app.post('/api/enrichment/run-all', async (req, res) => {
   const batchSize = Math.max(1, Math.min(Number(req.body?.batchSize) || 100, 1000))
   const maxBatches = Math.max(1, Math.min(Number(req.body?.maxBatches) || 1000, 5000))
+  const rerunStartedAtQuery = await pool.query('SELECT NOW()')
+  const rerunStartedAt = rerunStartedAtQuery.rows[0]?.now ?? new Date()
 
   let totalAttempted = 0
   let totalLinked = 0
@@ -2043,7 +2048,11 @@ app.post('/api/enrichment/run-all', async (req, res) => {
 
   try {
     while (batches < maxBatches) {
-      const result = await runEnrichmentJob({ limit: batchSize })
+      const result = await runEnrichmentJob({
+        limit: batchSize,
+        runStartedAt: rerunStartedAt,
+        logPrefix: `[Enrichment run @ ${rerunStartedAt.toISOString()}]`
+      })
 
       totalAttempted += result.attempted
       totalLinked += result.linked
