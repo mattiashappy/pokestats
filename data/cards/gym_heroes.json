@@ -1,0 +1,12 @@
+{
+  "set_code": "GYMHEROES",
+  "set_name": "Gym Heroes",
+  "set_total": 132,
+  "cards": [
+    {
+      "card_number": "87/132",
+      "name": "Misty's Poliwag",
+      "image_url": "https://images.pokemontcg.io/gym1/87_hires.png"
+    }
+  ]
+}

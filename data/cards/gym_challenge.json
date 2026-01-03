@@ -1,0 +1,12 @@
+{
+  "set_code": "GYMCHALLENGE",
+  "set_name": "Gym Challenge",
+  "set_total": 132,
+  "cards": [
+    {
+      "card_number": "2/132",
+      "name": "Blaine's Charizard",
+      "image_url": "https://images.pokemontcg.io/gym2/2_hires.png"
+    }
+  ]
+}
