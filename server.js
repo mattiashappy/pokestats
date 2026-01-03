@@ -293,6 +293,31 @@ async function ensureConstraintExists(tableName, constraintName, definition) {
   }
 }
 
+async function dropConstraintIfExists(tableName, constraintName) {
+  const { rows } = await pool.query(
+    `
+      SELECT 1
+      FROM pg_constraint c
+      JOIN pg_namespace n ON n.oid = c.connamespace
+      JOIN pg_class t ON t.oid = c.conrelid
+      WHERE n.nspname = 'public'
+        AND t.relname = $1
+        AND c.conname = $2
+    `,
+    [tableName, constraintName]
+  )
+
+  if (rows.length === 0) return true
+
+  try {
+    await pool.query(`ALTER TABLE public.${tableName} DROP CONSTRAINT IF EXISTS ${constraintName}`)
+    return true
+  } catch (error) {
+    console.error(`Failed to drop constraint ${constraintName} on ${tableName}`, error)
+    return false
+  }
+}
+
 async function ensureImportRunsTable() {
   if (!pool) return false
   if (hasCheckedImportRunsTable) return importRunsTableAvailable
@@ -404,6 +429,11 @@ async function ensureCardsTableAvailable() {
     const productDetailsOk = await ensureColumnExists('cards', 'product_details', 'TEXT')
     const cardNumberOk = await ensureColumnExists('cards', 'card_number', 'TEXT')
 
+    const removedNameSetConstraint = await dropConstraintIfExists(
+      'cards',
+      'cards_unique_name_set'
+    )
+
     const uniqueByExpansionNumber = await ensureConstraintExists(
       'cards',
       'cards_expansion_card_number_key',
@@ -420,6 +450,7 @@ async function ensureCardsTableAvailable() {
         imageUrlOk &&
         productDetailsOk &&
         cardNumberOk &&
+        removedNameSetConstraint &&
         uniqueByExpansionNumber &&
         setCodeIdx &&
         numberIdx
