@@ -30,6 +30,8 @@ const FULL_RUN_BATCH_SIZE = 500
 
 export function DataEnrichmentPage(): JSX.Element {
   const [runLimit, setRunLimit] = useState(300)
+  const [unmatchedLimit, setUnmatchedLimit] = useState(50)
+  const [unmatchedLimitInput, setUnmatchedLimitInput] = useState('50')
 
   const summaryQuery = useQuery({
     queryKey: ['enrichment-summary'],
@@ -37,8 +39,8 @@ export function DataEnrichmentPage(): JSX.Element {
   })
 
   const unmatchedQuery = useQuery({
-    queryKey: ['enrichment-unmatched'],
-    queryFn: () => fetchUnmatchedAuctions(25)
+    queryKey: ['enrichment-unmatched', unmatchedLimit],
+    queryFn: () => fetchUnmatchedAuctions(unmatchedLimit)
   })
 
   const mutation = useMutation({
@@ -70,20 +72,23 @@ export function DataEnrichmentPage(): JSX.Element {
 
   const unmatchedAuctions = unmatchedQuery.data ?? []
   const readyForManualMatch = useMemo(
-    () =>
-      unmatchedAuctions.filter(
-        (auction) =>
-          Boolean(auction.matched_set_code) && (auction.parsed_card_number !== null || auction.parsed_set_total !== null)
-      ),
+    () => unmatchedAuctions.filter((auction) => Boolean(auction.matched_set_code)),
     [unmatchedAuctions]
   )
   const needsMoreInfo = useMemo(
-    () => unmatchedAuctions.filter((auction) => !readyForManualMatch.includes(auction)),
-    [readyForManualMatch, unmatchedAuctions]
+    () => unmatchedAuctions.filter((auction) => !Boolean(auction.matched_set_code)),
+    [unmatchedAuctions]
   )
 
   const refetchEnrichmentTables = () => {
     unmatchedQuery.refetch()
+  }
+
+  const applyUnmatchedLimit = () => {
+    const parsed = Number(unmatchedLimitInput)
+    const nextLimit = Math.min(500, Math.max(10, Number.isFinite(parsed) ? parsed : unmatchedLimit))
+    setUnmatchedLimit(nextLimit)
+    setUnmatchedLimitInput(String(nextLimit))
   }
 
   return (
@@ -242,14 +247,39 @@ export function DataEnrichmentPage(): JSX.Element {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Items needing review</CardTitle>
-          {unmatchedQuery.isFetching ? <span className="text-xs text-slate-500">Loading…</span> : null}
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <span>
+              Showing {unmatchedAuctions.length.toLocaleString('sv-SE')} of{' '}
+              {summaryQuery.data?.needsReview?.toLocaleString('sv-SE') ?? '–'} items needing review
+            </span>
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] uppercase tracking-wide">Rows to load</label>
+              <Input
+                className="h-8 max-w-[96px]"
+                type="number"
+                min={10}
+                max={500}
+                value={unmatchedLimitInput}
+                onChange={(e) => setUnmatchedLimitInput(e.target.value)}
+              />
+              <Button size="sm" variant="outline" onClick={applyUnmatchedLimit} disabled={unmatchedQuery.isFetching}>
+                {unmatchedQuery.isFetching ? 'Updating…' : `Load ${Number(unmatchedLimitInput) || unmatchedLimit}`}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => unmatchedQuery.refetch()} disabled={unmatchedQuery.isFetching}>
+                Refresh
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Ready for manual match</p>
-                <p className="text-xs text-slate-500">Prioritized rows with parsed set hints and card numbers.</p>
+                <p className="text-xs text-slate-500">
+                  Rows with a detected set hint that you can link manually; parsed numbers surface the easiest wins
+                  first.
+                </p>
               </div>
               {unmatchedQuery.isFetching ? <span className="text-xs text-slate-500">Refreshing…</span> : null}
             </div>
