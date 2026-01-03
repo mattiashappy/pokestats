@@ -1157,7 +1157,8 @@
     "set_total": 64,
     "release_date": "2024-08-02",
     "image_url": "/sets/SV6.5_Logo_EN.png",
-    "cards_file": "Shroudedfable.json"
+    "cards_file": "Shroudedfable.json",
+    "aliases": ["Shroudedfable", "SV6.5", "SV6 5"]
   },
   {
     "set_code": "STELLAR_CROWN",
