@@ -268,6 +268,56 @@ async function ensureIndexExists(tableName, indexName, definition) {
   }
 }
 
+async function ensureConstraintExists(tableName, constraintName, definition) {
+  const { rows } = await pool.query(
+    `
+      SELECT 1
+      FROM pg_constraint c
+      JOIN pg_namespace n ON n.oid = c.connamespace
+      JOIN pg_class t ON t.oid = c.conrelid
+      WHERE n.nspname = 'public'
+        AND t.relname = $1
+        AND c.conname = $2
+    `,
+    [tableName, constraintName]
+  )
+
+  if (rows.length > 0) return true
+
+  try {
+    await pool.query(`ALTER TABLE public.${tableName} ADD CONSTRAINT ${constraintName} ${definition}`)
+    return true
+  } catch (error) {
+    console.error(`Failed to create constraint ${constraintName} on ${tableName}`, error)
+    return false
+  }
+}
+
+async function dropConstraintIfExists(tableName, constraintName) {
+  const { rows } = await pool.query(
+    `
+      SELECT 1
+      FROM pg_constraint c
+      JOIN pg_namespace n ON n.oid = c.connamespace
+      JOIN pg_class t ON t.oid = c.conrelid
+      WHERE n.nspname = 'public'
+        AND t.relname = $1
+        AND c.conname = $2
+    `,
+    [tableName, constraintName]
+  )
+
+  if (rows.length === 0) return true
+
+  try {
+    await pool.query(`ALTER TABLE public.${tableName} DROP CONSTRAINT IF EXISTS ${constraintName}`)
+    return true
+  } catch (error) {
+    console.error(`Failed to drop constraint ${constraintName} on ${tableName}`, error)
+    return false
+  }
+}
+
 async function ensureImportRunsTable() {
   if (!pool) return false
   if (hasCheckedImportRunsTable) return importRunsTableAvailable
@@ -368,7 +418,7 @@ async function ensureCardsTableAvailable() {
         card_number TEXT,
         expansion_id INTEGER REFERENCES public.expansions(id),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        CONSTRAINT cards_unique_name_set UNIQUE (name, set_name)
+        CONSTRAINT cards_expansion_card_number_key UNIQUE (expansion_id, card_number)
       )
     `)
 
@@ -379,10 +429,15 @@ async function ensureCardsTableAvailable() {
     const productDetailsOk = await ensureColumnExists('cards', 'product_details', 'TEXT')
     const cardNumberOk = await ensureColumnExists('cards', 'card_number', 'TEXT')
 
-    const uniqueByExpansionNumber = await ensureIndexExists(
+    const removedNameSetConstraint = await dropConstraintIfExists(
       'cards',
-      'cards_unique_expansion_number',
-      'UNIQUE (expansion_id, card_number) WHERE expansion_id IS NOT NULL AND card_number IS NOT NULL'
+      'cards_unique_name_set'
+    )
+
+    const uniqueByExpansionNumber = await ensureConstraintExists(
+      'cards',
+      'cards_expansion_card_number_key',
+      'UNIQUE (expansion_id, card_number)'
     )
 
     const setCodeIdx = await ensureIndexExists('cards', 'idx_cards_set_code', '(set_code)')
@@ -395,6 +450,7 @@ async function ensureCardsTableAvailable() {
         imageUrlOk &&
         productDetailsOk &&
         cardNumberOk &&
+        removedNameSetConstraint &&
         uniqueByExpansionNumber &&
         setCodeIdx &&
         numberIdx
@@ -675,7 +731,7 @@ async function ensureStaticCatalogSeeded() {
                 expansion_id
               )
               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-              ON CONFLICT (expansion_id, card_number) DO UPDATE SET
+              ON CONFLICT ON CONSTRAINT cards_expansion_card_number_key DO UPDATE SET
                 name = EXCLUDED.name,
                 set_name = EXCLUDED.set_name,
                 era = COALESCE(EXCLUDED.era, cards.era),
@@ -1848,7 +1904,9 @@ async function runEnrichmentJob({ limit = 500, logPrefix } = {}) {
       `
         SELECT COUNT(*)::int AS count
         FROM public.tradera_sales
-        WHERE match_status IS NULL AND card_id IS NULL AND COALESCE(match_status, '') <> 'Discarded (manual)'
+        WHERE card_id IS NULL
+          AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')
+          AND COALESCE(match_status, '') <> 'Discarded (manual)'
       `
     )
 
@@ -1856,8 +1914,9 @@ async function runEnrichmentJob({ limit = 500, logPrefix } = {}) {
       `
         SELECT item_id, title, attributes, era, pokemon_era
         FROM public.tradera_sales
-        WHERE match_status IS NULL AND card_id IS NULL
-        AND COALESCE(match_status, '') <> 'Discarded (manual)'
+        WHERE card_id IS NULL
+          AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')
+          AND COALESCE(match_status, '') <> 'Discarded (manual)'
         ORDER BY end_date ASC NULLS LAST
         LIMIT $1
       `,
@@ -1931,7 +1990,9 @@ async function runEnrichmentJob({ limit = 500, logPrefix } = {}) {
       `
         SELECT COUNT(*)::int AS count
         FROM public.tradera_sales
-        WHERE match_status IS NULL AND card_id IS NULL AND COALESCE(match_status, '') <> 'Discarded (manual)'
+        WHERE card_id IS NULL
+          AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')
+          AND COALESCE(match_status, '') <> 'Discarded (manual)'
       `
     )
 
