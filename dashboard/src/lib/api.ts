@@ -83,6 +83,7 @@ export async function runFullEnrichment(batchSize = 100) {
     totalLinked: number
     remainingBefore: number | null
     remainingAfter: number | null
+    resetCount: number
     statusCounts: Record<string, number>
   }>
 }
