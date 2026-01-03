@@ -1360,7 +1360,16 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
       c.card_number
   `
   const result = await pool.query(query, params)
-  return result.rows.map(applyCardOverrides)
+  const dbCards = result.rows.map(applyCardOverrides)
+
+  // If the database has no cards for this set, fall back to the static catalog so
+  // set pages still render cards instead of an empty list.
+  if (dbCards.length === 0 && setCode) {
+    const staticCards = await getStaticCardsForSet(setCode)
+    if (staticCards.length) return staticCards
+  }
+
+  return dbCards
 }
 
 async function fetchExpansionSummaries() {
