@@ -1891,6 +1891,11 @@ async function runEnrichmentJob({ limit = 500, logPrefix, runStartedAt } = {}) {
 
   const client = await pool.connect()
   try {
+    const startedAt = runStartedAt ? new Date(runStartedAt) : (await client.query('SELECT NOW()')).rows[0].now
+    const logLabel = logPrefix || `[Enrichment run @ ${startedAt.toISOString()}]`
+
+    console.info(`${logLabel} Preparing matcher for up to ${safeLimit} auctions`)
+
     const matcherIndexes = await loadMatcherIndexes()
     const cardIndex = await buildDatabaseCardIndex()
 
@@ -2036,6 +2041,8 @@ app.post('/api/enrichment/run', async (req, res) => {
 app.post('/api/enrichment/run-all', async (req, res) => {
   const batchSize = Math.max(1, Math.min(Number(req.body?.batchSize) || 100, 1000))
   const maxBatches = Math.max(1, Math.min(Number(req.body?.maxBatches) || 1000, 5000))
+  const runStartedAtQuery = await pool.query('SELECT NOW()')
+  const runStartedAt = runStartedAtQuery.rows[0]?.now ?? new Date()
   const runStartedAt = new Date()
 
   let totalAttempted = 0
