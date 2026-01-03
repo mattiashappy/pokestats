@@ -1884,6 +1884,11 @@ async function runEnrichmentJob({ limit = 500, logPrefix, runStartedAt } = {}) {
   if (!ok) throw new Error('Card infrastructure unavailable')
 
   const safeLimit = Math.min(Math.max(Number(limit) || 500, 1), 1000)
+  const startedAt = runStartedAt ? new Date(runStartedAt) : new Date()
+  const logLabel = logPrefix || `[Enrichment run @ ${new Date().toISOString()}]`
+
+  console.info(`${logLabel} Preparing matcher for up to ${safeLimit} auctions`)
+
   const client = await pool.connect()
   try {
     const startedAt = runStartedAt ? new Date(runStartedAt) : (await client.query('SELECT NOW()')).rows[0].now
@@ -2038,6 +2043,9 @@ app.post('/api/enrichment/run-all', async (req, res) => {
   const maxBatches = Math.max(1, Math.min(Number(req.body?.maxBatches) || 1000, 5000))
   const runAllStartedAtQuery = await pool.query('SELECT NOW()')
   const runAllStartedAt = runAllStartedAtQuery.rows[0]?.now ?? new Date()
+  const runStartedAtQuery = await pool.query('SELECT NOW()')
+  const runStartedAt = runStartedAtQuery.rows[0]?.now ?? new Date()
+  const runStartedAt = new Date()
 
   let totalAttempted = 0
   let totalLinked = 0
@@ -2052,6 +2060,8 @@ app.post('/api/enrichment/run-all', async (req, res) => {
         limit: batchSize,
         runStartedAt: runAllStartedAt,
         logPrefix: `[Enrichment run @ ${runAllStartedAt.toISOString()}]`
+        runStartedAt,
+        logPrefix: `[Enrichment run @ ${runStartedAt.toISOString()}]`
       })
 
       totalAttempted += result.attempted
