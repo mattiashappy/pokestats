@@ -47,7 +47,7 @@
     "set_total": 83,
     "release_date": "2000-04-24",
     "image_url": "/sets/Team_Rocket_Logo.png",
-    "cards_file": "team_rocket.json"
+    "cards_file": "Teamrocket.json"
   },
   {
     "set_code": "GYMHEROES",
@@ -77,7 +77,7 @@
     "set_total": 111,
     "release_date": "2000-12-16",
     "image_url": "/sets/Neo_Genesis_Logo_EN.png",
-    "cards_file": "neo_genesis.json"
+    "cards_file": "Neogenesis.json"
   },
   {
     "set_code": "NEODISCOVERY",
@@ -87,7 +87,7 @@
     "set_total": 75,
     "release_date": "2001-06-01",
     "image_url": "/sets/1920px-Neo_Discovery_Logo_EN.png",
-    "cards_file": "neo_discovery.json"
+    "cards_file": "Neodiscovery.json"
   },
   {
     "set_code": "NEOREVELATION",
@@ -97,7 +97,7 @@
     "set_total": 66,
     "release_date": "2001-09-21",
     "image_url": "/sets/1024px-Neo_Revelation_Logo_EN.png",
-    "cards_file": "neo_revelation.json"
+    "cards_file": "Neorevelation.json"
   },
   {
     "set_code": "NEODESTINY",
@@ -107,7 +107,7 @@
     "set_total": 113,
     "release_date": "2002-02-28",
     "image_url": "/sets/1920px-Neo_Destiny_Logo_EN.png",
-    "cards_file": "neo_destiny.json"
+    "cards_file": "Neodestiny.json"
   },
   {
     "set_code": "LEGENDARY",
@@ -117,7 +117,7 @@
     "set_total": 110,
     "release_date": "2002-05-24",
     "image_url": "/sets/1920px-Legendary_Collection_Logo.png",
-    "cards_file": "legendary_collection.json"
+    "cards_file": "Legendarycollection.json"
   },
   {
     "set_code": "EXPEDITION",
@@ -127,7 +127,7 @@
     "set_total": 165,
     "release_date": "2002-09-15",
     "image_url": "/sets/E1_Logo_EN.png",
-    "cards_file": "expedition.json"
+    "cards_file": "Expeditionbaseset.json"
   },
   {
     "set_code": "AQUAPOLIS",
@@ -137,7 +137,7 @@
     "set_total": 182,
     "release_date": "2003-01-15",
     "image_url": "/sets/1920px-E2_Logo_EN.png",
-    "cards_file": "aquapolis.json"
+    "cards_file": "Aquapolis.json"
   },
   {
     "set_code": "SKYRIDGE",
@@ -147,7 +147,7 @@
     "set_total": 182,
     "release_date": "2003-05-12",
     "image_url": "/sets/1920px-E3_Logo_EN.png",
-    "cards_file": "skyridge.json"
+    "cards_file": "Skyridge.json"
   },
   {
     "set_code": "EX_RUBY_SAPPHIRE",
@@ -157,7 +157,7 @@
     "set_total": 109,
     "release_date": "2003-06-18",
     "image_url": "/sets/EX1_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Exrubysapphire.json"
   },
   {
     "set_code": "EX_SANDSTORM",
@@ -167,7 +167,7 @@
     "set_total": 100,
     "release_date": "2003-09-18",
     "image_url": "/sets/EX2_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Exsandstorm.json"
   },
   {
     "set_code": "EX_DRAGON",
@@ -177,17 +177,17 @@
     "set_total": 100,
     "release_date": "2003-11-24",
     "image_url": "/sets/EX3_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Exdragon.json"
   },
   {
-    "set_code": "EX_TEAM_MAGMA_AQUA",
+    "set_code": "EX_TEAM_MAGMA_VS_TEAM_AQUA",
     "name": "EX Team Magma vs Team Aqua",
     "era": "EX Series",
     "language": "EN",
     "set_total": 97,
     "release_date": "2004-03-15",
     "image_url": "/sets/EX4_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Teammagmavsteamaqua.json"
   },
   {
     "set_code": "EX_HIDDEN_LEGENDS",
@@ -197,7 +197,7 @@
     "set_total": 101,
     "release_date": "2004-06-14",
     "image_url": "/sets/EX5_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Exhiddenlegends.json"
   },
   {
     "set_code": "EX_FIRERED_LEAFGREEN",
@@ -207,7 +207,7 @@
     "set_total": 112,
     "release_date": "2004-09-10",
     "image_url": "/sets/EX6_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Exfireredleafgreen.json"
   },
   {
     "set_code": "EX_TEAM_ROCKET_RETURNS",
@@ -217,7 +217,7 @@
     "set_total": 111,
     "release_date": "2004-11-08",
     "image_url": "/sets/EX7_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Exteamrocketreturns.json"
   },
   {
     "set_code": "EX_DEOXYS",
@@ -227,7 +227,7 @@
     "set_total": 107,
     "release_date": "2005-02-14",
     "image_url": "/sets/EX8_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Exdeoxys.json"
   },
   {
     "set_code": "EX_EMERALD",
@@ -237,7 +237,7 @@
     "set_total": 106,
     "release_date": "2005-05-09",
     "image_url": "/sets/EX9_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Exemerald.json"
   },
   {
     "set_code": "EX_UNSEEN_FORCES",
@@ -247,7 +247,7 @@
     "set_total": 145,
     "release_date": "2005-08-22",
     "image_url": "/sets/EX10_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Exunseenforces.json"
   },
   {
     "set_code": "EX_DELTA_SPECIES",
@@ -257,7 +257,7 @@
     "set_total": 113,
     "release_date": "2005-10-31",
     "image_url": "/sets/EX11_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Exdeltaspecies.json"
   },
   {
     "set_code": "EX_LEGEND_MAKER",
@@ -267,7 +267,7 @@
     "set_total": 92,
     "release_date": "2006-02-13",
     "image_url": "/sets/EX12_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Exlegendmaker.json"
   },
   {
     "set_code": "EX_HOLON_PHANTOMS",
@@ -277,7 +277,7 @@
     "set_total": 110,
     "release_date": "2006-05-03",
     "image_url": "/sets/EX13_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Exholonphantoms.json"
   },
   {
     "set_code": "EX_CRYSTAL_GUARDIANS",
@@ -287,7 +287,7 @@
     "set_total": 100,
     "release_date": "2006-08-30",
     "image_url": "/sets/EX14_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Excrystalguardians.json"
   },
   {
     "set_code": "EX_DRAGON_FRONTIERS",
@@ -297,7 +297,7 @@
     "set_total": 101,
     "release_date": "2006-11-08",
     "image_url": "/sets/EX15_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Exdragonfrontiers.json"
   },
   {
     "set_code": "EX_POWER_KEEPERS",
@@ -307,7 +307,7 @@
     "set_total": 108,
     "release_date": "2007-02-02",
     "image_url": "/sets/EX16_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Expowerkeepers.json"
   },
   {
     "set_code": "DIAMOND_PEARL",
@@ -317,7 +317,7 @@
     "set_total": 130,
     "release_date": "2007-05-23",
     "image_url": null,
-    "cards_file": null
+    "cards_file": "Diamondpearl.json"
   },
   {
     "set_code": "MYSTERIOUS_TREASURES",
@@ -327,7 +327,7 @@
     "set_total": 124,
     "release_date": "2007-08-22",
     "image_url": null,
-    "cards_file": null
+    "cards_file": "Mysterioustreasures.json"
   },
   {
     "set_code": "SECRET_WONDERS",
@@ -337,7 +337,7 @@
     "set_total": 132,
     "release_date": "2007-11-07",
     "image_url": null,
-    "cards_file": null
+    "cards_file": "Secretwonders.json"
   },
   {
     "set_code": "GREAT_ENCOUNTERS",
@@ -347,7 +347,7 @@
     "set_total": 106,
     "release_date": "2008-02-13",
     "image_url": null,
-    "cards_file": null
+    "cards_file": "Greatencounters.json"
   },
   {
     "set_code": "MAJESTIC_DAWN",
@@ -357,7 +357,7 @@
     "set_total": 100,
     "release_date": "2008-05-21",
     "image_url": null,
-    "cards_file": null
+    "cards_file": "Majesticdawn.json"
   },
   {
     "set_code": "LEGENDS_AWAKENED",
@@ -367,7 +367,7 @@
     "set_total": 146,
     "release_date": "2008-08-20",
     "image_url": null,
-    "cards_file": null
+    "cards_file": "Legendsawakened.json"
   },
   {
     "set_code": "STORMFRONT",
@@ -377,7 +377,7 @@
     "set_total": 100,
     "release_date": "2008-11-05",
     "image_url": null,
-    "cards_file": null
+    "cards_file": "Stormfront.json"
   },
   {
     "set_code": "PLATINUM",
@@ -387,7 +387,7 @@
     "set_total": 133,
     "release_date": "2009-02-11",
     "image_url": null,
-    "cards_file": null
+    "cards_file": "Platinum.json"
   },
   {
     "set_code": "RISING_RIVALS",
@@ -397,7 +397,7 @@
     "set_total": 111,
     "release_date": "2009-05-16",
     "image_url": null,
-    "cards_file": null
+    "cards_file": "Risingrivals.json"
   },
   {
     "set_code": "SUPREME_VICTORS",
@@ -407,7 +407,7 @@
     "set_total": 153,
     "release_date": "2009-08-19",
     "image_url": null,
-    "cards_file": null
+    "cards_file": "Supremevictors.json"
   },
   {
     "set_code": "ARCEUS",
@@ -417,7 +417,7 @@
     "set_total": 99,
     "release_date": "2009-11-04",
     "image_url": "/sets/PL4_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Arceus.json"
   },
   {
     "set_code": "HGSS",
@@ -427,7 +427,7 @@
     "set_total": 123,
     "release_date": "2010-02-10",
     "image_url": "/sets/HS1_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "HeartGoldsoulSilver.json"
   },
   {
     "set_code": "HGSS_UNLEASHED",
@@ -437,7 +437,7 @@
     "set_total": 95,
     "release_date": "2010-05-12",
     "image_url": "/sets/HS2_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Unleashed.json"
   },
   {
     "set_code": "HGSS_UNDAUNTED",
@@ -457,7 +457,7 @@
     "set_total": 103,
     "release_date": "2010-11-03",
     "image_url": "/sets/HS4_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Triumphant.json"
   },
   {
     "set_code": "CALL_OF_LEGENDS",
@@ -467,7 +467,7 @@
     "set_total": 95,
     "release_date": "2011-02-09",
     "image_url": "/sets/COL1_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Calloflegends.json"
   },
   {
     "set_code": "BLACK_WHITE",
@@ -477,7 +477,7 @@
     "set_total": 114,
     "release_date": "2011-04-25",
     "image_url": "/sets/BW1_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Blackwhite.json"
   },
   {
     "set_code": "EMERGING_POWERS",
@@ -487,7 +487,7 @@
     "set_total": 98,
     "release_date": "2011-08-31",
     "image_url": "/sets/BW2_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Emergingpowers.json"
   },
   {
     "set_code": "NOBLE_VICTORIES",
@@ -497,7 +497,7 @@
     "set_total": 102,
     "release_date": "2011-11-16",
     "image_url": "/sets/BW3_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Noblevictories.json"
   },
   {
     "set_code": "NEXT_DESTINIES",
@@ -507,7 +507,7 @@
     "set_total": 99,
     "release_date": "2012-02-08",
     "image_url": "/sets/BW4_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Nextdestinies.json"
   },
   {
     "set_code": "DARK_EXPLORERS",
@@ -517,7 +517,7 @@
     "set_total": 111,
     "release_date": "2012-05-09",
     "image_url": "/sets/BW5_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Darkexplorers.json"
   },
   {
     "set_code": "DRAGONS_EXALTED",
@@ -527,7 +527,17 @@
     "set_total": 128,
     "release_date": "2012-08-15",
     "image_url": "/sets/BW6_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Dragonsexalted.json"
+  },
+  {
+    "set_code": "DRAGON_VAULT",
+    "name": "Dragon Vault",
+    "era": "Black & White",
+    "language": "EN",
+    "set_total": 20,
+    "release_date": "2012-10-05",
+    "image_url": null,
+    "cards_file": "Dragonvault.json"
   },
   {
     "set_code": "BOUNDARIES_CROSSED",
@@ -537,7 +547,7 @@
     "set_total": 149,
     "release_date": "2012-11-07",
     "image_url": "/sets/BW7_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Boundariescrossed.json"
   },
   {
     "set_code": "PLASMA_STORM",
@@ -547,7 +557,7 @@
     "set_total": 135,
     "release_date": "2013-02-06",
     "image_url": "/sets/BW8_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Plasmastorm.json"
   },
   {
     "set_code": "PLASMA_FREEZE",
@@ -557,7 +567,7 @@
     "set_total": 122,
     "release_date": "2013-05-08",
     "image_url": "/sets/BW9_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Plasmafreeze.json"
   },
   {
     "set_code": "PLASMA_BLAST",
@@ -567,7 +577,7 @@
     "set_total": 105,
     "release_date": "2013-08-14",
     "image_url": "/sets/BW10_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Plasmablast.json"
   },
   {
     "set_code": "LEGENDARY_TREASURES",
@@ -577,7 +587,7 @@
     "set_total": 115,
     "release_date": "2013-11-06",
     "image_url": "/sets/BW11_Logo_EN.png",
-    "cards_file": null
+    "cards_file": "Legendarytreasures.json"
   },
   {
     "set_code": "KALOS_STARTER_SET",

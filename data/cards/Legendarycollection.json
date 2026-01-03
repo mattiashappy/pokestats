@@ -1,117 +1,447 @@
 {
-  "set_code": "LEGENDARY_COLLECTION",
+  "set_code": "LEGENDARY",
   "set_name": "Legendary Collection",
   "set_total": 110,
   "cards": [
-    { "card_number": "1/110", "name": "Alakazam" },
-    { "card_number": "2/110", "name": "Articuno" },
-    { "card_number": "3/110", "name": "Charizard" },
-    { "card_number": "4/110", "name": "Dark Blastoise" },
-    { "card_number": "5/110", "name": "Dark Dragonite" },
-    { "card_number": "6/110", "name": "Dark Persian" },
-    { "card_number": "7/110", "name": "Dark Raichu" },
-    { "card_number": "8/110", "name": "Dark Slowbro" },
-    { "card_number": "9/110", "name": "Dark Vaporeon" },
-    { "card_number": "10/110", "name": "Flareon" },
-    { "card_number": "11/110", "name": "Gengar" },
-    { "card_number": "12/110", "name": "Gyarados" },
-    { "card_number": "13/110", "name": "Hitmonlee" },
-    { "card_number": "14/110", "name": "Jolteon" },
-    { "card_number": "15/110", "name": "Machamp" },
-    { "card_number": "16/110", "name": "Muk" },
-    { "card_number": "17/110", "name": "Ninetales" },
-    { "card_number": "18/110", "name": "Venusaur" },
-    { "card_number": "19/110", "name": "Zapdos" },
-    { "card_number": "20/110", "name": "Beedrill" },
-    { "card_number": "21/110", "name": "Butterfree" },
-    { "card_number": "22/110", "name": "Electrode" },
-    { "card_number": "23/110", "name": "Exeggutor" },
-    { "card_number": "24/110", "name": "Golem" },
-    { "card_number": "25/110", "name": "Hypno" },
-    { "card_number": "26/110", "name": "Jynx" },
-    { "card_number": "27/110", "name": "Kabutops" },
-    { "card_number": "28/110", "name": "Magneton" },
-    { "card_number": "29/110", "name": "Mewtwo" },
-    { "card_number": "30/110", "name": "Moltres" },
-    { "card_number": "31/110", "name": "Nidoking" },
-    { "card_number": "32/110", "name": "Nidoqueen" },
-    { "card_number": "33/110", "name": "Pidgeot" },
-    { "card_number": "34/110", "name": "Pidgeotto" },
-    { "card_number": "35/110", "name": "Rhydon" },
-    { "card_number": "36/110", "name": "Arcanine" },
-    { "card_number": "37/110", "name": "Charmeleon" },
-    { "card_number": "38/110", "name": "Dark Dragonair" },
-    { "card_number": "39/110", "name": "Dark Wartortle" },
-    { "card_number": "40/110", "name": "Dewgong" },
-    { "card_number": "41/110", "name": "Dodrio" },
-    { "card_number": "42/110", "name": "Fearow" },
-    { "card_number": "43/110", "name": "Golduck" },
-    { "card_number": "44/110", "name": "Graveler" },
-    { "card_number": "45/110", "name": "Growlithe" },
-    { "card_number": "46/110", "name": "Haunter" },
-    { "card_number": "47/110", "name": "Ivysaur" },
-    { "card_number": "48/110", "name": "Kabuto" },
-    { "card_number": "49/110", "name": "Kadabra" },
-    { "card_number": "50/110", "name": "Kakuna" },
-    { "card_number": "51/110", "name": "Machoke" },
-    { "card_number": "52/110", "name": "Magikarp" },
-    { "card_number": "53/110", "name": "Meowth" },
-    { "card_number": "54/110", "name": "Metapod" },
-    { "card_number": "55/110", "name": "Nidorina" },
-    { "card_number": "56/110", "name": "Nidorino" },
-    { "card_number": "57/110", "name": "Omanyte" },
-    { "card_number": "58/110", "name": "Omastar" },
-    { "card_number": "59/110", "name": "Primeape" },
-    { "card_number": "60/110", "name": "Rapidash" },
-    { "card_number": "61/110", "name": "Raticate" },
-    { "card_number": "62/110", "name": "Sandslash" },
-    { "card_number": "63/110", "name": "Seadra" },
-    { "card_number": "64/110", "name": "Snorlax" },
-    { "card_number": "65/110", "name": "Tauros" },
-    { "card_number": "66/110", "name": "Tentacruel" },
-    { "card_number": "67/110", "name": "Abra" },
-    { "card_number": "68/110", "name": "Bulbasaur" },
-    { "card_number": "69/110", "name": "Caterpie" },
-    { "card_number": "70/110", "name": "Charmander" },
-    { "card_number": "71/110", "name": "Doduo" },
-    { "card_number": "72/110", "name": "Dratini" },
-    { "card_number": "73/110", "name": "Drowzee" },
-    { "card_number": "74/110", "name": "Eevee" },
-    { "card_number": "75/110", "name": "Exeggcute" },
-    { "card_number": "76/110", "name": "Gastly" },
-    { "card_number": "77/110", "name": "Geodude" },
-    { "card_number": "78/110", "name": "Grimer" },
-    { "card_number": "79/110", "name": "Machop" },
-    { "card_number": "80/110", "name": "Magnemite" },
-    { "card_number": "81/110", "name": "Mankey" },
-    { "card_number": "82/110", "name": "Nidoran♀" },
-    { "card_number": "83/110", "name": "Nidoran♂" },
-    { "card_number": "84/110", "name": "Onix" },
-    { "card_number": "85/110", "name": "Pidgey" },
-    { "card_number": "86/110", "name": "Pikachu" },
-    { "card_number": "87/110", "name": "Ponyta" },
-    { "card_number": "88/110", "name": "Psyduck" },
-    { "card_number": "89/110", "name": "Rattata" },
-    { "card_number": "90/110", "name": "Rhyhorn" },
-    { "card_number": "91/110", "name": "Sandshrew" },
-    { "card_number": "92/110", "name": "Seel" },
-    { "card_number": "93/110", "name": "Slowpoke" },
-    { "card_number": "94/110", "name": "Spearow" },
-    { "card_number": "95/110", "name": "Squirtle" },
-    { "card_number": "96/110", "name": "Tentacool" },
-    { "card_number": "97/110", "name": "Voltorb" },
-    { "card_number": "98/110", "name": "Vulpix" },
-    { "card_number": "99/110", "name": "Weedle" },
-    { "card_number": "100/110", "name": "Full Heal Energy" },
-    { "card_number": "101/110", "name": "Potion Energy" },
-    { "card_number": "102/110", "name": "Pokémon Breeder" },
-    { "card_number": "103/110", "name": "Pokémon Trader" },
-    { "card_number": "104/110", "name": "Scoop Up" },
-    { "card_number": "105/110", "name": "The Boss's Way" },
-    { "card_number": "106/110", "name": "Challenge!" },
-    { "card_number": "107/110", "name": "Energy Retrieval" },
-    { "card_number": "108/110", "name": "Bill" },
-    { "card_number": "109/110", "name": "Mysterious Fossil" },
-    { "card_number": "110/110", "name": "Potion" }
+    {
+      "card_number": "1/110",
+      "name": "Alakazam"
+    },
+    {
+      "card_number": "2/110",
+      "name": "Articuno"
+    },
+    {
+      "card_number": "3/110",
+      "name": "Charizard"
+    },
+    {
+      "card_number": "4/110",
+      "name": "Dark Blastoise"
+    },
+    {
+      "card_number": "5/110",
+      "name": "Dark Dragonite"
+    },
+    {
+      "card_number": "6/110",
+      "name": "Dark Persian"
+    },
+    {
+      "card_number": "7/110",
+      "name": "Dark Raichu"
+    },
+    {
+      "card_number": "8/110",
+      "name": "Dark Slowbro"
+    },
+    {
+      "card_number": "9/110",
+      "name": "Dark Vaporeon"
+    },
+    {
+      "card_number": "10/110",
+      "name": "Flareon"
+    },
+    {
+      "card_number": "11/110",
+      "name": "Gengar"
+    },
+    {
+      "card_number": "12/110",
+      "name": "Gyarados"
+    },
+    {
+      "card_number": "13/110",
+      "name": "Hitmonlee"
+    },
+    {
+      "card_number": "14/110",
+      "name": "Jolteon"
+    },
+    {
+      "card_number": "15/110",
+      "name": "Machamp"
+    },
+    {
+      "card_number": "16/110",
+      "name": "Muk"
+    },
+    {
+      "card_number": "17/110",
+      "name": "Ninetales"
+    },
+    {
+      "card_number": "18/110",
+      "name": "Venusaur"
+    },
+    {
+      "card_number": "19/110",
+      "name": "Zapdos"
+    },
+    {
+      "card_number": "20/110",
+      "name": "Beedrill"
+    },
+    {
+      "card_number": "21/110",
+      "name": "Butterfree"
+    },
+    {
+      "card_number": "22/110",
+      "name": "Electrode"
+    },
+    {
+      "card_number": "23/110",
+      "name": "Exeggutor"
+    },
+    {
+      "card_number": "24/110",
+      "name": "Golem"
+    },
+    {
+      "card_number": "25/110",
+      "name": "Hypno"
+    },
+    {
+      "card_number": "26/110",
+      "name": "Jynx"
+    },
+    {
+      "card_number": "27/110",
+      "name": "Kabutops"
+    },
+    {
+      "card_number": "28/110",
+      "name": "Magneton"
+    },
+    {
+      "card_number": "29/110",
+      "name": "Mewtwo"
+    },
+    {
+      "card_number": "30/110",
+      "name": "Moltres"
+    },
+    {
+      "card_number": "31/110",
+      "name": "Nidoking"
+    },
+    {
+      "card_number": "32/110",
+      "name": "Nidoqueen"
+    },
+    {
+      "card_number": "33/110",
+      "name": "Pidgeot"
+    },
+    {
+      "card_number": "34/110",
+      "name": "Pidgeotto"
+    },
+    {
+      "card_number": "35/110",
+      "name": "Rhydon"
+    },
+    {
+      "card_number": "36/110",
+      "name": "Arcanine"
+    },
+    {
+      "card_number": "37/110",
+      "name": "Charmeleon"
+    },
+    {
+      "card_number": "38/110",
+      "name": "Dark Dragonair"
+    },
+    {
+      "card_number": "39/110",
+      "name": "Dark Wartortle"
+    },
+    {
+      "card_number": "40/110",
+      "name": "Dewgong"
+    },
+    {
+      "card_number": "41/110",
+      "name": "Dodrio"
+    },
+    {
+      "card_number": "42/110",
+      "name": "Fearow"
+    },
+    {
+      "card_number": "43/110",
+      "name": "Golduck"
+    },
+    {
+      "card_number": "44/110",
+      "name": "Graveler"
+    },
+    {
+      "card_number": "45/110",
+      "name": "Growlithe"
+    },
+    {
+      "card_number": "46/110",
+      "name": "Haunter"
+    },
+    {
+      "card_number": "47/110",
+      "name": "Ivysaur"
+    },
+    {
+      "card_number": "48/110",
+      "name": "Kabuto"
+    },
+    {
+      "card_number": "49/110",
+      "name": "Kadabra"
+    },
+    {
+      "card_number": "50/110",
+      "name": "Kakuna"
+    },
+    {
+      "card_number": "51/110",
+      "name": "Machoke"
+    },
+    {
+      "card_number": "52/110",
+      "name": "Magikarp"
+    },
+    {
+      "card_number": "53/110",
+      "name": "Meowth"
+    },
+    {
+      "card_number": "54/110",
+      "name": "Metapod"
+    },
+    {
+      "card_number": "55/110",
+      "name": "Nidorina"
+    },
+    {
+      "card_number": "56/110",
+      "name": "Nidorino"
+    },
+    {
+      "card_number": "57/110",
+      "name": "Omanyte"
+    },
+    {
+      "card_number": "58/110",
+      "name": "Omastar"
+    },
+    {
+      "card_number": "59/110",
+      "name": "Primeape"
+    },
+    {
+      "card_number": "60/110",
+      "name": "Rapidash"
+    },
+    {
+      "card_number": "61/110",
+      "name": "Raticate"
+    },
+    {
+      "card_number": "62/110",
+      "name": "Sandslash"
+    },
+    {
+      "card_number": "63/110",
+      "name": "Seadra"
+    },
+    {
+      "card_number": "64/110",
+      "name": "Snorlax"
+    },
+    {
+      "card_number": "65/110",
+      "name": "Tauros"
+    },
+    {
+      "card_number": "66/110",
+      "name": "Tentacruel"
+    },
+    {
+      "card_number": "67/110",
+      "name": "Abra"
+    },
+    {
+      "card_number": "68/110",
+      "name": "Bulbasaur"
+    },
+    {
+      "card_number": "69/110",
+      "name": "Caterpie"
+    },
+    {
+      "card_number": "70/110",
+      "name": "Charmander"
+    },
+    {
+      "card_number": "71/110",
+      "name": "Doduo"
+    },
+    {
+      "card_number": "72/110",
+      "name": "Dratini"
+    },
+    {
+      "card_number": "73/110",
+      "name": "Drowzee"
+    },
+    {
+      "card_number": "74/110",
+      "name": "Eevee"
+    },
+    {
+      "card_number": "75/110",
+      "name": "Exeggcute"
+    },
+    {
+      "card_number": "76/110",
+      "name": "Gastly"
+    },
+    {
+      "card_number": "77/110",
+      "name": "Geodude"
+    },
+    {
+      "card_number": "78/110",
+      "name": "Grimer"
+    },
+    {
+      "card_number": "79/110",
+      "name": "Machop"
+    },
+    {
+      "card_number": "80/110",
+      "name": "Magnemite"
+    },
+    {
+      "card_number": "81/110",
+      "name": "Mankey"
+    },
+    {
+      "card_number": "82/110",
+      "name": "Nidoran\u2640"
+    },
+    {
+      "card_number": "83/110",
+      "name": "Nidoran\u2642"
+    },
+    {
+      "card_number": "84/110",
+      "name": "Onix"
+    },
+    {
+      "card_number": "85/110",
+      "name": "Pidgey"
+    },
+    {
+      "card_number": "86/110",
+      "name": "Pikachu"
+    },
+    {
+      "card_number": "87/110",
+      "name": "Ponyta"
+    },
+    {
+      "card_number": "88/110",
+      "name": "Psyduck"
+    },
+    {
+      "card_number": "89/110",
+      "name": "Rattata"
+    },
+    {
+      "card_number": "90/110",
+      "name": "Rhyhorn"
+    },
+    {
+      "card_number": "91/110",
+      "name": "Sandshrew"
+    },
+    {
+      "card_number": "92/110",
+      "name": "Seel"
+    },
+    {
+      "card_number": "93/110",
+      "name": "Slowpoke"
+    },
+    {
+      "card_number": "94/110",
+      "name": "Spearow"
+    },
+    {
+      "card_number": "95/110",
+      "name": "Squirtle"
+    },
+    {
+      "card_number": "96/110",
+      "name": "Tentacool"
+    },
+    {
+      "card_number": "97/110",
+      "name": "Voltorb"
+    },
+    {
+      "card_number": "98/110",
+      "name": "Vulpix"
+    },
+    {
+      "card_number": "99/110",
+      "name": "Weedle"
+    },
+    {
+      "card_number": "100/110",
+      "name": "Full Heal Energy"
+    },
+    {
+      "card_number": "101/110",
+      "name": "Potion Energy"
+    },
+    {
+      "card_number": "102/110",
+      "name": "Pok\u00e9mon Breeder"
+    },
+    {
+      "card_number": "103/110",
+      "name": "Pok\u00e9mon Trader"
+    },
+    {
+      "card_number": "104/110",
+      "name": "Scoop Up"
+    },
+    {
+      "card_number": "105/110",
+      "name": "The Boss's Way"
+    },
+    {
+      "card_number": "106/110",
+      "name": "Challenge!"
+    },
+    {
+      "card_number": "107/110",
+      "name": "Energy Retrieval"
+    },
+    {
+      "card_number": "108/110",
+      "name": "Bill"
+    },
+    {
+      "card_number": "109/110",
+      "name": "Mysterious Fossil"
+    },
+    {
+      "card_number": "110/110",
+      "name": "Potion"
+    }
   ]
 }
