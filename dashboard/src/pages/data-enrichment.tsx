@@ -13,6 +13,7 @@ import {
   fetchUnmatchedAuctions,
   manuallyMatchAuction,
   runEnrichment,
+  runFullEnrichment,
   type UnmatchedAuction
 } from '../lib/api'
 
@@ -40,6 +41,14 @@ export function DataEnrichmentPage(): JSX.Element {
 
   const mutation = useMutation({
     mutationFn: () => runEnrichment(runLimit),
+    onSuccess: () => {
+      summaryQuery.refetch()
+      unmatchedQuery.refetch()
+    }
+  })
+
+  const fullRunMutation = useMutation({
+    mutationFn: () => runFullEnrichment(100),
     onSuccess: () => {
       summaryQuery.refetch()
       unmatchedQuery.refetch()
@@ -150,6 +159,9 @@ export function DataEnrichmentPage(): JSX.Element {
               The matcher processes the next batch of untouched auctions (oldest first) and records match status, set
               totals, and debug metadata for every row.
             </p>
+            <p className="text-xs text-slate-500">
+              Use the full re-run to process all auctions in batches of 100 without overloading the matcher.
+            </p>
             <label className="text-xs uppercase text-slate-500">Batch size</label>
             <div className="flex items-center gap-2">
               <Input
@@ -163,6 +175,18 @@ export function DataEnrichmentPage(): JSX.Element {
               <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
                 {mutation.isPending ? 'Running…' : 'Run'}
               </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => fullRunMutation.mutate()}
+                disabled={fullRunMutation.isPending}
+              >
+                {fullRunMutation.isPending ? 'Re-running all…' : 'Re-run all auctions (100 at a time)'}
+              </Button>
+              {fullRunMutation.isPending ? (
+                <span className="text-xs text-slate-500">Working through every auction in 100-item batches…</span>
+              ) : null}
             </div>
             {mutation.data ? (
               <div className="rounded border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-800 dark:bg-slate-900/50">
@@ -180,6 +204,24 @@ export function DataEnrichmentPage(): JSX.Element {
                 {Object.keys(mutation.data.statusCounts || {}).length ? (
                   <ul className="mt-2 list-disc space-y-1 pl-4">
                     {Object.entries(mutation.data.statusCounts).map(([status, count]) => (
+                      <li key={status}>
+                        <span className="font-semibold">{status}:</span> {count}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+            {fullRunMutation.data ? (
+              <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/70 dark:bg-amber-950">
+                <div className="flex items-center gap-2 font-semibold">
+                  <AlertCircle className="h-4 w-4" /> Full re-run completed
+                </div>
+                <p className="mt-1">Processed {fullRunMutation.data.totalAttempted.toLocaleString()} auctions across {fullRunMutation.data.batches} batches of {fullRunMutation.data.batchSize}.</p>
+                <p className="mt-1">Linked {fullRunMutation.data.totalLinked.toLocaleString()} auctions. Remaining: {fullRunMutation.data.remainingAfter ?? '–'} (previously {fullRunMutation.data.remainingBefore ?? '–'}).</p>
+                {Object.keys(fullRunMutation.data.statusCounts || {}).length ? (
+                  <ul className="mt-2 list-disc space-y-1 pl-4">
+                    {Object.entries(fullRunMutation.data.statusCounts).map(([status, count]) => (
                       <li key={status}>
                         <span className="font-semibold">{status}:</span> {count}
                       </li>

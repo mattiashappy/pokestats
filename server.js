@@ -1966,6 +1966,53 @@ app.post('/api/enrichment/run', async (req, res) => {
   }
 })
 
+app.post('/api/enrichment/run-all', async (req, res) => {
+  const batchSize = Math.max(1, Math.min(Number(req.body?.batchSize) || 100, 1000))
+  const maxBatches = Math.max(1, Math.min(Number(req.body?.maxBatches) || 1000, 5000))
+
+  let totalAttempted = 0
+  let totalLinked = 0
+  let batches = 0
+  let remainingBefore = null
+  let remainingAfter = null
+  const statusCounts = new Map()
+
+  try {
+    while (batches < maxBatches) {
+      const result = await runEnrichmentJob({ limit: batchSize })
+
+      totalAttempted += result.attempted
+      totalLinked += result.linked
+      remainingBefore = remainingBefore ?? result.remainingBefore
+      remainingAfter = result.remainingAfter
+
+      for (const [status, count] of Object.entries(result.statusCounts || {})) {
+        statusCounts.set(status, (statusCounts.get(status) || 0) + count)
+      }
+
+      batches += 1
+
+      if (!result.remainingAfter || result.remainingAfter <= 0 || result.attempted === 0) {
+        break
+      }
+    }
+
+    res.json({
+      ok: true,
+      batchSize,
+      batches,
+      totalAttempted,
+      totalLinked,
+      remainingBefore,
+      remainingAfter,
+      statusCounts: Object.fromEntries(statusCounts)
+    })
+  } catch (error) {
+    console.error('Failed to run full enrichment pass', error)
+    res.status(500).json({ ok: false, error: String(error) })
+  }
+})
+
 app.post('/api/enrichment/discard', async (req, res) => {
   if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
 

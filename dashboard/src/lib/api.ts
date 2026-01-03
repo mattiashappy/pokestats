@@ -63,6 +63,30 @@ export async function runEnrichment(limit = 300) {
   }>
 }
 
+export async function runFullEnrichment(batchSize = 100) {
+  const res = await fetch('/api/enrichment/run-all', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ batchSize })
+  })
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || 'Failed to run full enrichment')
+  }
+
+  return res.json() as Promise<{
+    ok: boolean
+    batchSize: number
+    batches: number
+    totalAttempted: number
+    totalLinked: number
+    remainingBefore: number | null
+    remainingAfter: number | null
+    statusCounts: Record<string, number>
+  }>
+}
+
 export type EnrichmentSummary = {
   available: boolean
   totalAuctions?: number
