@@ -1,3 +1,5 @@
+# tradera_import_refresh_only.py
+#
 # Tradera importer (REFRESH ONLY, SOAP) -> PostgreSQL
 # - Purpose: keep DB up-to-date with newest ended auctions (incremental).
 # - Locked: ItemsPerPage = 50 (small responses).
@@ -19,7 +21,8 @@
 # - ITEM_STATUS (default Ended)
 # - ITEM_TYPE (default Auction)
 # - BIDS_MINIMUM (default 1)                  # set to "none" / "" to disable
-# - ORDER_BY (default EndDateDescending)      # will be forced if wrong
+# - ORDER_BY (default EndDateDescending)      # will be forced if wrong in INCREMENTAL
+# - MODE (default INCREMENTAL)                # INCREMENTAL or FULL (FULL ignores watermark)
 #
 # Incremental tuning:
 # - INCREMENTAL_OVERLAP_MINUTES (default 10)
@@ -34,7 +37,11 @@
 # - tradera_sales has unique constraint on item_id
 # - columns: item_id, category_id, end_date, price, bid_count, seller_id, seller_alias,
 #           seller_dsr, title, description, item_url, thumbnail_url, image_urls, attributes, card_id (nullable)
-# - cards deduplicate via cards_unique_setcode_number on (set_code, card_number)
+# - cards deduplicate via a UNIQUE on (set_code, card_number) OR a constraint named cards_unique_setcode_number
+#
+# Notes:
+# - This version is cleaned up to avoid broken SQL, duplicate blocks, and mismatched cache keys.
+# - It will try ON CONFLICT (set_code, card_number) first. If that index/constraint doesn’t exist, it falls back.
 
 from __future__ import annotations
 
@@ -56,6 +63,10 @@ from psycopg2.extras import Json, execute_batch
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+# -----------------------------
+# Config
+# -----------------------------
+
 API_URL = "https://api.tradera.com/v3/SearchService.asmx"
 SOAP_ACTION = "http://api.tradera.com/SearchAdvanced"
 
@@ -68,11 +79,10 @@ SLEEP_MS = int(os.getenv("SLEEP_MS", "150"))
 
 ITEM_STATUS = os.getenv("ITEM_STATUS", "Ended")
 ITEM_TYPE = os.getenv("ITEM_TYPE", "Auction")
-
 BIDS_MINIMUM_RAW = os.getenv("BIDS_MINIMUM", "1")
 
 ORDER_BY = os.getenv("ORDER_BY", "EndDateDescending")
-MODE = os.getenv("MODE", "INCREMENTAL")
+MODE = (os.getenv("MODE", "INCREMENTAL") or "INCREMENTAL").strip().upper()
 
 TZ_NAME = os.getenv("TZ") or os.getenv("LOCAL_TIMEZONE") or "Europe/Stockholm"
 INCREMENTAL_OVERLAP_MINUTES = int(os.getenv("INCREMENTAL_OVERLAP_MINUTES", "10"))
@@ -89,6 +99,10 @@ NS = {
     "t": "http://api.tradera.com",
 }
 
+
+# -----------------------------
+# Logging
+# -----------------------------
 
 def _iso_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -127,10 +141,12 @@ def require_env(name: str) -> str:
     return v.strip()
 
 
+# -----------------------------
+# Helpers (parsing)
+# -----------------------------
+
 def normalize_bids_minimum(raw: str) -> Optional[int]:
-    # Returns:
-    #   - int if enabled
-    #   - None if disabled
+    # Enabled -> int
     # Disabled values: "none", "null", "", "off"
     if raw is None:
         return None
@@ -145,6 +161,75 @@ def normalize_bids_minimum(raw: str) -> Optional[int]:
 
 BIDS_MINIMUM = normalize_bids_minimum(BIDS_MINIMUM_RAW)
 
+
+def strip_ns(tag: str) -> str:
+    return tag.split("}", 1)[1] if "}" in tag else tag
+
+
+def first_found(*els: Optional[ET.Element]) -> Optional[ET.Element]:
+    for el in els:
+        if el is not None:
+            return el
+    return None
+
+
+def find_child_text(parent: ET.Element, local_name: str) -> Optional[str]:
+    for child in list(parent):
+        if strip_ns(child.tag) == local_name:
+            if child.text and child.text.strip():
+                return child.text.strip()
+            return None
+    return None
+
+
+def find_any_text(parent: ET.Element, local_name: str) -> Optional[str]:
+    for el in parent.iter():
+        if strip_ns(el.tag) == local_name:
+            if el.text and el.text.strip():
+                return el.text.strip()
+            return None
+    return None
+
+
+def parse_int_text(v: Optional[str]) -> Optional[int]:
+    if not v:
+        return None
+    try:
+        return int(float(v))
+    except Exception:
+        return None
+
+
+def parse_float_text(v: Optional[str]) -> Optional[float]:
+    if not v:
+        return None
+    try:
+        return float(v)
+    except Exception:
+        return None
+
+
+def parse_bool_text(v: Optional[str]) -> Optional[bool]:
+    if v is None:
+        return None
+    return v.strip().lower() in {"1", "true", "yes"}
+
+
+def parse_dt_text(v: Optional[str]) -> Optional[datetime]:
+    if not v:
+        return None
+    try:
+        dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = pytz.UTC.localize(dt)
+        return dt.astimezone(pytz.UTC)
+    except Exception:
+        return None
+
+
+# -----------------------------
+# SOAP
+# -----------------------------
 
 def build_envelope(app_id: str, app_key: str, page_number: int, order_by: str) -> str:
     item_status_xml = f"<ItemStatus>{ITEM_STATUS}</ItemStatus>" if ITEM_STATUS else ""
@@ -215,35 +300,6 @@ def post_soap(session: requests.Session, xml_body: str) -> str:
     return r.text
 
 
-def strip_ns(tag: str) -> str:
-    return tag.split("}", 1)[1] if "}" in tag else tag
-
-
-def find_child_text(parent: ET.Element, local_name: str) -> Optional[str]:
-    for child in list(parent):
-        if strip_ns(child.tag) == local_name:
-            if child.text and child.text.strip():
-                return child.text.strip()
-            return None
-    return None
-
-
-def find_any_text(parent: ET.Element, local_name: str) -> Optional[str]:
-    for el in parent.iter():
-        if strip_ns(el.tag) == local_name:
-            if el.text and el.text.strip():
-                return el.text.strip()
-            return None
-    return None
-
-
-def first_found(*els: Optional[ET.Element]) -> Optional[ET.Element]:
-    for el in els:
-        if el is not None:
-            return el
-    return None
-
-
 def parse_response(xml_text: str) -> Tuple[int, int, List[ET.Element], str]:
     root = ET.fromstring(xml_text)
 
@@ -258,6 +314,7 @@ def parse_response(xml_text: str) -> Tuple[int, int, List[ET.Element], str]:
     total_items = int(total_items_el.text) if (total_items_el is not None and total_items_el.text) else 0
     total_pages = int(total_pages_el.text) if (total_pages_el is not None and total_pages_el.text) else 0
 
+    # Tradera returns Items nodes; sometimes namespaced, sometimes not
     item_nodes = root.findall(".//t:Items", NS)
     if not item_nodes:
         item_nodes = root.findall(".//Items")
@@ -266,41 +323,9 @@ def parse_response(xml_text: str) -> Tuple[int, int, List[ET.Element], str]:
     return total_items, total_pages, item_nodes, snippet
 
 
-def parse_int_text(v: Optional[str]) -> Optional[int]:
-    if not v:
-        return None
-    try:
-        return int(float(v))
-    except Exception:
-        return None
-
-
-def parse_float_text(v: Optional[str]) -> Optional[float]:
-    if not v:
-        return None
-    try:
-        return float(v)
-    except Exception:
-        return None
-
-
-def parse_bool_text(v: Optional[str]) -> Optional[bool]:
-    if v is None:
-        return None
-    return v.strip().lower() in {"1", "true", "yes"}
-
-
-def parse_dt_text(v: Optional[str]) -> Optional[datetime]:
-    if not v:
-        return None
-    try:
-        dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
-        if dt.tzinfo is None:
-            dt = pytz.UTC.localize(dt)
-        return dt.astimezone(pytz.UTC)
-    except Exception:
-        return None
-
+# -----------------------------
+# Item parsing
+# -----------------------------
 
 def parse_image_links(item_el: ET.Element) -> List[str]:
     urls: List[str] = []
@@ -331,7 +356,6 @@ def parse_attributes(item_el: ET.Element) -> Dict[str, List[str]]:
 
         if name:
             out[name] = values
-
     return out
 
 
@@ -410,7 +434,9 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
     bid_count = parse_int_text(find_child_text(item_el, "BidCount") or find_any_text(item_el, "BidCount"))
     seller_id = parse_int_text(find_child_text(item_el, "SellerId") or find_any_text(item_el, "SellerId"))
     seller_alias = find_child_text(item_el, "SellerAlias") or find_any_text(item_el, "SellerAlias")
-    seller_dsr = parse_float_text(find_child_text(item_el, "SellerDsrAverage") or find_any_text(item_el, "SellerDsrAverage"))
+    seller_dsr = parse_float_text(
+        find_child_text(item_el, "SellerDsrAverage") or find_any_text(item_el, "SellerDsrAverage")
+    )
     title = find_child_text(item_el, "ShortDescription") or find_any_text(item_el, "ShortDescription")
     description = find_child_text(item_el, "LongDescription") or find_any_text(item_el, "LongDescription")
     item_url = find_child_text(item_el, "ItemUrl") or find_any_text(item_el, "ItemUrl")
@@ -434,6 +460,10 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
     )
 
 
+# -----------------------------
+# Card extraction / upsert
+# -----------------------------
+
 def normalize_card_value(value: Optional[str]) -> str:
     if not value:
         return "unknown"
@@ -441,6 +471,10 @@ def normalize_card_value(value: Optional[str]) -> str:
 
 
 def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
+    """
+    Pulls card-ish metadata out of attributes when present.
+    Falls back to title.
+    """
     def attr_value(*keys: str) -> Optional[str]:
         if not row.attributes:
             return None
@@ -454,11 +488,12 @@ def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
     raw_name = attr_value("card_name", "card name", "Card name") or row.title or "unknown card"
     raw_set = attr_value("series", "set", "pokemon_set", "Series", "Set")
     raw_set_code = attr_value("set_code", "set code", "Set code", "Set_code", "setcode")
+    raw_era = attr_value("pokemon_era", "era", "generation", "Era", "Generation")
 
     name_value = normalize_card_value(raw_name)
     set_name_value = normalize_card_value(raw_set) if raw_set else "unknown"
 
-    # Prefer explicit set_code attribute, else fall back to set_name, else stable "unknown-<name>" code
+    # Prefer explicit set_code; else fall back to set_name; else stable unknown code
     if raw_set_code and str(raw_set_code).strip():
         set_code_value = normalize_card_value(raw_set_code)
     elif raw_set and str(raw_set).strip():
@@ -467,7 +502,7 @@ def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
         fallback_code = name_value.replace(" ", "-")
         set_code_value = f"unknown-{fallback_code}" if fallback_code != "unknown" else "unknown-unknown"
 
-    # Card number: keep DB safe for NOT NULL schemas by defaulting to "unknown"
+    # Card number: default to "unknown" (safe for schemas expecting non-null)
     card_number_value = attr_value("card_number", "card number", "Card number")
     card_number_value = card_number_value.strip() if isinstance(card_number_value, str) else None
     if not card_number_value:
@@ -475,119 +510,81 @@ def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
 
     return {
         "name": name_value,
-        "era": attr_value("pokemon_era", "era", "generation", "Era", "Generation"),
+        "era": raw_era,
         "set_name": set_name_value,
         "set_code": set_code_value,
         "card_number": card_number_value,
     }
 
 
-
 def ensure_card(conn, payload: Dict[str, Optional[str]]) -> int:
-    # The cards table deduplicates on (set_code, card_number) via the
-    # cards_unique_setcode_number constraint. Prefer to reuse any existing
-    # row to avoid duplicate-key errors when ON CONFLICT cannot run (for
-    # instance if the constraint is missing on a specific database).
+    """
+    Upsert a card and return id.
+    Tries ON CONFLICT (set_code, card_number). If constraint/index missing, fallback.
+    """
     with conn.cursor() as cur:
-        select_sql = (
-            "SELECT id\n"
-            "FROM cards\n"
-            "WHERE set_code = %(set_code)s AND card_number = %(card_number)s\n"
-            "LIMIT 1;"
-        )
-        cur.execute(select_sql, payload)
-        found = cur.fetchone()
-        if found:
-            update_sql = (
-                "UPDATE cards\n"
-                "SET\n"
-                "    name = COALESCE(cards.name, %(name)s),\n"
-                "    era = COALESCE(cards.era, %(era)s),\n"
-                "    set_name = COALESCE(cards.set_name, %(set_name)s)\n"
-                "WHERE id = %(id)s\n"
-                "RETURNING id;"
-            )
-            cur.execute(update_sql, {**payload, "id": found[0]})
-            row = cur.fetchone()
-            return int(row[0])
-
-        insert_sql = (
-            "INSERT INTO cards (name, era, set_name, set_code, card_number, expansion_id)\n"
-            "VALUES (%(name)s, %(era)s, %(set_name)s, %(set_code)s, %(card_number)s, NULL)\n"
-            "ON CONFLICT ON CONSTRAINT cards_unique_setcode_number DO UPDATE SET\n"
-            "    name = COALESCE(cards.name, EXCLUDED.name),\n"
-            "    era = COALESCE(cards.era, EXCLUDED.era),\n"
-            "    set_name = COALESCE(cards.set_name, EXCLUDED.set_name),\n"
-            "    set_code = COALESCE(cards.set_code, EXCLUDED.set_code),\n"
-            "    card_number = COALESCE(cards.card_number, EXCLUDED.card_number)\n"
-            "RETURNING id;"
-        cur.execute(
-            """
-            SELECT id
-            FROM cards
-            WHERE set_code = %(set_code)s AND card_number = %(card_number)s
-            LIMIT 1;
-            """,
-            payload,
-        )
-        found = cur.fetchone()
-        if found:
+        try:
             cur.execute(
                 """
-                UPDATE cards
-                SET
-                    name = COALESCE(cards.name, %(name)s),
-                    era = COALESCE(cards.era, %(era)s),
-                    set_name = COALESCE(cards.set_name, %(set_name)s)
-                WHERE id = %(id)s
+                INSERT INTO cards (name, era, set_name, set_code, card_number, expansion_id)
+                VALUES (%(name)s, %(era)s, %(set_name)s, %(set_code)s, %(card_number)s, NULL)
+                ON CONFLICT (set_code, card_number) DO UPDATE SET
+                    name        = COALESCE(cards.name, EXCLUDED.name),
+                    era         = COALESCE(cards.era, EXCLUDED.era),
+                    set_name    = COALESCE(cards.set_name, EXCLUDED.set_name),
+                    set_code    = COALESCE(cards.set_code, EXCLUDED.set_code),
+                    card_number = COALESCE(cards.card_number, EXCLUDED.card_number)
                 RETURNING id;
                 """,
-                {**payload, "id": found[0]},
+                payload,
             )
             row = cur.fetchone()
             return int(row[0])
 
-        cur.execute(
-            """
-            INSERT INTO cards (name, era, set_name, set_code, card_number, expansion_id)
-            VALUES (%(name)s, %(era)s, %(set_name)s, %(set_code)s, %(card_number)s, NULL)
-            ON CONFLICT ON CONSTRAINT cards_unique_setcode_number DO UPDATE SET
-    # cards_unique_setcode_number constraint. Align the ON CONFLICT target
-    # to that index so imports can reuse existing "unknown" placeholder
-    # rows instead of crashing.
-    # The cards table is now keyed by (expansion_id, card_number) via
-    # the cards_expansion_card_number_key constraint. Use that conflict
-    # target to avoid runtime errors even when the legacy (name, set_name)
-    # constraint has been removed.
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO cards (name, era, set_name, set_code, card_number, expansion_id)
-            VALUES (%(name)s, %(era)s, %(set_name)s, %(set_code)s, %(card_number)s, NULL)
-            ON CONFLICT ON CONSTRAINT cards_unique_setcode_number DO UPDATE SET
-            ON CONFLICT ON CONSTRAINT cards_expansion_card_number_key DO UPDATE SET
-                name = COALESCE(cards.name, EXCLUDED.name),
-                era = COALESCE(cards.era, EXCLUDED.era),
-                set_name = COALESCE(cards.set_name, EXCLUDED.set_name),
-                set_code = COALESCE(cards.set_code, EXCLUDED.set_code),
-                card_number = COALESCE(cards.card_number, EXCLUDED.card_number)
-            RETURNING id;
-            """,
-            payload,
-        )
-        cur.execute(insert_sql, payload)
-        row = cur.fetchone()
-    return int(row[0])
+        except psycopg2.Error:
+            # Fallback: select then insert (no ON CONFLICT target)
+            cur.execute(
+                """
+                SELECT id
+                FROM cards
+                WHERE set_code = %(set_code)s AND card_number = %(card_number)s
+                LIMIT 1;
+                """,
+                payload,
+            )
+            found = cur.fetchone()
+            if found:
+                return int(found[0])
+
+            cur.execute(
+                """
+                INSERT INTO cards (name, era, set_name, set_code, card_number, expansion_id)
+                VALUES (%(name)s, %(era)s, %(set_name)s, %(set_code)s, %(card_number)s, NULL)
+                RETURNING id;
+                """,
+                payload,
+            )
+            row = cur.fetchone()
+            return int(row[0])
 
 
-def upsert(conn, rows: List[Row]) -> None:
+# -----------------------------
+# DB upsert for auctions + run tracking
+# -----------------------------
+
+def upsert_sales(conn, rows: List[Row]) -> None:
     if not rows:
         return
 
+    # Cache by the SAME uniqueness used by ensure_card: (set_code, card_number)
     card_cache: Dict[Tuple[str, str], int] = {}
+
     for r in rows:
         payload = extract_card_payload(r)
-        key = (payload["name"] or "unknown", payload["set_name"] or "unknown")
+        set_code = payload.get("set_code") or "unknown"
+        card_number = payload.get("card_number") or "unknown"
+        key = (set_code, card_number)
+
         if key not in card_cache:
             card_cache[key] = ensure_card(conn, payload)
         r.card_id = card_cache[key]
@@ -625,24 +622,24 @@ def upsert(conn, rows: List[Row]) -> None:
 def ensure_import_runs_table(conn) -> None:
     with conn.cursor() as cur:
         cur.execute(
-            "CREATE TABLE IF NOT EXISTS import_runs (\n"
-            "    id SERIAL PRIMARY KEY,\n"
-            "    source TEXT NOT NULL DEFAULT 'tradera',\n"
-            "    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n"
-            "    finished_at TIMESTAMPTZ,\n"
-            "    new_rows INTEGER NOT NULL DEFAULT 0,\n"
-            "    pages_fetched INTEGER NOT NULL DEFAULT 0,\n"
-            "    requests_used INTEGER NOT NULL DEFAULT 0,\n"
-            "    status TEXT NOT NULL DEFAULT 'running',\n"
-            "    message TEXT,\n"
-            "    run_uuid TEXT,\n"
-            "    error_stack TEXT\n"
-            ");"
+            """
+            CREATE TABLE IF NOT EXISTS import_runs (
+                id SERIAL PRIMARY KEY,
+                source TEXT NOT NULL DEFAULT 'tradera',
+                started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                finished_at TIMESTAMPTZ,
+                new_rows INTEGER NOT NULL DEFAULT 0,
+                pages_fetched INTEGER NOT NULL DEFAULT 0,
+                requests_used INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'running',
+                message TEXT,
+                run_uuid TEXT,
+                error_stack TEXT
+            );
+            """
         )
-
         cur.execute("ALTER TABLE import_runs ADD COLUMN IF NOT EXISTS run_uuid TEXT;")
         cur.execute("ALTER TABLE import_runs ADD COLUMN IF NOT EXISTS error_stack TEXT;")
-
         cur.execute("CREATE INDEX IF NOT EXISTS idx_import_runs_started_at ON import_runs (started_at DESC);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_import_runs_run_uuid ON import_runs (run_uuid);")
     conn.commit()
@@ -651,9 +648,11 @@ def ensure_import_runs_table(conn) -> None:
 def start_import_run(conn) -> int:
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO import_runs (source, status, started_at, run_uuid)\n"
-            "VALUES ('tradera', 'running', NOW(), %(run_uuid)s)\n"
-            "RETURNING id;",
+            """
+            INSERT INTO import_runs (source, status, started_at, run_uuid)
+            VALUES ('tradera', 'running', NOW(), %(run_uuid)s)
+            RETURNING id;
+            """,
             {"run_uuid": RUN_UUID},
         )
         row = cur.fetchone()
@@ -674,15 +673,17 @@ def finalize_import_run(
 ) -> None:
     with conn.cursor() as cur:
         cur.execute(
-            "UPDATE import_runs\n"
-            "SET finished_at = NOW(),\n"
-            "    status = %(status)s,\n"
-            "    message = %(message)s,\n"
-            "    new_rows = %(new_rows)s,\n"
-            "    pages_fetched = %(pages_fetched)s,\n"
-            "    requests_used = %(requests_used)s,\n"
-            "    error_stack = %(error_stack)s\n"
-            "WHERE id = %(run_id)s;",
+            """
+            UPDATE import_runs
+            SET finished_at = NOW(),
+                status = %(status)s,
+                message = %(message)s,
+                new_rows = %(new_rows)s,
+                pages_fetched = %(pages_fetched)s,
+                requests_used = %(requests_used)s,
+                error_stack = %(error_stack)s
+            WHERE id = %(run_id)s;
+            """,
             {
                 "status": status,
                 "message": message,
@@ -702,6 +703,10 @@ def get_db_watermark_end_date(conn) -> Optional[datetime]:
         val = cur.fetchone()[0]
     return val
 
+
+# -----------------------------
+# Main
+# -----------------------------
 
 def main() -> None:
     db_url = require_env("DATABASE_URL")
@@ -749,19 +754,21 @@ def main() -> None:
             app_id = require_env("TRADERA_APP_ID")
             app_key = require_env("TRADERA_APP_KEY")
 
-            watermark_end_date = get_db_watermark_end_date(conn)
             watermark_cutoff: Optional[datetime] = None
-
-            if watermark_end_date is None:
-                log("watermark_missing", message="DB empty -> will import up to MAX_REQUESTS pages starting from newest.")
+            if MODE == "INCREMENTAL":
+                watermark_end_date = get_db_watermark_end_date(conn)
+                if watermark_end_date is None:
+                    log("watermark_missing", message="DB empty -> will import up to MAX_REQUESTS pages from newest.")
+                else:
+                    watermark_cutoff = watermark_end_date - timedelta(minutes=INCREMENTAL_OVERLAP_MINUTES)
+                    log(
+                        "watermark_found",
+                        max_end_date=watermark_end_date.isoformat(),
+                        cutoff=watermark_cutoff.isoformat(),
+                        overlap_minutes=INCREMENTAL_OVERLAP_MINUTES,
+                    )
             else:
-                watermark_cutoff = watermark_end_date - timedelta(minutes=INCREMENTAL_OVERLAP_MINUTES)
-                log(
-                    "watermark_found",
-                    max_end_date=watermark_end_date.isoformat(),
-                    cutoff=watermark_cutoff.isoformat(),
-                    overlap_minutes=INCREMENTAL_OVERLAP_MINUTES,
-                )
+                log("mode_full", message="MODE=FULL -> ignoring watermark; will fetch MAX_REQUESTS pages.")
 
             page = START_PAGE
 
@@ -795,12 +802,13 @@ def main() -> None:
                     if oldest_on_page is None or row.end_date < oldest_on_page:
                         oldest_on_page = row.end_date
 
+                    # In incremental mode, skip anything at or older than the cutoff
                     if watermark_cutoff is not None and row.end_date <= watermark_cutoff:
                         continue
 
                     rows.append(row)
 
-                upsert(conn, rows)
+                upsert_sales(conn, rows)
                 imported_total += len(rows)
                 pages_fetched += 1
 
@@ -814,6 +822,7 @@ def main() -> None:
                     oldest_end_date_on_page=oldest_on_page.isoformat() if oldest_on_page else None,
                 )
 
+                # Early stop: if the oldest on page is <= cutoff, we’ve crossed into already-imported territory
                 if watermark_cutoff is not None and oldest_on_page is not None and oldest_on_page <= watermark_cutoff:
                     log("watermark_stop", message="Reached already-imported cutoff; stopping early.")
                     break
@@ -839,7 +848,6 @@ def main() -> None:
         except Exception as exc:
             tb = traceback.format_exc()
 
-            # Safe rollback: if anything failed mid-transaction, ensure connection isn't left aborted
             try:
                 conn.rollback()
             except Exception:
