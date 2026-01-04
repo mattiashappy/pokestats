@@ -101,7 +101,8 @@ async function getStaticCardsForSet(setCode) {
 
   if (!cardsEntry?.cards?.length) return []
 
-  const setTotal = cardsEntry.set_total ?? expansion?.set_total ?? null
+  const setTotal =
+    expansion?.set_number ?? cardsEntry.set_total ?? expansion?.set_total ?? null
 
   return cardsEntry.cards.map((card, index) => {
     const setCodeValue = cardsEntry.set_code ?? expansion?.set_code ?? code
@@ -158,7 +159,13 @@ async function getStaticExpansionSummaries() {
     name: expansion.name ?? null,
     era: expansion.era ?? null,
     language: expansion.language ?? null,
-    set_total: expansion.set_total ?? cardsBySetCode?.[expansion.set_code]?.set_total ?? null,
+    set_number: expansion.set_number ?? null,
+    cards_in_set: expansion.cards_in_set ?? null,
+    set_total:
+      expansion.set_number ??
+      expansion.set_total ??
+      cardsBySetCode?.[expansion.set_code]?.set_total ??
+      null,
     release_date: expansion.release_date ?? null,
     image_url: expansion.image_url ?? null,
     cards_total: cardsBySetCode?.[expansion.set_code]?.cards?.length ?? 0,
