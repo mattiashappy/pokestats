@@ -2012,7 +2012,8 @@ app.get('/api/enrichment/summary', async (_req, res) => {
         COUNT(*) FILTER (WHERE match_status = 'Mismatched')::int AS mismatched,
         COUNT(*) FILTER (
           WHERE card_id IS NULL AND COALESCE(NULLIF(match_status, ''), NULL) IS NULL
-        )::int AS unmatched,
+        )::int AS unprocessed,
+        COUNT(*) FILTER (WHERE match_status = 'Unmatched')::int AS unmatched,
         COUNT(*) FILTER (WHERE card_id IS NOT NULL)::int AS linked
       FROM public.tradera_sales
     `)
@@ -2023,6 +2024,7 @@ app.get('/api/enrichment/summary', async (_req, res) => {
       matched: rows[0].matched,
       needsReview: rows[0].needs_review,
       mismatched: rows[0].mismatched,
+      unprocessed: rows[0].unprocessed,
       unmatched: rows[0].unmatched,
       linkedAuctions: rows[0].linked
     })

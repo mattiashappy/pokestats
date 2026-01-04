@@ -65,7 +65,8 @@ export function DataEnrichmentPage(): JSX.Element {
     const summary = summaryQuery.data
     if (!summary) return []
     return [
-      { label: 'Unprocessed', value: summary.unmatched ?? 0 },
+      { label: 'Unprocessed', value: summary.unprocessed ?? 0 },
+      { label: 'Unmatched', value: summary.unmatched ?? 0 },
       { label: 'Matched', value: summary.matched ?? 0 },
       { label: 'Needs review', value: summary.needsReview ?? 0 },
       { label: 'Mismatched', value: summary.mismatched ?? 0 },
@@ -192,6 +193,14 @@ export function DataEnrichmentPage(): JSX.Element {
                 </span>
               ) : null}
             </div>
+            {fullRunMutation.isSuccess ? (
+              <p className="text-xs text-green-600">
+                Full re-run finished: processed {fullRunMutation.data.totalAttempted.toLocaleString()} auctions.
+              </p>
+            ) : null}
+            {fullRunMutation.isError ? (
+              <p className="text-xs text-red-600">{(fullRunMutation.error as Error).message}</p>
+            ) : null}
             {mutation.data ? (
               <div className="rounded border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-800 dark:bg-slate-900/50">
                 <div className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
