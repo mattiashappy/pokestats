@@ -1896,7 +1896,7 @@ app.post('/api/enrichment/run-all', async (req, res) => {
 
       batches += 1
 
-      if (!result.remainingAfter || result.remainingAfter <= 0 || result.attempted === 0) break
+      if (result.attempted === 0 || !result.remainingAfter || result.remainingAfter <= 0) break
     }
 
     res.json({
