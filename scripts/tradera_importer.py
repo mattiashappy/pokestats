@@ -487,6 +487,10 @@ def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
 
 
 def ensure_card(conn, payload: Dict[str, Optional[str]]) -> int:
+    # The cards table deduplicates on (set_code, card_number) via the
+    # cards_unique_setcode_number constraint. Align the ON CONFLICT target
+    # to that index so imports can reuse existing "unknown" placeholder
+    # rows instead of crashing.
     # The cards table is now keyed by (expansion_id, card_number) via
     # the cards_expansion_card_number_key constraint. Use that conflict
     # target to avoid runtime errors even when the legacy (name, set_name)
@@ -496,6 +500,7 @@ def ensure_card(conn, payload: Dict[str, Optional[str]]) -> int:
             """
             INSERT INTO cards (name, era, set_name, set_code, card_number, expansion_id)
             VALUES (%(name)s, %(era)s, %(set_name)s, %(set_code)s, %(card_number)s, NULL)
+            ON CONFLICT ON CONSTRAINT cards_unique_setcode_number DO UPDATE SET
             ON CONFLICT ON CONSTRAINT cards_expansion_card_number_key DO UPDATE SET
                 name = COALESCE(cards.name, EXCLUDED.name),
                 era = COALESCE(cards.era, EXCLUDED.era),
