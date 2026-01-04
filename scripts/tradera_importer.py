@@ -487,13 +487,19 @@ def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
 
 
 def ensure_card(conn, payload: Dict[str, Optional[str]]) -> int:
+    # The cards table deduplicates on (set_code, card_number) via the
+    # cards_unique_setcode_number constraint. Align the ON CONFLICT target
+    # to that index so imports can reuse existing "unknown" placeholder
+    # rows instead of crashing.
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO cards (name, era, set_name, set_code, card_number)
-            VALUES (%(name)s, %(era)s, %(set_name)s, %(set_code)s, %(card_number)s)
-            ON CONFLICT (name, set_name) DO UPDATE SET
+            INSERT INTO cards (name, era, set_name, set_code, card_number, expansion_id)
+            VALUES (%(name)s, %(era)s, %(set_name)s, %(set_code)s, %(card_number)s, NULL)
+            ON CONFLICT ON CONSTRAINT cards_unique_setcode_number DO UPDATE SET
+                name = COALESCE(cards.name, EXCLUDED.name),
                 era = COALESCE(cards.era, EXCLUDED.era),
+                set_name = COALESCE(cards.set_name, EXCLUDED.set_name),
                 set_code = COALESCE(cards.set_code, EXCLUDED.set_code),
                 card_number = COALESCE(cards.card_number, EXCLUDED.card_number)
             RETURNING id;
