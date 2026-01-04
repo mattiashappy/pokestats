@@ -160,12 +160,12 @@
     "name": "Aquapolis",
     "era": "Wizards of the Coast",
     "language": "EN",
-    "set_total": 186,
+    "set_total": 147,
     "release_date": "2003-01-15",
     "image_url": "/sets/1920px-E2_Logo_EN.png",
     "cards_file": "Aquapolis.json",
-    "set_number": 186,
-    "cards_in_set": 186
+    "set_number": 182,
+    "cards_in_set": 182
   },
   {
     "set_code": "SKYRIDGE",
@@ -208,7 +208,7 @@
     "name": "EX Dragon",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 100,
+    "set_total": 97,
     "release_date": "2003-11-24",
     "image_url": "/sets/EX3_Logo_EN.png",
     "cards_file": "Exdragon.json",
@@ -232,11 +232,11 @@
     "name": "EX Hidden Legends",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 102,
+    "set_total": 101,
     "release_date": "2004-06-14",
     "image_url": "/sets/EX5_Logo_EN.png",
     "cards_file": "Exhiddenlegends.json",
-    "set_number": 102,
+    "set_number": 101,
     "cards_in_set": 102
   },
   {
@@ -244,11 +244,11 @@
     "name": "EX FireRed & LeafGreen",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 116,
+    "set_total": 112,
     "release_date": "2004-09-10",
     "image_url": "/sets/EX6_Logo_EN.png",
     "cards_file": "Exfireredleafgreen.json",
-    "set_number": 116,
+    "set_number": 112,
     "cards_in_set": 116
   },
   {
@@ -256,11 +256,11 @@
     "name": "EX Team Rocket Returns",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 111,
+    "set_total": 109,
     "release_date": "2004-11-08",
     "image_url": "/sets/EX7_Logo_EN.png",
     "cards_file": "Exteamrocketreturns.json",
-    "set_number": 111,
+    "set_number": 109,
     "cards_in_set": 111
   },
   {
@@ -268,11 +268,11 @@
     "name": "EX Deoxys",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 108,
+    "set_total": 107,
     "release_date": "2005-02-14",
     "image_url": "/sets/EX8_Logo_EN.png",
     "cards_file": "Exdeoxys.json",
-    "set_number": 108,
+    "set_number": 107,
     "cards_in_set": 108
   },
   {
@@ -280,11 +280,11 @@
     "name": "EX Emerald",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 107,
+    "set_total": 106,
     "release_date": "2005-05-09",
     "image_url": "/sets/EX9_Logo_EN.png",
     "cards_file": "Exemerald.json",
-    "set_number": 107,
+    "set_number": 106,
     "cards_in_set": 107
   },
   {
@@ -292,11 +292,11 @@
     "name": "EX Unseen Forces",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 145,
+    "set_total": 115,
     "release_date": "2005-08-22",
     "image_url": "/sets/EX10_Logo_EN.png",
     "cards_file": "Exunseenforces.json",
-    "set_number": 145,
+    "set_number": 115,
     "cards_in_set": 145
   },
   {
@@ -304,11 +304,11 @@
     "name": "EX Delta Species",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 114,
+    "set_total": 113,
     "release_date": "2005-10-31",
     "image_url": "/sets/EX11_Logo_EN.png",
     "cards_file": "Exdeltaspecies.json",
-    "set_number": 114,
+    "set_number": 113,
     "cards_in_set": 114
   },
   {
@@ -316,11 +316,11 @@
     "name": "EX Legend Maker",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 93,
+    "set_total": 92,
     "release_date": "2006-02-13",
     "image_url": "/sets/EX12_Logo_EN.png",
     "cards_file": "Exlegendmaker.json",
-    "set_number": 93,
+    "set_number": 92,
     "cards_in_set": 93
   },
   {
@@ -328,11 +328,11 @@
     "name": "EX Holon Phantoms",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 111,
+    "set_total": 110,
     "release_date": "2006-05-03",
     "image_url": "/sets/EX13_Logo_EN.png",
     "cards_file": "Exholonphantoms.json",
-    "set_number": 111,
+    "set_number": 110,
     "cards_in_set": 111
   },
   {
@@ -352,11 +352,11 @@
     "name": "EX Dragon Frontiers",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 101,
+    "set_total": 100,
     "release_date": "2006-11-08",
     "image_url": "/sets/EX15_Logo_EN.png",
     "cards_file": "Exdragonfrontiers.json",
-    "set_number": 101,
+    "set_number": 100,
     "cards_in_set": 101
   },
   {
@@ -388,11 +388,11 @@
     "name": "Mysterious Treasures",
     "era": "Diamond & Pearl",
     "language": "EN",
-    "set_total": 124,
+    "set_total": 123,
     "release_date": "2007-08-22",
     "image_url": null,
     "cards_file": "Mysterioustreasures.json",
-    "set_number": 124,
+    "set_number": 123,
     "cards_in_set": 124
   },
   {
@@ -453,7 +453,7 @@
     "image_url": null,
     "cards_file": "Stormfront.json",
     "set_number": 100,
-    "cards_in_set": 100
+    "cards_in_set": 106
   },
   {
     "set_code": "PLATINUM",
@@ -465,18 +465,18 @@
     "image_url": null,
     "cards_file": "Platinum.json",
     "set_number": 127,
-    "cards_in_set": 127
+    "cards_in_set": 133
   },
   {
     "set_code": "RISING_RIVALS",
     "name": "Rising Rivals",
     "era": "Platinum",
     "language": "EN",
-    "set_total": 120,
+    "set_total": 111,
     "release_date": "2009-05-16",
     "image_url": null,
     "cards_file": "Risingrivals.json",
-    "set_number": 120,
+    "set_number": 111,
     "cards_in_set": 120
   },
   {
@@ -489,7 +489,7 @@
     "image_url": null,
     "cards_file": "Supremevictors.json",
     "set_number": 147,
-    "cards_in_set": 147
+    "cards_in_set": 153
   },
   {
     "set_code": "ARCEUS",
@@ -501,7 +501,7 @@
     "image_url": "/sets/PL4_Logo_EN.png",
     "cards_file": "Arceus.json",
     "set_number": 99,
-    "cards_in_set": 99
+    "cards_in_set": 111
   },
   {
     "set_code": "HGSS",
@@ -513,7 +513,7 @@
     "image_url": "/sets/HS1_Logo_EN.png",
     "cards_file": "HeartGoldsoulSilver.json",
     "set_number": 123,
-    "cards_in_set": 123
+    "cards_in_set": 124
   },
   {
     "set_code": "HGSS_UNLEASHED",
@@ -525,7 +525,7 @@
     "image_url": "/sets/HS2_Logo_EN.png",
     "cards_file": "Unleashed.json",
     "set_number": 95,
-    "cards_in_set": 95
+    "cards_in_set": 96
   },
   {
     "set_code": "HGSS_UNDAUNTED",
@@ -537,7 +537,7 @@
     "image_url": "/sets/HS3_Logo_EN.png",
     "cards_file": "Undaunted.json",
     "set_number": 90,
-    "cards_in_set": 90
+    "cards_in_set": 91
   },
   {
     "set_code": "HGSS_TRIUMPHANT",
@@ -561,7 +561,7 @@
     "image_url": "/sets/COL1_Logo_EN.png",
     "cards_file": "Calloflegends.json",
     "set_number": 95,
-    "cards_in_set": 95
+    "cards_in_set": 106
   },
   {
     "set_code": "BLACK_WHITE",
@@ -573,7 +573,7 @@
     "image_url": "/sets/BW1_Logo_EN.png",
     "cards_file": "Blackwhite.json",
     "set_number": 114,
-    "cards_in_set": 114
+    "cards_in_set": 115
   },
   {
     "set_code": "EMERGING_POWERS",
@@ -597,7 +597,7 @@
     "image_url": "/sets/BW3_Logo_EN.png",
     "cards_file": "Noblevictories.json",
     "set_number": 101,
-    "cards_in_set": 101
+    "cards_in_set": 102
   },
   {
     "set_code": "NEXT_DESTINIES",
@@ -609,7 +609,7 @@
     "image_url": "/sets/BW4_Logo_EN.png",
     "cards_file": "Nextdestinies.json",
     "set_number": 99,
-    "cards_in_set": 99
+    "cards_in_set": 103
   },
   {
     "set_code": "DARK_EXPLORERS",
@@ -621,7 +621,7 @@
     "image_url": "/sets/BW5_Logo_EN.png",
     "cards_file": "Darkexplorers.json",
     "set_number": 108,
-    "cards_in_set": 108
+    "cards_in_set": 112
   },
   {
     "set_code": "DRAGONS_EXALTED",
@@ -633,7 +633,7 @@
     "image_url": "/sets/BW6_Logo_EN.png",
     "cards_file": "Dragonsexalted.json",
     "set_number": 124,
-    "cards_in_set": 124
+    "cards_in_set": 128
   },
   {
     "set_code": "DRAGON_VAULT",
@@ -645,7 +645,7 @@
     "image_url": null,
     "cards_file": "Dragonvault.json",
     "set_number": 20,
-    "cards_in_set": 20
+    "cards_in_set": 21
   },
   {
     "set_code": "BOUNDARIES_CROSSED",
