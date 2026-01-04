@@ -100,8 +100,8 @@
     { "card_number": "95/97", "name": "Magcargo ex" },
     { "card_number": "96/97", "name": "Muk ex" },
     { "card_number": "97/97", "name": "Rayquaza ex" },
-    { "card_number": "SECRET", "name": "Charmander" },
-    { "card_number": "SECRET", "name": "Charmeleon" },
-    { "card_number": "SECRET", "name": "Charizard" }
+    { "card_number": "98/97", "name": "Charmander" },
+    { "card_number": "99/97", "name": "Charmeleon" },
+    { "card_number": "100/97", "name": "Charizard" }
   ]
 }
