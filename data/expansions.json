@@ -657,7 +657,7 @@
     "image_url": "/sets/BW7_Logo_EN.png",
     "cards_file": "Boundariescrossed.json",
     "set_number": 149,
-    "cards_in_set": 149
+    "cards_in_set": 153
   },
   {
     "set_code": "PLASMA_STORM",
@@ -669,7 +669,7 @@
     "image_url": "/sets/BW8_Logo_EN.png",
     "cards_file": "Plasmastorm.json",
     "set_number": 135,
-    "cards_in_set": 135
+    "cards_in_set": 138
   },
   {
     "set_code": "PLASMA_FREEZE",
@@ -681,7 +681,7 @@
     "image_url": "/sets/BW9_Logo_EN.png",
     "cards_file": "Plasmafreeze.json",
     "set_number": 116,
-    "cards_in_set": 116
+    "cards_in_set": 122
   },
   {
     "set_code": "PLASMA_BLAST",
@@ -693,7 +693,7 @@
     "image_url": "/sets/BW10_Logo_EN.png",
     "cards_file": "Plasmablast.json",
     "set_number": 101,
-    "cards_in_set": 101
+    "cards_in_set": 105
   },
   {
     "set_code": "LEGENDARY_TREASURES",
@@ -705,7 +705,7 @@
     "image_url": "/sets/BW11_Logo_EN.png",
     "cards_file": "Legendarytreasures.json",
     "set_number": 113,
-    "cards_in_set": 113
+    "cards_in_set": 140
   },
   {
     "set_code": "KALOS_STARTER_SET",
@@ -736,11 +736,11 @@
     "name": "Flashfire",
     "era": "XY",
     "language": "EN",
-    "set_total": 109,
+    "set_total": 106,
     "release_date": "2014-05-07",
     "image_url": "/sets/XY2_Logo_EN.png",
     "cards_file": "Flashfire.json",
-    "set_number": 109,
+    "set_number": 106,
     "cards_in_set": 109
   },
   {
@@ -753,30 +753,30 @@
     "image_url": "/sets/XY3_Logo_EN.png",
     "cards_file": "Furiousfists.json",
     "set_number": 111,
-    "cards_in_set": 111
+    "cards_in_set": 113
   },
   {
     "set_code": "PHANTOM_FORCES",
     "name": "Phantom Forces",
     "era": "XY",
     "language": "EN",
-    "set_total": 124,
+    "set_total": 119,
     "release_date": "2014-11-05",
     "image_url": "/sets/XY4_Logo_EN.png",
     "cards_file": "Phantomforces.json",
-    "set_number": 124,
-    "cards_in_set": 124
+    "set_number": 119,
+    "cards_in_set": 122
   },
   {
     "set_code": "PRIMAL_CLASH",
     "name": "Primal Clash",
     "era": "XY",
     "language": "EN",
-    "set_total": 164,
+    "set_total": 160,
     "release_date": "2015-02-04",
     "image_url": "/sets/XY5_Logo_EN.png",
     "cards_file": "Primalclash.json",
-    "set_number": 164,
+    "set_number": 160,
     "cards_in_set": 164
   },
   {
@@ -796,11 +796,11 @@
     "name": "Roaring Skies",
     "era": "XY",
     "language": "EN",
-    "set_total": 110,
+    "set_total": 108,
     "release_date": "2015-05-06",
     "image_url": "/sets/XY6_Logo_EN.png",
     "cards_file": "Roaringskies.json",
-    "set_number": 110,
+    "set_number": 108,
     "cards_in_set": 110
   },
   {
@@ -808,11 +808,11 @@
     "name": "Ancient Origins",
     "era": "XY",
     "language": "EN",
-    "set_total": 100,
+    "set_total": 98,
     "release_date": "2015-08-12",
     "image_url": "/sets/XY7_Logo_EN.png",
     "cards_file": "Ancientorigins.json",
-    "set_number": 100,
+    "set_number": 98,
     "cards_in_set": 100
   },
   {
@@ -820,12 +820,12 @@
     "name": "BREAKthrough",
     "era": "XY",
     "language": "EN",
-    "set_total": 165,
+    "set_total": 162,
     "release_date": "2015-11-04",
     "image_url": "/sets/XY8_Logo_EN.png",
     "cards_file": "Breakhrough.json",
-    "set_number": 165,
-    "cards_in_set": 165
+    "set_number": 162,
+    "cards_in_set": 164
   },
   {
     "set_code": "BREAKPOINT",
@@ -837,7 +837,7 @@
     "image_url": "/sets/XY9_Logo_EN.png",
     "cards_file": "Breakpoint.json",
     "set_number": 122,
-    "cards_in_set": 122
+    "cards_in_set": 123
   },
   {
     "set_code": "GENERATIONS",
@@ -849,7 +849,7 @@
     "image_url": "/sets/Generations_Logo_EN.png",
     "cards_file": "Generations.json",
     "set_number": 83,
-    "cards_in_set": 83
+    "cards_in_set": 115
   },
   {
     "set_code": "FATES_COLLIDE",
@@ -861,7 +861,7 @@
     "image_url": "/sets/XY10_Logo_EN.png",
     "cards_file": "Fatescollide.json",
     "set_number": 124,
-    "cards_in_set": 124
+    "cards_in_set": 125
   },
   {
     "set_code": "STEAM_SIEGE",
@@ -885,7 +885,7 @@
     "image_url": "/sets/XY12_Logo_EN.png",
     "cards_file": "Evolutions.json",
     "set_number": 108,
-    "cards_in_set": 108
+    "cards_in_set": 113
   },
   {
     "set_code": "SUN_MOON",
@@ -897,7 +897,7 @@
     "image_url": "/sets/SM1_Logo_EN.png",
     "cards_file": "Sunmoon.json",
     "set_number": 149,
-    "cards_in_set": 149
+    "cards_in_set": 163
   },
   {
     "set_code": "GUARDIANS_RISING",
