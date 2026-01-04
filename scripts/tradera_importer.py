@@ -1,42 +1,40 @@
-"""
-Tradera importer (REFRESH ONLY, SOAP) -> PostgreSQL
-- Purpose: keep DB up-to-date with newest ended auctions (incremental).
-- Locked: ItemsPerPage = 50 (small responses).
-- Budget-safe: MAX_REQUESTS caps daily usage.
-- Early-stop: stops when it hits already-imported data (watermark + overlap).
-
-Required ENV:
-- DATABASE_URL
-- TRADERA_APP_ID
-- TRADERA_APP_KEY
-
-Optional ENV:
-- TRADERA_CATEGORY_ID (default 1001337)
-- MAX_REQUESTS (default 10)                 # hard cap requests per run
-- SLEEP_MS (default 150)
-- TZ (default Europe/Stockholm)
-
-Filters (optional):
-- ITEM_STATUS (default Ended)
-- ITEM_TYPE (default Auction)
-- BIDS_MINIMUM (default 1)                  # set to "none" / "" to disable
-- ORDER_BY (default EndDateDescending)      # will be forced if wrong
-
-Incremental tuning:
-- INCREMENTAL_OVERLAP_MINUTES (default 10)
-
-Network tuning:
-- TRADERA_CONNECT_TIMEOUT (default 10)
-- TRADERA_READ_TIMEOUT (default 60)
-- TRADERA_RETRIES (default 6)
-- TRADERA_BACKOFF (default 0.8)
-
-DB assumptions:
-- tradera_sales has unique constraint on item_id
-- columns: item_id, category_id, end_date, price, bid_count, seller_id, seller_alias,
-          seller_dsr, title, description, item_url, thumbnail_url, image_urls, attributes, card_id (nullable)
-- cards has unique constraint on (name, set_name) for ON CONFLICT
-"""
+# Tradera importer (REFRESH ONLY, SOAP) -> PostgreSQL
+# - Purpose: keep DB up-to-date with newest ended auctions (incremental).
+# - Locked: ItemsPerPage = 50 (small responses).
+# - Budget-safe: MAX_REQUESTS caps daily usage.
+# - Early-stop: stops when it hits already-imported data (watermark + overlap).
+#
+# Required ENV:
+# - DATABASE_URL
+# - TRADERA_APP_ID
+# - TRADERA_APP_KEY
+#
+# Optional ENV:
+# - TRADERA_CATEGORY_ID (default 1001337)
+# - MAX_REQUESTS (default 10)                 # hard cap requests per run
+# - SLEEP_MS (default 150)
+# - TZ (default Europe/Stockholm)
+#
+# Filters (optional):
+# - ITEM_STATUS (default Ended)
+# - ITEM_TYPE (default Auction)
+# - BIDS_MINIMUM (default 1)                  # set to "none" / "" to disable
+# - ORDER_BY (default EndDateDescending)      # will be forced if wrong
+#
+# Incremental tuning:
+# - INCREMENTAL_OVERLAP_MINUTES (default 10)
+#
+# Network tuning:
+# - TRADERA_CONNECT_TIMEOUT (default 10)
+# - TRADERA_READ_TIMEOUT (default 60)
+# - TRADERA_RETRIES (default 6)
+# - TRADERA_BACKOFF (default 0.8)
+#
+# DB assumptions:
+# - tradera_sales has unique constraint on item_id
+# - columns: item_id, category_id, end_date, price, bid_count, seller_id, seller_alias,
+#           seller_dsr, title, description, item_url, thumbnail_url, image_urls, attributes, card_id (nullable)
+# - cards deduplicate via cards_unique_setcode_number on (set_code, card_number)
 
 from __future__ import annotations
 
@@ -130,12 +128,10 @@ def require_env(name: str) -> str:
 
 
 def normalize_bids_minimum(raw: str) -> Optional[int]:
-    """
-    Returns:
-      - int if enabled
-      - None if disabled
-    Disabled values: "none", "null", "", "off"
-    """
+    # Returns:
+    #   - int if enabled
+    #   - None if disabled
+    # Disabled values: "none", "null", "", "off"
     if raw is None:
         return None
     s = str(raw).strip().lower()
@@ -155,31 +151,32 @@ def build_envelope(app_id: str, app_key: str, page_number: int, order_by: str) -
     item_type_xml = f"<ItemType>{ITEM_TYPE}</ItemType>" if ITEM_TYPE else ""
     bids_min_xml = "" if BIDS_MINIMUM is None else f"<BidsMinimum>{BIDS_MINIMUM}</BidsMinimum>"
 
-    return f"""<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-               xmlns:xsd="http://www.w3.org/2001/XMLSchema"
-               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Header>
-    <AuthenticationHeader xmlns="http://api.tradera.com">
-      <AppId>{app_id}</AppId>
-      <AppKey>{app_key}</AppKey>
-    </AuthenticationHeader>
-  </soap:Header>
-
-  <soap:Body>
-    <SearchAdvanced xmlns="http://api.tradera.com">
-      <request>
-        <CategoryId>{CATEGORY_ID}</CategoryId>
-        {item_type_xml}
-        {item_status_xml}
-        {bids_min_xml}
-        <OrderBy>{order_by}</OrderBy>
-        <ItemsPerPage>{ITEMS_PER_PAGE}</ItemsPerPage>
-        <PageNumber>{page_number}</PageNumber>
-      </request>
-    </SearchAdvanced>
-  </soap:Body>
-</soap:Envelope>"""
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"\n'
+        '               xmlns:xsd="http://www.w3.org/2001/XMLSchema"\n'
+        '               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">\n'
+        '  <soap:Header>\n'
+        '    <AuthenticationHeader xmlns="http://api.tradera.com">\n'
+        f'      <AppId>{app_id}</AppId>\n'
+        f'      <AppKey>{app_key}</AppKey>\n'
+        '    </AuthenticationHeader>\n'
+        '  </soap:Header>\n\n'
+        '  <soap:Body>\n'
+        '    <SearchAdvanced xmlns="http://api.tradera.com">\n'
+        '      <request>\n'
+        f'        <CategoryId>{CATEGORY_ID}</CategoryId>\n'
+        f'        {item_type_xml}\n'
+        f'        {item_status_xml}\n'
+        f'        {bids_min_xml}\n'
+        f'        <OrderBy>{order_by}</OrderBy>\n'
+        f'        <ItemsPerPage>{ITEMS_PER_PAGE}</ItemsPerPage>\n'
+        f'        <PageNumber>{page_number}</PageNumber>\n'
+        '      </request>\n'
+        '    </SearchAdvanced>\n'
+        '  </soap:Body>\n'
+        '</soap:Envelope>'
+    )
 
 
 def make_session() -> requests.Session:
@@ -492,6 +489,38 @@ def ensure_card(conn, payload: Dict[str, Optional[str]]) -> int:
     # row to avoid duplicate-key errors when ON CONFLICT cannot run (for
     # instance if the constraint is missing on a specific database).
     with conn.cursor() as cur:
+        select_sql = (
+            "SELECT id\n"
+            "FROM cards\n"
+            "WHERE set_code = %(set_code)s AND card_number = %(card_number)s\n"
+            "LIMIT 1;"
+        )
+        cur.execute(select_sql, payload)
+        found = cur.fetchone()
+        if found:
+            update_sql = (
+                "UPDATE cards\n"
+                "SET\n"
+                "    name = COALESCE(cards.name, %(name)s),\n"
+                "    era = COALESCE(cards.era, %(era)s),\n"
+                "    set_name = COALESCE(cards.set_name, %(set_name)s)\n"
+                "WHERE id = %(id)s\n"
+                "RETURNING id;"
+            )
+            cur.execute(update_sql, {**payload, "id": found[0]})
+            row = cur.fetchone()
+            return int(row[0])
+
+        insert_sql = (
+            "INSERT INTO cards (name, era, set_name, set_code, card_number, expansion_id)\n"
+            "VALUES (%(name)s, %(era)s, %(set_name)s, %(set_code)s, %(card_number)s, NULL)\n"
+            "ON CONFLICT ON CONSTRAINT cards_unique_setcode_number DO UPDATE SET\n"
+            "    name = COALESCE(cards.name, EXCLUDED.name),\n"
+            "    era = COALESCE(cards.era, EXCLUDED.era),\n"
+            "    set_name = COALESCE(cards.set_name, EXCLUDED.set_name),\n"
+            "    set_code = COALESCE(cards.set_code, EXCLUDED.set_code),\n"
+            "    card_number = COALESCE(cards.card_number, EXCLUDED.card_number)\n"
+            "RETURNING id;"
         cur.execute(
             """
             SELECT id
@@ -546,6 +575,7 @@ def ensure_card(conn, payload: Dict[str, Optional[str]]) -> int:
             """,
             payload,
         )
+        cur.execute(insert_sql, payload)
         row = cur.fetchone()
     return int(row[0])
 
@@ -562,31 +592,31 @@ def upsert(conn, rows: List[Row]) -> None:
             card_cache[key] = ensure_card(conn, payload)
         r.card_id = card_cache[key]
 
-    sql = """
-    INSERT INTO tradera_sales (
-        item_id, category_id, end_date, price, bid_count, seller_id, seller_alias,
-        seller_dsr, title, description, item_url, thumbnail_url, image_urls, attributes, card_id
-    ) VALUES (
-        %(item_id)s, %(category_id)s, %(end_date)s, %(price)s, %(bid_count)s,
-        %(seller_id)s, %(seller_alias)s, %(seller_dsr)s, %(title)s, %(description)s,
-        %(item_url)s, %(thumbnail_url)s, %(image_urls)s, %(attributes)s, %(card_id)s
+    sql = (
+        "INSERT INTO tradera_sales (\n"
+        "    item_id, category_id, end_date, price, bid_count, seller_id, seller_alias,\n"
+        "    seller_dsr, title, description, item_url, thumbnail_url, image_urls, attributes, card_id\n"
+        ") VALUES (\n"
+        "    %(item_id)s, %(category_id)s, %(end_date)s, %(price)s, %(bid_count)s,\n"
+        "    %(seller_id)s, %(seller_alias)s, %(seller_dsr)s, %(title)s, %(description)s,\n"
+        "    %(item_url)s, %(thumbnail_url)s, %(image_urls)s, %(attributes)s, %(card_id)s\n"
+        ")\n"
+        "ON CONFLICT (item_id) DO UPDATE SET\n"
+        "    category_id = EXCLUDED.category_id,\n"
+        "    end_date = EXCLUDED.end_date,\n"
+        "    price = EXCLUDED.price,\n"
+        "    bid_count = EXCLUDED.bid_count,\n"
+        "    seller_id = EXCLUDED.seller_id,\n"
+        "    seller_alias = EXCLUDED.seller_alias,\n"
+        "    seller_dsr = EXCLUDED.seller_dsr,\n"
+        "    title = EXCLUDED.title,\n"
+        "    description = EXCLUDED.description,\n"
+        "    item_url = EXCLUDED.item_url,\n"
+        "    thumbnail_url = EXCLUDED.thumbnail_url,\n"
+        "    image_urls = EXCLUDED.image_urls,\n"
+        "    attributes = EXCLUDED.attributes,\n"
+        "    card_id = EXCLUDED.card_id;"
     )
-    ON CONFLICT (item_id) DO UPDATE SET
-        category_id = EXCLUDED.category_id,
-        end_date = EXCLUDED.end_date,
-        price = EXCLUDED.price,
-        bid_count = EXCLUDED.bid_count,
-        seller_id = EXCLUDED.seller_id,
-        seller_alias = EXCLUDED.seller_alias,
-        seller_dsr = EXCLUDED.seller_dsr,
-        title = EXCLUDED.title,
-        description = EXCLUDED.description,
-        item_url = EXCLUDED.item_url,
-        thumbnail_url = EXCLUDED.thumbnail_url,
-        image_urls = EXCLUDED.image_urls,
-        attributes = EXCLUDED.attributes,
-        card_id = EXCLUDED.card_id;
-    """
     with conn.cursor() as cur:
         execute_batch(cur, sql, [r.as_params() for r in rows], page_size=200)
     conn.commit()
@@ -595,21 +625,19 @@ def upsert(conn, rows: List[Row]) -> None:
 def ensure_import_runs_table(conn) -> None:
     with conn.cursor() as cur:
         cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS import_runs (
-                id SERIAL PRIMARY KEY,
-                source TEXT NOT NULL DEFAULT 'tradera',
-                started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                finished_at TIMESTAMPTZ,
-                new_rows INTEGER NOT NULL DEFAULT 0,
-                pages_fetched INTEGER NOT NULL DEFAULT 0,
-                requests_used INTEGER NOT NULL DEFAULT 0,
-                status TEXT NOT NULL DEFAULT 'running',
-                message TEXT,
-                run_uuid TEXT,
-                error_stack TEXT
-            );
-            """
+            "CREATE TABLE IF NOT EXISTS import_runs (\n"
+            "    id SERIAL PRIMARY KEY,\n"
+            "    source TEXT NOT NULL DEFAULT 'tradera',\n"
+            "    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n"
+            "    finished_at TIMESTAMPTZ,\n"
+            "    new_rows INTEGER NOT NULL DEFAULT 0,\n"
+            "    pages_fetched INTEGER NOT NULL DEFAULT 0,\n"
+            "    requests_used INTEGER NOT NULL DEFAULT 0,\n"
+            "    status TEXT NOT NULL DEFAULT 'running',\n"
+            "    message TEXT,\n"
+            "    run_uuid TEXT,\n"
+            "    error_stack TEXT\n"
+            ");"
         )
 
         cur.execute("ALTER TABLE import_runs ADD COLUMN IF NOT EXISTS run_uuid TEXT;")
@@ -623,11 +651,9 @@ def ensure_import_runs_table(conn) -> None:
 def start_import_run(conn) -> int:
     with conn.cursor() as cur:
         cur.execute(
-            """
-            INSERT INTO import_runs (source, status, started_at, run_uuid)
-            VALUES ('tradera', 'running', NOW(), %(run_uuid)s)
-            RETURNING id;
-            """,
+            "INSERT INTO import_runs (source, status, started_at, run_uuid)\n"
+            "VALUES ('tradera', 'running', NOW(), %(run_uuid)s)\n"
+            "RETURNING id;",
             {"run_uuid": RUN_UUID},
         )
         row = cur.fetchone()
@@ -648,17 +674,15 @@ def finalize_import_run(
 ) -> None:
     with conn.cursor() as cur:
         cur.execute(
-            """
-            UPDATE import_runs
-            SET finished_at = NOW(),
-                status = %(status)s,
-                message = %(message)s,
-                new_rows = %(new_rows)s,
-                pages_fetched = %(pages_fetched)s,
-                requests_used = %(requests_used)s,
-                error_stack = %(error_stack)s
-            WHERE id = %(run_id)s;
-            """,
+            "UPDATE import_runs\n"
+            "SET finished_at = NOW(),\n"
+            "    status = %(status)s,\n"
+            "    message = %(message)s,\n"
+            "    new_rows = %(new_rows)s,\n"
+            "    pages_fetched = %(pages_fetched)s,\n"
+            "    requests_used = %(requests_used)s,\n"
+            "    error_stack = %(error_stack)s\n"
+            "WHERE id = %(run_id)s;",
             {
                 "status": status,
                 "message": message,
