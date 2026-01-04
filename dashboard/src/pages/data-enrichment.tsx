@@ -75,10 +75,6 @@ export function DataEnrichmentPage(): JSX.Element {
     () => unmatchedAuctions.filter((auction) => Boolean(auction.matched_set_code)),
     [unmatchedAuctions]
   )
-  const needsMoreInfo = useMemo(
-    () => unmatchedAuctions.filter((auction) => !Boolean(auction.matched_set_code)),
-    [unmatchedAuctions]
-  )
 
   const refetchEnrichmentTables = () => {
     unmatchedQuery.refetch()
@@ -313,46 +309,6 @@ export function DataEnrichmentPage(): JSX.Element {
             </Table>
             {readyForManualMatch.length === 0 ? (
               <p className="text-sm text-slate-500">No auctions with enough detail to match right now.</p>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Need more info / discard</p>
-                <p className="text-xs text-slate-500">Items without reliable set hints can be discarded when unmatchable.</p>
-              </div>
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Parsed number</TableHead>
-                  <TableHead>Set total</TableHead>
-                  <TableHead>Set hint</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Manual actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {needsMoreInfo.map((row) => (
-                  <TableRow key={row.item_id}>
-                    <TableCell className="font-mono text-xs">{row.item_id}</TableCell>
-                    <TableCell className="max-w-xs truncate text-sm">{row.title}</TableCell>
-                    <TableCell>{row.parsed_card_number ?? '—'}</TableCell>
-                    <TableCell>{row.parsed_set_total ?? '—'}</TableCell>
-                    <TableCell>{row.matched_set_code ?? '—'}</TableCell>
-                    <TableCell>{row.match_status ?? '—'}</TableCell>
-                    <TableCell>
-                      <ManualMatchCell auction={row} onUpdated={refetchEnrichmentTables} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            {needsMoreInfo.length === 0 ? (
-              <p className="text-sm text-slate-500">No remaining items awaiting review.</p>
             ) : null}
           </div>
         </CardContent>
