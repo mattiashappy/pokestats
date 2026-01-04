@@ -487,13 +487,19 @@ def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
 
 
 def ensure_card(conn, payload: Dict[str, Optional[str]]) -> int:
+    # The cards table is now keyed by (expansion_id, card_number) via
+    # the cards_expansion_card_number_key constraint. Use that conflict
+    # target to avoid runtime errors even when the legacy (name, set_name)
+    # constraint has been removed.
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO cards (name, era, set_name, set_code, card_number)
-            VALUES (%(name)s, %(era)s, %(set_name)s, %(set_code)s, %(card_number)s)
-            ON CONFLICT (name, set_name) DO UPDATE SET
+            INSERT INTO cards (name, era, set_name, set_code, card_number, expansion_id)
+            VALUES (%(name)s, %(era)s, %(set_name)s, %(set_code)s, %(card_number)s, NULL)
+            ON CONFLICT ON CONSTRAINT cards_expansion_card_number_key DO UPDATE SET
+                name = COALESCE(cards.name, EXCLUDED.name),
                 era = COALESCE(cards.era, EXCLUDED.era),
+                set_name = COALESCE(cards.set_name, EXCLUDED.set_name),
                 set_code = COALESCE(cards.set_code, EXCLUDED.set_code),
                 card_number = COALESCE(cards.card_number, EXCLUDED.card_number)
             RETURNING id;
