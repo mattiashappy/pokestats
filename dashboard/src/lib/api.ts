@@ -70,12 +70,30 @@ export async function runFullEnrichment(batchSize = 500) {
     body: JSON.stringify({ batchSize })
   })
 
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || 'Failed to run full enrichment')
+  const text = await res.text()
+  let data: any = null
+
+  try {
+    data = text ? JSON.parse(text) : null
+  } catch (_error) {
+    data = text
   }
 
-  return res.json() as Promise<{
+  if (!res.ok) {
+    const message =
+      (data && typeof data === 'object' && typeof data.error === 'string' && data.error) ||
+      (data && typeof data === 'object' && typeof data.message === 'string' && data.message) ||
+      (typeof data === 'string' && data.trim().slice(0, 500)) ||
+      'Failed to run full enrichment'
+
+    throw new Error(message)
+  }
+
+  if (!data || typeof data !== 'object') {
+    throw new Error('Unexpected response while running full enrichment')
+  }
+
+  return data as {
     ok: boolean
     batchSize: number
     batches: number
@@ -100,6 +118,7 @@ export type EnrichmentSummary = {
   matched?: number
   needsReview?: number
   mismatched?: number
+  unprocessed?: number
   unmatched?: number
   linkedAuctions?: number
   error?: string
