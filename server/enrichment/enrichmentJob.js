@@ -53,14 +53,16 @@ async function runEnrichmentJob({
     const { expansions, cardsBySetCode } = await loadCatalog()
     const cardIndex = await buildDatabaseCardIndex(pool)
 
+    const unprocessedClause =
+      'card_id IS NULL AND COALESCE(NULLIF(match_status, \'\'), NULL) IS NULL'
+
     const {
       rows: [before]
     } = await client.query(
       `
         SELECT COUNT(*)::int AS count
         FROM public.tradera_sales
-        WHERE card_id IS NULL
-          AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')
+        WHERE ${unprocessedClause}
           AND COALESCE(match_status, '') <> 'Discarded (manual)'
       `
     )
@@ -69,8 +71,7 @@ async function runEnrichmentJob({
       `
         SELECT item_id, title, attributes, era, pokemon_era
         FROM public.tradera_sales
-        WHERE card_id IS NULL
-          AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')
+        WHERE ${unprocessedClause}
           AND COALESCE(match_status, '') <> 'Discarded (manual)'
         ORDER BY end_date ASC NULLS LAST
         LIMIT $1
@@ -154,8 +155,7 @@ async function runEnrichmentJob({
       `
         SELECT COUNT(*)::int AS count
         FROM public.tradera_sales
-        WHERE card_id IS NULL
-          AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')
+        WHERE ${unprocessedClause}
           AND COALESCE(match_status, '') <> 'Discarded (manual)'
       `
     )

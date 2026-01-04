@@ -1976,7 +1976,7 @@ app.get('/api/enrichment/summary', async (_req, res) => {
         COUNT(*) FILTER (WHERE match_status = 'Needs review')::int AS needs_review,
         COUNT(*) FILTER (WHERE match_status = 'Mismatched')::int AS mismatched,
         COUNT(*) FILTER (
-          WHERE match_status IS NULL OR match_status = '' OR match_status = 'Unmatched'
+          WHERE card_id IS NULL AND COALESCE(NULLIF(match_status, ''), NULL) IS NULL
         )::int AS unmatched,
         COUNT(*) FILTER (WHERE card_id IS NOT NULL)::int AS linked
       FROM public.tradera_sales
