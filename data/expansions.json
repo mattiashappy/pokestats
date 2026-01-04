@@ -134,7 +134,7 @@
     "name": "Aquapolis",
     "era": "Wizards of the Coast",
     "language": "EN",
-    "set_total": 147,
+    "set_total": 186,
     "release_date": "2003-01-15",
     "image_url": "/sets/1920px-E2_Logo_EN.png",
     "cards_file": "Aquapolis.json"
@@ -194,7 +194,7 @@
     "name": "EX Hidden Legends",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 101,
+    "set_total": 102,
     "release_date": "2004-06-14",
     "image_url": "/sets/EX5_Logo_EN.png",
     "cards_file": "Exhiddenlegends.json"
@@ -204,7 +204,7 @@
     "name": "EX FireRed & LeafGreen",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 112,
+    "set_total": 116,
     "release_date": "2004-09-10",
     "image_url": "/sets/EX6_Logo_EN.png",
     "cards_file": "Exfireredleafgreen.json"
@@ -224,7 +224,7 @@
     "name": "EX Deoxys",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 107,
+    "set_total": 108,
     "release_date": "2005-02-14",
     "image_url": "/sets/EX8_Logo_EN.png",
     "cards_file": "Exdeoxys.json"
@@ -234,7 +234,7 @@
     "name": "EX Emerald",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 106,
+    "set_total": 107,
     "release_date": "2005-05-09",
     "image_url": "/sets/EX9_Logo_EN.png",
     "cards_file": "Exemerald.json"
@@ -254,7 +254,7 @@
     "name": "EX Delta Species",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 113,
+    "set_total": 114,
     "release_date": "2005-10-31",
     "image_url": "/sets/EX11_Logo_EN.png",
     "cards_file": "Exdeltaspecies.json"
@@ -264,7 +264,7 @@
     "name": "EX Legend Maker",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 92,
+    "set_total": 93,
     "release_date": "2006-02-13",
     "image_url": "/sets/EX12_Logo_EN.png",
     "cards_file": "Exlegendmaker.json"
@@ -274,7 +274,7 @@
     "name": "EX Holon Phantoms",
     "era": "EX Series",
     "language": "EN",
-    "set_total": 110,
+    "set_total": 111,
     "release_date": "2006-05-03",
     "image_url": "/sets/EX13_Logo_EN.png",
     "cards_file": "Exholonphantoms.json"
@@ -384,7 +384,7 @@
     "name": "Platinum",
     "era": "Platinum",
     "language": "EN",
-    "set_total": 133,
+    "set_total": 127,
     "release_date": "2009-02-11",
     "image_url": null,
     "cards_file": "Platinum.json"
@@ -394,7 +394,7 @@
     "name": "Rising Rivals",
     "era": "Platinum",
     "language": "EN",
-    "set_total": 111,
+    "set_total": 120,
     "release_date": "2009-05-16",
     "image_url": null,
     "cards_file": "Risingrivals.json"
@@ -404,7 +404,7 @@
     "name": "Supreme Victors",
     "era": "Platinum",
     "language": "EN",
-    "set_total": 153,
+    "set_total": 147,
     "release_date": "2009-08-19",
     "image_url": null,
     "cards_file": "Supremevictors.json"
@@ -444,7 +444,7 @@
     "name": "Undaunted",
     "era": "HeartGold & SoulSilver",
     "language": "EN",
-    "set_total": 91,
+    "set_total": 90,
     "release_date": "2010-08-18",
     "image_url": "/sets/HS3_Logo_EN.png",
     "cards_file": "Undaunted.json"
@@ -494,7 +494,7 @@
     "name": "Noble Victories",
     "era": "Black & White",
     "language": "EN",
-    "set_total": 102,
+    "set_total": 101,
     "release_date": "2011-11-16",
     "image_url": "/sets/BW3_Logo_EN.png",
     "cards_file": "Noblevictories.json"
@@ -514,7 +514,7 @@
     "name": "Dark Explorers",
     "era": "Black & White",
     "language": "EN",
-    "set_total": 111,
+    "set_total": 108,
     "release_date": "2012-05-09",
     "image_url": "/sets/BW5_Logo_EN.png",
     "cards_file": "Darkexplorers.json"
@@ -524,7 +524,7 @@
     "name": "Dragons Exalted",
     "era": "Black & White",
     "language": "EN",
-    "set_total": 128,
+    "set_total": 124,
     "release_date": "2012-08-15",
     "image_url": "/sets/BW6_Logo_EN.png",
     "cards_file": "Dragonsexalted.json"
@@ -564,7 +564,7 @@
     "name": "Plasma Freeze",
     "era": "Black & White",
     "language": "EN",
-    "set_total": 122,
+    "set_total": 116,
     "release_date": "2013-05-08",
     "image_url": "/sets/BW9_Logo_EN.png",
     "cards_file": "Plasmafreeze.json"
@@ -574,7 +574,7 @@
     "name": "Plasma Blast",
     "era": "Black & White",
     "language": "EN",
-    "set_total": 105,
+    "set_total": 101,
     "release_date": "2013-08-14",
     "image_url": "/sets/BW10_Logo_EN.png",
     "cards_file": "Plasmablast.json"
@@ -584,7 +584,7 @@
     "name": "Legendary Treasures",
     "era": "Black & White",
     "language": "EN",
-    "set_total": 115,
+    "set_total": 113,
     "release_date": "2013-11-06",
     "image_url": "/sets/BW11_Logo_EN.png",
     "cards_file": "Legendarytreasures.json"
@@ -684,7 +684,7 @@
     "name": "BREAKthrough",
     "era": "XY",
     "language": "EN",
-    "set_total": 162,
+    "set_total": 165,
     "release_date": "2015-11-04",
     "image_url": "/sets/XY8_Logo_EN.png",
     "cards_file": "Breakhrough.json"
@@ -704,7 +704,7 @@
     "name": "Generations",
     "era": "XY",
     "language": "EN",
-    "set_total": 115,
+    "set_total": 83,
     "release_date": "2016-02-22",
     "image_url": "/sets/Generations_Logo_EN.png",
     "cards_file": "Generations.json"
@@ -794,7 +794,7 @@
     "name": "Ultra Prism",
     "era": "Sun & Moon",
     "language": "EN",
-    "set_total": 156,
+    "set_total": 131,
     "release_date": "2018-02-02",
     "image_url": "/sets/SM5_Logo_EN.png",
     "cards_file": "Ultraprism.json"
@@ -884,7 +884,7 @@
     "name": "Hidden Fates",
     "era": "Sun & Moon",
     "language": "EN",
-    "set_total": 69,
+    "set_total": 68,
     "release_date": "2019-08-23",
     "image_url": "/sets/Hidden_Fates_Logo_EN.png",
     "cards_file": "Hiddenfates.json"
@@ -904,7 +904,7 @@
     "name": "Sword & Shield",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 216,
+    "set_total": 202,
     "release_date": "2020-02-07",
     "image_url": "/sets/SWSH1_Logo_EN.png",
     "cards_file": "Swordshield.json"
@@ -924,7 +924,7 @@
     "name": "Darkness Ablaze",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 201,
+    "set_total": 189,
     "release_date": "2020-08-14",
     "image_url": "/sets/SWSH3_Logo_EN.png",
     "cards_file": "Darknessablaze.json"
@@ -934,7 +934,7 @@
     "name": "Champion's Path",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 80,
+    "set_total": 73,
     "release_date": "2020-09-25",
     "image_url": "/sets/Champion_Path_Logo_EN.png",
     "cards_file": "Championspath.json"
@@ -944,7 +944,7 @@
     "name": "Vivid Voltage",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 203,
+    "set_total": 185,
     "release_date": "2020-11-13",
     "image_url": "/sets/SWSH4_Logo_EN.png",
     "cards_file": "Vividvoltage.json"
@@ -954,7 +954,7 @@
     "name": "Shining Fates",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 195,
+    "set_total": 73,
     "release_date": "2021-02-19",
     "image_url": "/sets/Shining_Fates_Logo_EN.png",
     "cards_file": "Shiningfates.json"
@@ -964,7 +964,7 @@
     "name": "Battle Styles",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 183,
+    "set_total": 163,
     "release_date": "2021-03-19",
     "image_url": "/sets/SWSH5_Logo_EN.png",
     "cards_file": "Battlestyles.json"
@@ -974,7 +974,7 @@
     "name": "Chilling Reign",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 233,
+    "set_total": 198,
     "release_date": "2021-06-18",
     "image_url": "/sets/SWSH6_Logo_EN.png",
     "cards_file": "Chillingreign.json"
@@ -984,7 +984,7 @@
     "name": "Evolving Skies",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 237,
+    "set_total": 203,
     "release_date": "2021-08-27",
     "image_url": "/sets/SWSH7_Logo_EN.png",
     "cards_file": "Evolvingskies.json"
@@ -994,7 +994,7 @@
     "name": "Celebrations",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 50,
+    "set_total": 25,
     "release_date": "2021-10-08",
     "image_url": "/sets/Celebrations_Logo_EN.png",
     "cards_file": "Celebrations.json"
@@ -1004,7 +1004,7 @@
     "name": "Fusion Strike",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 284,
+    "set_total": 264,
     "release_date": "2021-11-12",
     "image_url": "/sets/SWSH8_Logo_EN.png",
     "cards_file": "Fusionstrike.json"
@@ -1014,7 +1014,7 @@
     "name": "Brilliant Stars",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 216,
+    "set_total": 172,
     "release_date": "2022-02-25",
     "image_url": "/sets/SWSH9_Logo_EN.png",
     "cards_file": "Brilliantstars.json"
@@ -1024,27 +1024,27 @@
     "name": "Astral Radiance",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 246,
+    "set_total": 189,
     "release_date": "2022-05-27",
     "image_url": "/sets/SWSH10_Logo_EN.png",
     "cards_file": "Astraltadiance.json"
   },
   {
     "set_code": "POKEMON_GO",
-    "name": "Pok\u00e9mon GO",
+    "name": "Pokémon GO",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 88,
+    "set_total": 78,
     "release_date": "2022-07-01",
     "image_url": "/sets/Pokemon_Go_Logo.png",
-    "cards_file": "Pok\u00e9mongo.json"
+    "cards_file": "Pokémongo.json"
   },
   {
     "set_code": "LOST_ORIGIN",
     "name": "Lost Origin",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 247,
+    "set_total": 196,
     "release_date": "2022-09-09",
     "image_url": "/sets/SWSH11_Logo_EN.png",
     "cards_file": "Lostorigin.json"
@@ -1054,7 +1054,7 @@
     "name": "Silver Tempest",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 245,
+    "set_total": 195,
     "release_date": "2022-11-11",
     "image_url": "/sets/SWSH12_Logo_EN.png",
     "cards_file": "Silvertempest.json"
@@ -1064,7 +1064,7 @@
     "name": "Crown Zenith",
     "era": "Sword & Shield",
     "language": "EN",
-    "set_total": 230,
+    "set_total": 159,
     "release_date": "2023-01-20",
     "image_url": "/sets/Crown_Zenith_Logo_EN.png",
     "cards_file": "Crownzenith.json"
@@ -1084,7 +1084,7 @@
     "name": "Paldea Evolved",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 279,
+    "set_total": 193,
     "release_date": "2023-06-09",
     "image_url": "/sets/SV2_Logo_EN.png",
     "cards_file": "Paldeaevolved.json"
@@ -1101,7 +1101,7 @@
   },
   {
     "set_code": "SV_151",
-    "name": "Scarlet & Violet\u2014151",
+    "name": "Scarlet & Violet—151",
     "era": "Scarlet & Violet",
     "language": "EN",
     "set_total": 165,
@@ -1114,7 +1114,7 @@
     "name": "Paradox Rift",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 266,
+    "set_total": 182,
     "release_date": "2023-11-03",
     "image_url": "/sets/SV4_Logo_EN.png",
     "cards_file": "Paradoxrift.json"
@@ -1134,7 +1134,7 @@
     "name": "Temporal Forces",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 218,
+    "set_total": 162,
     "release_date": "2024-03-22",
     "image_url": "/sets/SV5_Logo_EN.png",
     "cards_file": "Temporalforces.json"
@@ -1144,7 +1144,7 @@
     "name": "Twilight Masquerade",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 226,
+    "set_total": 167,
     "release_date": "2024-05-24",
     "image_url": "/sets/SV6_Logo_EN.png",
     "cards_file": "Twilightmasquerade.json"
@@ -1158,14 +1158,18 @@
     "release_date": "2024-08-02",
     "image_url": "/sets/SV6.5_Logo_EN.png",
     "cards_file": "Shroudedfable.json",
-    "aliases": ["Shroudedfable", "SV6.5", "SV6 5"]
+    "aliases": [
+      "Shroudedfable",
+      "SV6.5",
+      "SV6 5"
+    ]
   },
   {
     "set_code": "STELLAR_CROWN",
     "name": "Stellar Crown",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 175,
+    "set_total": 142,
     "release_date": "2024-09-13",
     "image_url": "/sets/1920px-SV7_Logo_EN.png",
     "cards_file": "Stellarcrown.json"
@@ -1185,7 +1189,7 @@
     "name": "Prismatic Evolutions",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 180,
+    "set_total": 131,
     "release_date": null,
     "image_url": null,
     "cards_file": "Prismaticevolutions.json"
@@ -1195,7 +1199,7 @@
     "name": "Journey Together",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 190,
+    "set_total": 159,
     "release_date": null,
     "image_url": null,
     "cards_file": "Journeytogether.json"
@@ -1215,41 +1219,41 @@
     "name": "Destined Rivals",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 244,
+    "set_total": 182,
     "release_date": null,
     "image_url": null,
     "cards_file": "destinedrivals.json"
   },
   {
     "set_code": "WHITE_FLARE",
-    "name": "White Flame",
+    "name": "Scarlet & Violet—White Flare",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 173,
+    "set_total": 86,
     "release_date": null,
     "image_url": null,
     "cards_file": "whiteflare.json"
   },
   {
-    "set_code": "BLACK_BOLD",
-    "name": "Black & Bold",
+    "set_code": "BLACK_BOLT",
+    "name": "Scarlet & Violet—Black Bolt",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 172,
+    "set_total": 86,
     "release_date": null,
     "image_url": null,
     "cards_file": "blackbold.json"
   },
-    {
-      "set_code": "MEGA_EVOLUTION",
-      "name": "Mega Evolution",
-      "era": "Mega Evolution",
-      "language": "EN",
-      "set_total": 132,
-      "release_date": "2025-09-26",
-      "image_url": "/sets/ME1_Logo_EN.png",
-      "cards_file": "megaevelutions.json"
-    },
+  {
+    "set_code": "MEGA_EVOLUTION",
+    "name": "Mega Evolution",
+    "era": "Mega Evolution",
+    "language": "EN",
+    "set_total": 132,
+    "release_date": "2025-09-26",
+    "image_url": "/sets/ME1_Logo_EN.png",
+    "cards_file": "megaevelutions.json"
+  },
   {
     "set_code": "PHANTASMAL_FLAMES",
     "name": "Phantasmal Flames",
@@ -1265,7 +1269,7 @@
     "name": "Ascended Heroes",
     "era": "Mega Evolution",
     "language": "EN",
-    "set_total": null,
+    "set_total": 217,
     "release_date": "2026-01-30",
     "image_url": "/sets/1920px-ME2.5_Logo_EN.png",
     "cards_file": null
