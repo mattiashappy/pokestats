@@ -8,6 +8,7 @@ import { Select } from '../components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import {
   fetchCardsForSet,
+  fetchSets,
   discardAuction,
   fetchEnrichmentSummary,
   fetchUnmatchedAuctions,
@@ -16,6 +17,7 @@ import {
   runFullEnrichment,
   type UnmatchedAuction
 } from '../lib/api'
+import type { ExpansionSummary } from '../types'
 
 const matchingSteps = [
   'Validate ERA; missing or garbage eras are marked as Mismatched.',
@@ -320,10 +322,14 @@ type ManualMatchCellProps = {
 function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
   const [search, setSearch] = useState('')
   const [selectedCardId, setSelectedCardId] = useState<number | ''>('')
-  const [setCodeInput, setSetCodeInput] = useState(auction.matched_set_code ?? '')
   const [activeSetCode, setActiveSetCode] = useState(auction.matched_set_code ?? '')
 
   const normalizedSetCode = activeSetCode.trim().toUpperCase()
+
+  const setsQuery = useQuery({
+    queryKey: ['sets'],
+    queryFn: fetchSets
+  })
 
   const cardsQuery = useQuery({
     queryKey: ['cards-for-set', normalizedSetCode],
@@ -331,13 +337,8 @@ function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
     enabled: Boolean(normalizedSetCode)
   })
 
-  const applySetCode = () => {
-    setActiveSetCode(setCodeInput.trim())
-    setSelectedCardId('')
-  }
-
   const manualMatchMutation = useMutation({
-    mutationFn: (cardId: number) => manuallyMatchAuction(auction.item_id, cardId),
+    mutationFn: (cardId: number) => manuallyMatchAuction(auction.item_id, cardId, normalizedSetCode),
     onSuccess: () => {
       setSelectedCardId('')
       onUpdated()
@@ -384,23 +385,52 @@ function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
 
   const canMatch = Boolean(normalizedSetCode)
 
+  const handleSetChange = (value: string) => {
+    setActiveSetCode(value)
+    setSelectedCardId('')
+    setSearch('')
+  }
+
+  const displaySet: ExpansionSummary | null = useMemo(() => {
+    if (!normalizedSetCode) return null
+    return (setsQuery.data || []).find(
+      (set) => set.set_code?.toUpperCase() === normalizedSetCode || set.name?.toUpperCase() === normalizedSetCode
+    ) ?? null
+  }, [normalizedSetCode, setsQuery.data])
+
   return (
     <div className="space-y-2 text-xs">
       <div className="space-y-1">
         <div className="flex items-center gap-2">
-          <Input
-            className="h-8"
-            placeholder="Set code (e.g. BASE, 151)"
-            value={setCodeInput}
-            onChange={(e) => setSetCodeInput(e.target.value)}
-          />
-          <Button size="sm" variant="outline" onClick={applySetCode} disabled={cardsQuery.isFetching}>
-            {cardsQuery.isFetching ? 'Loading…' : 'Load set'}
-          </Button>
+          <Select
+            value={activeSetCode}
+            disabled={setsQuery.isFetching}
+            onChange={(e) => handleSetChange(e.target.value)}
+          >
+            <option value="">{setsQuery.isFetching ? 'Loading sets…' : 'Select a set'}</option>
+            {(setsQuery.data || []).map((set) => (
+              <option key={set.set_code ?? set.name ?? set.id} value={set.set_code ?? ''}>
+                {set.name ?? set.set_code}
+                {set.era ? ` — ${set.era}` : ''}
+                {set.set_code ? ` (${set.set_code})` : ''}
+              </option>
+            ))}
+          </Select>
           {auction.matched_set_code ? (
             <span className="text-[11px] text-slate-500">Hinted: {auction.matched_set_code}</span>
           ) : null}
         </div>
+        {displaySet ? (
+          <p className="text-[11px] text-slate-500">
+            {displaySet.name || displaySet.set_code} {displaySet.era ? `• ${displaySet.era}` : ''}
+            {displaySet.set_total ? ` • ${displaySet.set_total} cards` : ''}
+            {!displaySet.set_total && typeof displaySet.cards_total === 'number'
+              ? ` • ${displaySet.cards_total} cards`
+              : ''}
+          </p>
+        ) : (
+          <p className="text-[11px] text-slate-500">Select a set to load its cards for manual matching.</p>
+        )}
         {canMatch ? (
           <div className="space-y-1">
             {auction.parsed_card_number !== null ? (
@@ -422,7 +452,7 @@ function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
             <div className="flex items-center gap-2">
               <Select
                 value={selectedCardId === '' ? '' : String(selectedCardId)}
-                disabled={cardsQuery.isFetching}
+                disabled={cardsQuery.isFetching || !canMatch}
                 onChange={(e) => setSelectedCardId(Number(e.target.value) || '')}
               >
                 <option value="">{cardsQuery.isFetching ? 'Loading cards…' : 'Select a card'}</option>
@@ -450,7 +480,7 @@ function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
             </div>
           </div>
         ) : (
-          <p className="text-[11px] text-slate-500">Enter a set code to load cards for manual matching.</p>
+          <p className="text-[11px] text-slate-500">Choose a set to load and link one of its cards.</p>
         )}
       </div>
       <div className="flex flex-wrap items-center gap-2">

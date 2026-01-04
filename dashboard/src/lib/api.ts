@@ -88,6 +88,12 @@ export async function runFullEnrichment(batchSize = 500) {
   }>
 }
 
+export async function fetchSets(): Promise<ExpansionSummary[]> {
+  const res = await fetch('/api/sets')
+  if (!res.ok) throw new Error('Failed to load sets')
+  return res.json()
+}
+
 export type EnrichmentSummary = {
   available: boolean
   totalAuctions?: number
@@ -155,11 +161,11 @@ export async function fetchRecentEnrichment(limit = 25) {
   return res.json() as Promise<EnrichedAuction[]>
 }
 
-export async function manuallyMatchAuction(itemId: number, cardId: number) {
+export async function manuallyMatchAuction(itemId: number, cardId: number, setCode: string) {
   const res = await fetch('/api/enrichment/manual-match', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ itemId, cardId })
+    body: JSON.stringify({ itemId, cardId, setCode })
   })
 
   if (!res.ok) {

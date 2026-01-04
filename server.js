@@ -1629,6 +1629,16 @@ app.get('/api/expansions', async (_req, res) => {
   }
 })
 
+app.get('/api/sets', async (_req, res) => {
+  try {
+    const expansions = await fetchExpansionSummaries()
+    return res.json(expansions)
+  } catch (error) {
+    console.error('Failed to fetch sets', error)
+    return res.status(500).json({ error: 'Failed to load sets' })
+  }
+})
+
 // Optional debug endpoint
 app.get('/api/cards', async (req, res) => {
   try {
@@ -2028,9 +2038,13 @@ app.post('/api/enrichment/manual-match', async (req, res) => {
 
   const itemId = Number(req.body?.itemId)
   const cardId = Number(req.body?.cardId)
+  const setCode = typeof req.body?.setCode === 'string' ? req.body.setCode : ''
 
-  if (!Number.isFinite(itemId) || !Number.isFinite(cardId)) {
-    return res.status(400).json({ ok: false, error: 'Invalid itemId or cardId' })
+  const normalizeSetCode = (value) => (value ? String(value).trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : '')
+  const normalizedRequestSet = normalizeSetCode(setCode)
+
+  if (!Number.isFinite(itemId) || !Number.isFinite(cardId) || !normalizedRequestSet) {
+    return res.status(400).json({ ok: false, error: 'Invalid itemId, cardId, or setCode' })
   }
 
   const client = await pool.connect()
@@ -2058,6 +2072,11 @@ app.post('/api/enrichment/manual-match', async (req, res) => {
     const parsedSetTotal = Number(card.set_total)
     const setTotalValue = Number.isFinite(parsedSetTotal) ? parsedSetTotal : null
 
+    const cardSetNormalized = normalizeSetCode(card.set_code)
+    if (cardSetNormalized && cardSetNormalized !== normalizedRequestSet) {
+      return res.status(400).json({ ok: false, error: 'Selected card does not belong to the chosen set' })
+    }
+
     await client.query(
       `
         UPDATE public.tradera_sales
@@ -2073,7 +2092,7 @@ app.post('/api/enrichment/manual-match', async (req, res) => {
           updated_at = NOW()
         WHERE item_id = $1
       `,
-      [itemId, cardId, card.set_code || null, card.era || null, card.card_number || null, setTotalValue]
+      [itemId, cardId, normalizedRequestSet || card.set_code || null, card.era || null, card.card_number || null, setTotalValue]
     )
 
     return res.json({ ok: true, itemId, cardId })
