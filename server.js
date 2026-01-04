@@ -1959,7 +1959,8 @@ app.post('/api/enrichment/run-all', async (req, res) => {
     })
   } catch (error) {
     console.error('Failed to run full enrichment pass', error)
-    res.status(500).json({ ok: false, error: String(error) })
+    const message = error?.message || String(error)
+    res.status(500).json({ ok: false, error: message })
   }
 })
 
