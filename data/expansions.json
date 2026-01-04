@@ -56,7 +56,7 @@
     "release_date": "2000-04-24",
     "image_url": "/sets/Team_Rocket_Logo.png",
     "cards_file": "Teamrocket.json",
-    "set_number": 83,
+    "set_number": 82,
     "cards_in_set": 83
   },
   {
@@ -117,7 +117,7 @@
     "image_url": "/sets/1024px-Neo_Revelation_Logo_EN.png",
     "cards_file": "Neorevelation.json",
     "set_number": 66,
-    "cards_in_set": 66
+    "cards_in_set": 68
   },
   {
     "set_code": "NEODESTINY",
@@ -128,7 +128,7 @@
     "release_date": "2002-02-28",
     "image_url": "/sets/1920px-Neo_Destiny_Logo_EN.png",
     "cards_file": "Neodestiny.json",
-    "set_number": 113,
+    "set_number": 105,
     "cards_in_set": 113
   },
   {
