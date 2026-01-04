@@ -49,16 +49,33 @@ function parseCardName(text) {
     .join(' ')
 }
 
-async function resolveAuctionMatch(_client, row, expansions = null) {
+function determinePrintedSetTotal(cardsEntry, fallback = null) {
+  let printedTotal = cardsEntry?.set_total ?? null
+
+  for (const card of cardsEntry?.cards || []) {
+    const match = String(card.card_number || '').match(/\b\d{1,3}\s*\/(\d{1,3})\b/)
+    const denom = match ? parseInt(match[1], 10) : null
+
+    if (Number.isFinite(denom)) {
+      printedTotal = printedTotal == null ? denom : Math.max(printedTotal, denom)
+    }
+  }
+
+  return printedTotal ?? fallback ?? null
+}
+
+async function resolveAuctionMatch(_client, row, expansions = null, cardsBySetCode = null) {
   const text = `${row?.title || ''} ${row?.description || ''}`
   const { cardNumber, denominator } = parseCardNumber(text)
   const setHint = parseSetHint(text)
   const eraHint = row?.era || row?.pokemon_era || row?.attributes?.pokemon_era?.[0] || null
 
   let catalog = expansions
-  if (!catalog) {
-    const { expansions: loadedExpansions } = await loadCatalog()
-    catalog = loadedExpansions || []
+  let cardsBySet = cardsBySetCode
+  if (!catalog || !cardsBySet) {
+    const { expansions: loadedExpansions, cardsBySetCode: loadedCards } = await loadCatalog()
+    catalog = catalog || loadedExpansions || []
+    cardsBySet = cardsBySet || loadedCards || {}
   }
 
   const normalizedHint = normalize(setHint)
@@ -69,9 +86,11 @@ async function resolveAuctionMatch(_client, row, expansions = null) {
     const name = normalize(expansion.name)
     const era = normalize(expansion.era)
 
+    const printedTotal = determinePrintedSetTotal(cardsBySet?.[expansion.set_code], expansion.set_total)
+
     const hintMatches = normalizedHint ? code.includes(normalizedHint) || name.includes(normalizedHint) : true
     const eraMatches = normalizedEra ? era.includes(normalizedEra) : true
-    const totalMatches = denominator && expansion.set_total ? expansion.set_total === denominator : true
+    const totalMatches = denominator && printedTotal ? printedTotal === denominator : true
 
     return hintMatches && eraMatches && totalMatches
   })
