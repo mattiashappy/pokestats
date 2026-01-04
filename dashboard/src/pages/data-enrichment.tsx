@@ -71,11 +71,6 @@ export function DataEnrichmentPage(): JSX.Element {
   }, [summaryQuery.data])
 
   const unmatchedAuctions = unmatchedQuery.data ?? []
-  const readyForManualMatch = useMemo(
-    () => unmatchedAuctions.filter((auction) => Boolean(auction.matched_set_code)),
-    [unmatchedAuctions]
-  )
-
   const refetchEnrichmentTables = () => {
     unmatchedQuery.refetch()
   }
@@ -271,10 +266,10 @@ export function DataEnrichmentPage(): JSX.Element {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Ready for manual match</p>
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Auctions needing attention</p>
                 <p className="text-xs text-slate-500">
-                  Rows with a detected set hint that you can link manually; parsed numbers surface the easiest wins
-                  first.
+                  Includes rows marked "Needs review" or "Mismatched" along with any unresolved auctions without a
+                  set hint. Parsed numbers still surface the easiest wins first.
                 </p>
               </div>
               {unmatchedQuery.isFetching ? <span className="text-xs text-slate-500">Refreshing…</span> : null}
@@ -292,7 +287,7 @@ export function DataEnrichmentPage(): JSX.Element {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {readyForManualMatch.map((row) => (
+                {unmatchedAuctions.map((row) => (
                   <TableRow key={row.item_id}>
                     <TableCell className="font-mono text-xs">{row.item_id}</TableCell>
                     <TableCell className="max-w-xs truncate text-sm">{row.title}</TableCell>
@@ -307,8 +302,8 @@ export function DataEnrichmentPage(): JSX.Element {
                 ))}
               </TableBody>
             </Table>
-            {readyForManualMatch.length === 0 ? (
-              <p className="text-sm text-slate-500">No auctions with enough detail to match right now.</p>
+            {unmatchedAuctions.length === 0 ? (
+              <p className="text-sm text-slate-500">No auctions needing manual review right now.</p>
             ) : null}
           </div>
         </CardContent>
@@ -325,12 +320,21 @@ type ManualMatchCellProps = {
 function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
   const [search, setSearch] = useState('')
   const [selectedCardId, setSelectedCardId] = useState<number | ''>('')
+  const [setCodeInput, setSetCodeInput] = useState(auction.matched_set_code ?? '')
+  const [activeSetCode, setActiveSetCode] = useState(auction.matched_set_code ?? '')
+
+  const normalizedSetCode = activeSetCode.trim().toUpperCase()
 
   const cardsQuery = useQuery({
-    queryKey: ['cards-for-set', auction.matched_set_code],
-    queryFn: () => fetchCardsForSet(auction.matched_set_code || ''),
-    enabled: Boolean(auction.matched_set_code)
+    queryKey: ['cards-for-set', normalizedSetCode],
+    queryFn: () => fetchCardsForSet(normalizedSetCode),
+    enabled: Boolean(normalizedSetCode)
   })
+
+  const applySetCode = () => {
+    setActiveSetCode(setCodeInput.trim())
+    setSelectedCardId('')
+  }
 
   const manualMatchMutation = useMutation({
     mutationFn: (cardId: number) => manuallyMatchAuction(auction.item_id, cardId),
@@ -378,61 +382,77 @@ function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
     return filteredCards
   }, [auction.parsed_card_number, cardsMatchingParsedNumber, filteredCards, search])
 
-  const canMatch = Boolean(auction.matched_set_code)
+  const canMatch = Boolean(normalizedSetCode)
 
   return (
     <div className="space-y-2 text-xs">
-      {canMatch ? (
-        <div className="space-y-1">
-          {auction.parsed_card_number !== null ? (
-            <p className="text-[11px] text-slate-500">
-              Showing cards numbered {auction.parsed_card_number}
-              {cardsMatchingParsedNumber.length === 0 ? ' (none found; search to pick manually)' : ''}.
-            </p>
-          ) : null}
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
           <Input
             className="h-8"
-            placeholder={
-              auction.parsed_card_number !== null
-                ? 'Optional search (fallback)' 
-                : 'Search card name/#'
-            }
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Set code (e.g. BASE, 151)"
+            value={setCodeInput}
+            onChange={(e) => setSetCodeInput(e.target.value)}
           />
-          <div className="flex items-center gap-2">
-            <Select
-              value={selectedCardId === '' ? '' : String(selectedCardId)}
-              disabled={cardsQuery.isFetching}
-              onChange={(e) => setSelectedCardId(Number(e.target.value) || '')}
-            >
-              <option value="">{cardsQuery.isFetching ? 'Loading cards…' : 'Select a card'}</option>
-              {cardsForSelect.map((card) => (
-                <option key={card.id} value={card.id}>
-                  {card.card_number ? `${card.card_number} — ` : ''}
-                  {card.name || 'Unnamed card'}
-                </option>
-              ))}
-              {!cardsQuery.isFetching && cardsForSelect.length === 0 ? (
-                <option disabled value="">
-                  {auction.parsed_card_number !== null && search.trim() === ''
-                    ? `No cards numbered ${auction.parsed_card_number}`
-                    : `No matches for “${search}”`}
-                </option>
-              ) : null}
-            </Select>
-            <Button
-              size="sm"
-              disabled={!selectedCardId || manualMatchMutation.isPending}
-              onClick={() => typeof selectedCardId === 'number' && manualMatchMutation.mutate(selectedCardId)}
-            >
-              {manualMatchMutation.isPending ? 'Linking…' : 'Link'}
-            </Button>
-          </div>
+          <Button size="sm" variant="outline" onClick={applySetCode} disabled={cardsQuery.isFetching}>
+            {cardsQuery.isFetching ? 'Loading…' : 'Load set'}
+          </Button>
+          {auction.matched_set_code ? (
+            <span className="text-[11px] text-slate-500">Hinted: {auction.matched_set_code}</span>
+          ) : null}
         </div>
-      ) : (
-        <p className="text-[11px] text-slate-500">No set hint available yet.</p>
-      )}
+        {canMatch ? (
+          <div className="space-y-1">
+            {auction.parsed_card_number !== null ? (
+              <p className="text-[11px] text-slate-500">
+                Showing cards numbered {auction.parsed_card_number}
+                {cardsMatchingParsedNumber.length === 0 ? ' (none found; search to pick manually)' : ''}.
+              </p>
+            ) : null}
+            <Input
+              className="h-8"
+              placeholder={
+                auction.parsed_card_number !== null
+                  ? 'Optional search (fallback)'
+                  : 'Search card name/#'
+              }
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <div className="flex items-center gap-2">
+              <Select
+                value={selectedCardId === '' ? '' : String(selectedCardId)}
+                disabled={cardsQuery.isFetching}
+                onChange={(e) => setSelectedCardId(Number(e.target.value) || '')}
+              >
+                <option value="">{cardsQuery.isFetching ? 'Loading cards…' : 'Select a card'}</option>
+                {cardsForSelect.map((card) => (
+                  <option key={card.id} value={card.id}>
+                    {card.card_number ? `${card.card_number} — ` : ''}
+                    {card.name || 'Unnamed card'}
+                  </option>
+                ))}
+                {!cardsQuery.isFetching && cardsForSelect.length === 0 ? (
+                  <option disabled value="">
+                    {auction.parsed_card_number !== null && search.trim() === ''
+                      ? `No cards numbered ${auction.parsed_card_number}`
+                      : `No matches for “${search}”`}
+                  </option>
+                ) : null}
+              </Select>
+              <Button
+                size="sm"
+                disabled={!selectedCardId || manualMatchMutation.isPending}
+                onClick={() => typeof selectedCardId === 'number' && manualMatchMutation.mutate(selectedCardId)}
+              >
+                {manualMatchMutation.isPending ? 'Linking…' : 'Link'}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-[11px] text-slate-500">Enter a set code to load cards for manual matching.</p>
+        )}
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
@@ -451,7 +471,7 @@ function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
         <p className="text-[11px] text-red-500">{(manualMatchMutation.error as Error).message}</p>
       ) : null}
       {cardsQuery.isError ? (
-        <p className="text-[11px] text-red-500">Failed to load cards for set {auction.matched_set_code}.</p>
+        <p className="text-[11px] text-red-500">Failed to load cards for set {normalizedSetCode || '—'}.</p>
       ) : null}
       {discardMutation.isError ? (
         <p className="text-[11px] text-red-500">{(discardMutation.error as Error).message}</p>
