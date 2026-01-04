@@ -7,7 +7,9 @@
     "set_total": 102,
     "release_date": "1999-01-09",
     "image_url": "/sets/base-set-logo.svg",
-    "cards_file": "base.json"
+    "cards_file": "base.json",
+    "set_number": 102,
+    "cards_in_set": 102
   },
   {
     "set_code": "JUNGLE",
@@ -17,7 +19,9 @@
     "set_total": 64,
     "release_date": "1999-06-16",
     "image_url": "/sets/1024px-Jungle_Logo.png",
-    "cards_file": "jungle.json"
+    "cards_file": "jungle.json",
+    "set_number": 64,
+    "cards_in_set": 64
   },
   {
     "set_code": "FOSSIL",
@@ -27,7 +31,9 @@
     "set_total": 62,
     "release_date": "1999-10-10",
     "image_url": "/sets/1024px-Fossil_Logo.png",
-    "cards_file": "Fossil.json"
+    "cards_file": "Fossil.json",
+    "set_number": 62,
+    "cards_in_set": 62
   },
   {
     "set_code": "BASE2",
@@ -37,7 +43,9 @@
     "set_total": 130,
     "release_date": "2000-02-24",
     "image_url": "/sets/800px-Base_Set_2_Logo.png",
-    "cards_file": "Baseset2.json"
+    "cards_file": "Baseset2.json",
+    "set_number": 130,
+    "cards_in_set": 130
   },
   {
     "set_code": "TEAMROCKET",
@@ -47,7 +55,9 @@
     "set_total": 83,
     "release_date": "2000-04-24",
     "image_url": "/sets/Team_Rocket_Logo.png",
-    "cards_file": "Teamrocket.json"
+    "cards_file": "Teamrocket.json",
+    "set_number": 83,
+    "cards_in_set": 83
   },
   {
     "set_code": "GYMHEROES",
@@ -57,7 +67,9 @@
     "set_total": 132,
     "release_date": "2000-08-14",
     "image_url": "/sets/1920px-Gym_Heroes_Logo.png",
-    "cards_file": "gym_heroes.json"
+    "cards_file": "gym_heroes.json",
+    "set_number": 132,
+    "cards_in_set": 132
   },
   {
     "set_code": "GYMCHALLENGE",
@@ -67,7 +79,9 @@
     "set_total": 132,
     "release_date": "2000-10-16",
     "image_url": "/sets/Gym_Challenge_Logo.png",
-    "cards_file": "gym_challenge.json"
+    "cards_file": "gym_challenge.json",
+    "set_number": 132,
+    "cards_in_set": 132
   },
   {
     "set_code": "NEOGENESIS",
@@ -77,7 +91,9 @@
     "set_total": 111,
     "release_date": "2000-12-16",
     "image_url": "/sets/Neo_Genesis_Logo_EN.png",
-    "cards_file": "Neogenesis.json"
+    "cards_file": "Neogenesis.json",
+    "set_number": 111,
+    "cards_in_set": 111
   },
   {
     "set_code": "NEODISCOVERY",
@@ -87,7 +103,9 @@
     "set_total": 75,
     "release_date": "2001-06-01",
     "image_url": "/sets/1920px-Neo_Discovery_Logo_EN.png",
-    "cards_file": "Neodiscovery.json"
+    "cards_file": "Neodiscovery.json",
+    "set_number": 75,
+    "cards_in_set": 75
   },
   {
     "set_code": "NEOREVELATION",
@@ -97,7 +115,9 @@
     "set_total": 66,
     "release_date": "2001-09-21",
     "image_url": "/sets/1024px-Neo_Revelation_Logo_EN.png",
-    "cards_file": "Neorevelation.json"
+    "cards_file": "Neorevelation.json",
+    "set_number": 66,
+    "cards_in_set": 66
   },
   {
     "set_code": "NEODESTINY",
@@ -107,7 +127,9 @@
     "set_total": 113,
     "release_date": "2002-02-28",
     "image_url": "/sets/1920px-Neo_Destiny_Logo_EN.png",
-    "cards_file": "Neodestiny.json"
+    "cards_file": "Neodestiny.json",
+    "set_number": 113,
+    "cards_in_set": 113
   },
   {
     "set_code": "LEGENDARY",
@@ -117,7 +139,9 @@
     "set_total": 110,
     "release_date": "2002-05-24",
     "image_url": "/sets/1920px-Legendary_Collection_Logo.png",
-    "cards_file": "Legendarycollection.json"
+    "cards_file": "Legendarycollection.json",
+    "set_number": 110,
+    "cards_in_set": 110
   },
   {
     "set_code": "EXPEDITION",
@@ -127,7 +151,9 @@
     "set_total": 165,
     "release_date": "2002-09-15",
     "image_url": "/sets/E1_Logo_EN.png",
-    "cards_file": "Expeditionbaseset.json"
+    "cards_file": "Expeditionbaseset.json",
+    "set_number": 165,
+    "cards_in_set": 165
   },
   {
     "set_code": "AQUAPOLIS",
@@ -137,7 +163,9 @@
     "set_total": 186,
     "release_date": "2003-01-15",
     "image_url": "/sets/1920px-E2_Logo_EN.png",
-    "cards_file": "Aquapolis.json"
+    "cards_file": "Aquapolis.json",
+    "set_number": 186,
+    "cards_in_set": 186
   },
   {
     "set_code": "SKYRIDGE",
@@ -147,7 +175,9 @@
     "set_total": 182,
     "release_date": "2003-05-12",
     "image_url": "/sets/1920px-E3_Logo_EN.png",
-    "cards_file": "Skyridge.json"
+    "cards_file": "Skyridge.json",
+    "set_number": 182,
+    "cards_in_set": 182
   },
   {
     "set_code": "EX_RUBY_SAPPHIRE",
@@ -157,7 +187,9 @@
     "set_total": 109,
     "release_date": "2003-06-18",
     "image_url": "/sets/EX1_Logo_EN.png",
-    "cards_file": "Exrubysapphire.json"
+    "cards_file": "Exrubysapphire.json",
+    "set_number": 109,
+    "cards_in_set": 109
   },
   {
     "set_code": "EX_SANDSTORM",
@@ -167,7 +199,9 @@
     "set_total": 100,
     "release_date": "2003-09-18",
     "image_url": "/sets/EX2_Logo_EN.png",
-    "cards_file": "Exsandstorm.json"
+    "cards_file": "Exsandstorm.json",
+    "set_number": 100,
+    "cards_in_set": 100
   },
   {
     "set_code": "EX_DRAGON",
@@ -177,7 +211,9 @@
     "set_total": 100,
     "release_date": "2003-11-24",
     "image_url": "/sets/EX3_Logo_EN.png",
-    "cards_file": "Exdragon.json"
+    "cards_file": "Exdragon.json",
+    "set_number": 100,
+    "cards_in_set": 100
   },
   {
     "set_code": "EX_TEAM_MAGMA_VS_TEAM_AQUA",
@@ -187,7 +223,9 @@
     "set_total": 97,
     "release_date": "2004-03-15",
     "image_url": "/sets/EX4_Logo_EN.png",
-    "cards_file": "Teammagmavsteamaqua.json"
+    "cards_file": "Teammagmavsteamaqua.json",
+    "set_number": 97,
+    "cards_in_set": 97
   },
   {
     "set_code": "EX_HIDDEN_LEGENDS",
@@ -197,7 +235,9 @@
     "set_total": 102,
     "release_date": "2004-06-14",
     "image_url": "/sets/EX5_Logo_EN.png",
-    "cards_file": "Exhiddenlegends.json"
+    "cards_file": "Exhiddenlegends.json",
+    "set_number": 102,
+    "cards_in_set": 102
   },
   {
     "set_code": "EX_FIRERED_LEAFGREEN",
@@ -207,7 +247,9 @@
     "set_total": 116,
     "release_date": "2004-09-10",
     "image_url": "/sets/EX6_Logo_EN.png",
-    "cards_file": "Exfireredleafgreen.json"
+    "cards_file": "Exfireredleafgreen.json",
+    "set_number": 116,
+    "cards_in_set": 116
   },
   {
     "set_code": "EX_TEAM_ROCKET_RETURNS",
@@ -217,7 +259,9 @@
     "set_total": 111,
     "release_date": "2004-11-08",
     "image_url": "/sets/EX7_Logo_EN.png",
-    "cards_file": "Exteamrocketreturns.json"
+    "cards_file": "Exteamrocketreturns.json",
+    "set_number": 111,
+    "cards_in_set": 111
   },
   {
     "set_code": "EX_DEOXYS",
@@ -227,7 +271,9 @@
     "set_total": 108,
     "release_date": "2005-02-14",
     "image_url": "/sets/EX8_Logo_EN.png",
-    "cards_file": "Exdeoxys.json"
+    "cards_file": "Exdeoxys.json",
+    "set_number": 108,
+    "cards_in_set": 108
   },
   {
     "set_code": "EX_EMERALD",
@@ -237,7 +283,9 @@
     "set_total": 107,
     "release_date": "2005-05-09",
     "image_url": "/sets/EX9_Logo_EN.png",
-    "cards_file": "Exemerald.json"
+    "cards_file": "Exemerald.json",
+    "set_number": 107,
+    "cards_in_set": 107
   },
   {
     "set_code": "EX_UNSEEN_FORCES",
@@ -247,7 +295,9 @@
     "set_total": 145,
     "release_date": "2005-08-22",
     "image_url": "/sets/EX10_Logo_EN.png",
-    "cards_file": "Exunseenforces.json"
+    "cards_file": "Exunseenforces.json",
+    "set_number": 145,
+    "cards_in_set": 145
   },
   {
     "set_code": "EX_DELTA_SPECIES",
@@ -257,7 +307,9 @@
     "set_total": 114,
     "release_date": "2005-10-31",
     "image_url": "/sets/EX11_Logo_EN.png",
-    "cards_file": "Exdeltaspecies.json"
+    "cards_file": "Exdeltaspecies.json",
+    "set_number": 114,
+    "cards_in_set": 114
   },
   {
     "set_code": "EX_LEGEND_MAKER",
@@ -267,7 +319,9 @@
     "set_total": 93,
     "release_date": "2006-02-13",
     "image_url": "/sets/EX12_Logo_EN.png",
-    "cards_file": "Exlegendmaker.json"
+    "cards_file": "Exlegendmaker.json",
+    "set_number": 93,
+    "cards_in_set": 93
   },
   {
     "set_code": "EX_HOLON_PHANTOMS",
@@ -277,7 +331,9 @@
     "set_total": 111,
     "release_date": "2006-05-03",
     "image_url": "/sets/EX13_Logo_EN.png",
-    "cards_file": "Exholonphantoms.json"
+    "cards_file": "Exholonphantoms.json",
+    "set_number": 111,
+    "cards_in_set": 111
   },
   {
     "set_code": "EX_CRYSTAL_GUARDIANS",
@@ -287,7 +343,9 @@
     "set_total": 100,
     "release_date": "2006-08-30",
     "image_url": "/sets/EX14_Logo_EN.png",
-    "cards_file": "Excrystalguardians.json"
+    "cards_file": "Excrystalguardians.json",
+    "set_number": 100,
+    "cards_in_set": 100
   },
   {
     "set_code": "EX_DRAGON_FRONTIERS",
@@ -297,7 +355,9 @@
     "set_total": 101,
     "release_date": "2006-11-08",
     "image_url": "/sets/EX15_Logo_EN.png",
-    "cards_file": "Exdragonfrontiers.json"
+    "cards_file": "Exdragonfrontiers.json",
+    "set_number": 101,
+    "cards_in_set": 101
   },
   {
     "set_code": "EX_POWER_KEEPERS",
@@ -307,7 +367,9 @@
     "set_total": 108,
     "release_date": "2007-02-02",
     "image_url": "/sets/EX16_Logo_EN.png",
-    "cards_file": "Expowerkeepers.json"
+    "cards_file": "Expowerkeepers.json",
+    "set_number": 108,
+    "cards_in_set": 108
   },
   {
     "set_code": "DIAMOND_PEARL",
@@ -317,7 +379,9 @@
     "set_total": 130,
     "release_date": "2007-05-23",
     "image_url": null,
-    "cards_file": "Diamondpearl.json"
+    "cards_file": "Diamondpearl.json",
+    "set_number": 130,
+    "cards_in_set": 130
   },
   {
     "set_code": "MYSTERIOUS_TREASURES",
@@ -327,7 +391,9 @@
     "set_total": 124,
     "release_date": "2007-08-22",
     "image_url": null,
-    "cards_file": "Mysterioustreasures.json"
+    "cards_file": "Mysterioustreasures.json",
+    "set_number": 124,
+    "cards_in_set": 124
   },
   {
     "set_code": "SECRET_WONDERS",
@@ -337,7 +403,9 @@
     "set_total": 132,
     "release_date": "2007-11-07",
     "image_url": null,
-    "cards_file": "Secretwonders.json"
+    "cards_file": "Secretwonders.json",
+    "set_number": 132,
+    "cards_in_set": 132
   },
   {
     "set_code": "GREAT_ENCOUNTERS",
@@ -347,7 +415,9 @@
     "set_total": 106,
     "release_date": "2008-02-13",
     "image_url": null,
-    "cards_file": "Greatencounters.json"
+    "cards_file": "Greatencounters.json",
+    "set_number": 106,
+    "cards_in_set": 106
   },
   {
     "set_code": "MAJESTIC_DAWN",
@@ -357,7 +427,9 @@
     "set_total": 100,
     "release_date": "2008-05-21",
     "image_url": null,
-    "cards_file": "Majesticdawn.json"
+    "cards_file": "Majesticdawn.json",
+    "set_number": 100,
+    "cards_in_set": 100
   },
   {
     "set_code": "LEGENDS_AWAKENED",
@@ -367,7 +439,9 @@
     "set_total": 146,
     "release_date": "2008-08-20",
     "image_url": null,
-    "cards_file": "Legendsawakened.json"
+    "cards_file": "Legendsawakened.json",
+    "set_number": 146,
+    "cards_in_set": 146
   },
   {
     "set_code": "STORMFRONT",
@@ -377,7 +451,9 @@
     "set_total": 100,
     "release_date": "2008-11-05",
     "image_url": null,
-    "cards_file": "Stormfront.json"
+    "cards_file": "Stormfront.json",
+    "set_number": 100,
+    "cards_in_set": 100
   },
   {
     "set_code": "PLATINUM",
@@ -387,7 +463,9 @@
     "set_total": 127,
     "release_date": "2009-02-11",
     "image_url": null,
-    "cards_file": "Platinum.json"
+    "cards_file": "Platinum.json",
+    "set_number": 127,
+    "cards_in_set": 127
   },
   {
     "set_code": "RISING_RIVALS",
@@ -397,7 +475,9 @@
     "set_total": 120,
     "release_date": "2009-05-16",
     "image_url": null,
-    "cards_file": "Risingrivals.json"
+    "cards_file": "Risingrivals.json",
+    "set_number": 120,
+    "cards_in_set": 120
   },
   {
     "set_code": "SUPREME_VICTORS",
@@ -407,7 +487,9 @@
     "set_total": 147,
     "release_date": "2009-08-19",
     "image_url": null,
-    "cards_file": "Supremevictors.json"
+    "cards_file": "Supremevictors.json",
+    "set_number": 147,
+    "cards_in_set": 147
   },
   {
     "set_code": "ARCEUS",
@@ -417,7 +499,9 @@
     "set_total": 99,
     "release_date": "2009-11-04",
     "image_url": "/sets/PL4_Logo_EN.png",
-    "cards_file": "Arceus.json"
+    "cards_file": "Arceus.json",
+    "set_number": 99,
+    "cards_in_set": 99
   },
   {
     "set_code": "HGSS",
@@ -427,7 +511,9 @@
     "set_total": 123,
     "release_date": "2010-02-10",
     "image_url": "/sets/HS1_Logo_EN.png",
-    "cards_file": "HeartGoldsoulSilver.json"
+    "cards_file": "HeartGoldsoulSilver.json",
+    "set_number": 123,
+    "cards_in_set": 123
   },
   {
     "set_code": "HGSS_UNLEASHED",
@@ -437,7 +523,9 @@
     "set_total": 95,
     "release_date": "2010-05-12",
     "image_url": "/sets/HS2_Logo_EN.png",
-    "cards_file": "Unleashed.json"
+    "cards_file": "Unleashed.json",
+    "set_number": 95,
+    "cards_in_set": 95
   },
   {
     "set_code": "HGSS_UNDAUNTED",
@@ -447,17 +535,21 @@
     "set_total": 90,
     "release_date": "2010-08-18",
     "image_url": "/sets/HS3_Logo_EN.png",
-    "cards_file": "Undaunted.json"
+    "cards_file": "Undaunted.json",
+    "set_number": 90,
+    "cards_in_set": 90
   },
   {
     "set_code": "HGSS_TRIUMPHANT",
     "name": "Triumphant",
     "era": "HeartGold & SoulSilver",
     "language": "EN",
-    "set_total": 103,
+    "set_total": 102,
     "release_date": "2010-11-03",
     "image_url": "/sets/HS4_Logo_EN.png",
-    "cards_file": "Triumphant.json"
+    "cards_file": "Triumphant.json",
+    "set_number": 102,
+    "cards_in_set": 103
   },
   {
     "set_code": "CALL_OF_LEGENDS",
@@ -467,7 +559,9 @@
     "set_total": 95,
     "release_date": "2011-02-09",
     "image_url": "/sets/COL1_Logo_EN.png",
-    "cards_file": "Calloflegends.json"
+    "cards_file": "Calloflegends.json",
+    "set_number": 95,
+    "cards_in_set": 95
   },
   {
     "set_code": "BLACK_WHITE",
@@ -477,7 +571,9 @@
     "set_total": 114,
     "release_date": "2011-04-25",
     "image_url": "/sets/BW1_Logo_EN.png",
-    "cards_file": "Blackwhite.json"
+    "cards_file": "Blackwhite.json",
+    "set_number": 114,
+    "cards_in_set": 114
   },
   {
     "set_code": "EMERGING_POWERS",
@@ -487,7 +583,9 @@
     "set_total": 98,
     "release_date": "2011-08-31",
     "image_url": "/sets/BW2_Logo_EN.png",
-    "cards_file": "Emergingpowers.json"
+    "cards_file": "Emergingpowers.json",
+    "set_number": 98,
+    "cards_in_set": 98
   },
   {
     "set_code": "NOBLE_VICTORIES",
@@ -497,7 +595,9 @@
     "set_total": 101,
     "release_date": "2011-11-16",
     "image_url": "/sets/BW3_Logo_EN.png",
-    "cards_file": "Noblevictories.json"
+    "cards_file": "Noblevictories.json",
+    "set_number": 101,
+    "cards_in_set": 101
   },
   {
     "set_code": "NEXT_DESTINIES",
@@ -507,7 +607,9 @@
     "set_total": 99,
     "release_date": "2012-02-08",
     "image_url": "/sets/BW4_Logo_EN.png",
-    "cards_file": "Nextdestinies.json"
+    "cards_file": "Nextdestinies.json",
+    "set_number": 99,
+    "cards_in_set": 99
   },
   {
     "set_code": "DARK_EXPLORERS",
@@ -517,7 +619,9 @@
     "set_total": 108,
     "release_date": "2012-05-09",
     "image_url": "/sets/BW5_Logo_EN.png",
-    "cards_file": "Darkexplorers.json"
+    "cards_file": "Darkexplorers.json",
+    "set_number": 108,
+    "cards_in_set": 108
   },
   {
     "set_code": "DRAGONS_EXALTED",
@@ -527,7 +631,9 @@
     "set_total": 124,
     "release_date": "2012-08-15",
     "image_url": "/sets/BW6_Logo_EN.png",
-    "cards_file": "Dragonsexalted.json"
+    "cards_file": "Dragonsexalted.json",
+    "set_number": 124,
+    "cards_in_set": 124
   },
   {
     "set_code": "DRAGON_VAULT",
@@ -537,7 +643,9 @@
     "set_total": 20,
     "release_date": "2012-10-05",
     "image_url": null,
-    "cards_file": "Dragonvault.json"
+    "cards_file": "Dragonvault.json",
+    "set_number": 20,
+    "cards_in_set": 20
   },
   {
     "set_code": "BOUNDARIES_CROSSED",
@@ -547,7 +655,9 @@
     "set_total": 149,
     "release_date": "2012-11-07",
     "image_url": "/sets/BW7_Logo_EN.png",
-    "cards_file": "Boundariescrossed.json"
+    "cards_file": "Boundariescrossed.json",
+    "set_number": 149,
+    "cards_in_set": 149
   },
   {
     "set_code": "PLASMA_STORM",
@@ -557,7 +667,9 @@
     "set_total": 135,
     "release_date": "2013-02-06",
     "image_url": "/sets/BW8_Logo_EN.png",
-    "cards_file": "Plasmastorm.json"
+    "cards_file": "Plasmastorm.json",
+    "set_number": 135,
+    "cards_in_set": 135
   },
   {
     "set_code": "PLASMA_FREEZE",
@@ -567,7 +679,9 @@
     "set_total": 116,
     "release_date": "2013-05-08",
     "image_url": "/sets/BW9_Logo_EN.png",
-    "cards_file": "Plasmafreeze.json"
+    "cards_file": "Plasmafreeze.json",
+    "set_number": 116,
+    "cards_in_set": 116
   },
   {
     "set_code": "PLASMA_BLAST",
@@ -577,7 +691,9 @@
     "set_total": 101,
     "release_date": "2013-08-14",
     "image_url": "/sets/BW10_Logo_EN.png",
-    "cards_file": "Plasmablast.json"
+    "cards_file": "Plasmablast.json",
+    "set_number": 101,
+    "cards_in_set": 101
   },
   {
     "set_code": "LEGENDARY_TREASURES",
@@ -587,7 +703,9 @@
     "set_total": 113,
     "release_date": "2013-11-06",
     "image_url": "/sets/BW11_Logo_EN.png",
-    "cards_file": "Legendarytreasures.json"
+    "cards_file": "Legendarytreasures.json",
+    "set_number": 113,
+    "cards_in_set": 113
   },
   {
     "set_code": "KALOS_STARTER_SET",
@@ -597,7 +715,9 @@
     "set_total": 39,
     "release_date": "2013-11-08",
     "image_url": null,
-    "cards_file": "Kalosstarterset.json"
+    "cards_file": "Kalosstarterset.json",
+    "set_number": 39,
+    "cards_in_set": 39
   },
   {
     "set_code": "XY_BASE",
@@ -607,7 +727,9 @@
     "set_total": 146,
     "release_date": "2014-02-05",
     "image_url": "/sets/XY1_Logo_EN.png",
-    "cards_file": "XY.json"
+    "cards_file": "XY.json",
+    "set_number": 146,
+    "cards_in_set": 146
   },
   {
     "set_code": "FLASHFIRE",
@@ -617,7 +739,9 @@
     "set_total": 109,
     "release_date": "2014-05-07",
     "image_url": "/sets/XY2_Logo_EN.png",
-    "cards_file": "Flashfire.json"
+    "cards_file": "Flashfire.json",
+    "set_number": 109,
+    "cards_in_set": 109
   },
   {
     "set_code": "FURIOUS_FISTS",
@@ -627,7 +751,9 @@
     "set_total": 111,
     "release_date": "2014-08-13",
     "image_url": "/sets/XY3_Logo_EN.png",
-    "cards_file": "Furiousfists.json"
+    "cards_file": "Furiousfists.json",
+    "set_number": 111,
+    "cards_in_set": 111
   },
   {
     "set_code": "PHANTOM_FORCES",
@@ -637,7 +763,9 @@
     "set_total": 124,
     "release_date": "2014-11-05",
     "image_url": "/sets/XY4_Logo_EN.png",
-    "cards_file": "Phantomforces.json"
+    "cards_file": "Phantomforces.json",
+    "set_number": 124,
+    "cards_in_set": 124
   },
   {
     "set_code": "PRIMAL_CLASH",
@@ -647,7 +775,9 @@
     "set_total": 164,
     "release_date": "2015-02-04",
     "image_url": "/sets/XY5_Logo_EN.png",
-    "cards_file": "Primalclash.json"
+    "cards_file": "Primalclash.json",
+    "set_number": 164,
+    "cards_in_set": 164
   },
   {
     "set_code": "DOUBLE_CRISIS",
@@ -657,7 +787,9 @@
     "set_total": 34,
     "release_date": "2015-02-25",
     "image_url": null,
-    "cards_file": "Doublecrisis.json"
+    "cards_file": "Doublecrisis.json",
+    "set_number": 34,
+    "cards_in_set": 34
   },
   {
     "set_code": "ROARING_SKIES",
@@ -667,7 +799,9 @@
     "set_total": 110,
     "release_date": "2015-05-06",
     "image_url": "/sets/XY6_Logo_EN.png",
-    "cards_file": "Roaringskies.json"
+    "cards_file": "Roaringskies.json",
+    "set_number": 110,
+    "cards_in_set": 110
   },
   {
     "set_code": "ANCIENT_ORIGINS",
@@ -677,7 +811,9 @@
     "set_total": 100,
     "release_date": "2015-08-12",
     "image_url": "/sets/XY7_Logo_EN.png",
-    "cards_file": "Ancientorigins.json"
+    "cards_file": "Ancientorigins.json",
+    "set_number": 100,
+    "cards_in_set": 100
   },
   {
     "set_code": "BREAKTHROUGH",
@@ -687,7 +823,9 @@
     "set_total": 165,
     "release_date": "2015-11-04",
     "image_url": "/sets/XY8_Logo_EN.png",
-    "cards_file": "Breakhrough.json"
+    "cards_file": "Breakhrough.json",
+    "set_number": 165,
+    "cards_in_set": 165
   },
   {
     "set_code": "BREAKPOINT",
@@ -697,7 +835,9 @@
     "set_total": 122,
     "release_date": "2016-02-03",
     "image_url": "/sets/XY9_Logo_EN.png",
-    "cards_file": "Breakpoint.json"
+    "cards_file": "Breakpoint.json",
+    "set_number": 122,
+    "cards_in_set": 122
   },
   {
     "set_code": "GENERATIONS",
@@ -707,7 +847,9 @@
     "set_total": 83,
     "release_date": "2016-02-22",
     "image_url": "/sets/Generations_Logo_EN.png",
-    "cards_file": "Generations.json"
+    "cards_file": "Generations.json",
+    "set_number": 83,
+    "cards_in_set": 83
   },
   {
     "set_code": "FATES_COLLIDE",
@@ -717,7 +859,9 @@
     "set_total": 124,
     "release_date": "2016-05-04",
     "image_url": "/sets/XY10_Logo_EN.png",
-    "cards_file": "Fatescollide.json"
+    "cards_file": "Fatescollide.json",
+    "set_number": 124,
+    "cards_in_set": 124
   },
   {
     "set_code": "STEAM_SIEGE",
@@ -727,7 +871,9 @@
     "set_total": 114,
     "release_date": "2016-08-03",
     "image_url": "/sets/XY11_Logo_EN.png",
-    "cards_file": "Steamsiege.json"
+    "cards_file": "Steamsiege.json",
+    "set_number": 114,
+    "cards_in_set": 114
   },
   {
     "set_code": "EVOLUTIONS",
@@ -737,7 +883,9 @@
     "set_total": 108,
     "release_date": "2016-11-02",
     "image_url": "/sets/XY12_Logo_EN.png",
-    "cards_file": "Evolutions.json"
+    "cards_file": "Evolutions.json",
+    "set_number": 108,
+    "cards_in_set": 108
   },
   {
     "set_code": "SUN_MOON",
@@ -747,7 +895,9 @@
     "set_total": 149,
     "release_date": "2017-02-03",
     "image_url": "/sets/SM1_Logo_EN.png",
-    "cards_file": "Sunmoon.json"
+    "cards_file": "Sunmoon.json",
+    "set_number": 149,
+    "cards_in_set": 149
   },
   {
     "set_code": "GUARDIANS_RISING",
@@ -757,7 +907,9 @@
     "set_total": 145,
     "release_date": "2017-05-05",
     "image_url": "/sets/SM2_Logo_EN.png",
-    "cards_file": "Guardiansrising.json"
+    "cards_file": "Guardiansrising.json",
+    "set_number": 145,
+    "cards_in_set": 145
   },
   {
     "set_code": "BURNING_SHADOWS",
@@ -767,7 +919,9 @@
     "set_total": 147,
     "release_date": "2017-08-04",
     "image_url": "/sets/SM3_Logo_EN.png",
-    "cards_file": "Burningshadows.json"
+    "cards_file": "Burningshadows.json",
+    "set_number": 147,
+    "cards_in_set": 147
   },
   {
     "set_code": "SHINING_LEGENDS",
@@ -777,7 +931,9 @@
     "set_total": 73,
     "release_date": "2017-10-06",
     "image_url": "/sets/Shining_Legends_Logo_EN.png",
-    "cards_file": "Shininglegends.json"
+    "cards_file": "Shininglegends.json",
+    "set_number": 73,
+    "cards_in_set": 73
   },
   {
     "set_code": "CRIMSON_INVASION",
@@ -787,7 +943,9 @@
     "set_total": 111,
     "release_date": "2017-11-03",
     "image_url": "/sets/SM4_Logo_EN.png",
-    "cards_file": "Crimsoninvasion.json"
+    "cards_file": "Crimsoninvasion.json",
+    "set_number": 111,
+    "cards_in_set": 111
   },
   {
     "set_code": "ULTRA_PRISM",
@@ -797,7 +955,9 @@
     "set_total": 131,
     "release_date": "2018-02-02",
     "image_url": "/sets/SM5_Logo_EN.png",
-    "cards_file": "Ultraprism.json"
+    "cards_file": "Ultraprism.json",
+    "set_number": 131,
+    "cards_in_set": 131
   },
   {
     "set_code": "FORBIDDEN_LIGHT",
@@ -807,7 +967,9 @@
     "set_total": 146,
     "release_date": "2018-05-04",
     "image_url": "/sets/SM6_Logo_EN.png",
-    "cards_file": "Forbiddenlight.json"
+    "cards_file": "Forbiddenlight.json",
+    "set_number": 146,
+    "cards_in_set": 146
   },
   {
     "set_code": "CELESTIAL_STORM",
@@ -817,7 +979,9 @@
     "set_total": 168,
     "release_date": "2018-08-03",
     "image_url": "/sets/SM7_Logo_EN.png",
-    "cards_file": "Celestialstorm.json"
+    "cards_file": "Celestialstorm.json",
+    "set_number": 168,
+    "cards_in_set": 168
   },
   {
     "set_code": "DRAGON_MAJESTY",
@@ -827,7 +991,9 @@
     "set_total": 70,
     "release_date": "2018-09-07",
     "image_url": "/sets/Dragon_Majesty_Logo_EN.png",
-    "cards_file": "Dragonmajesty.json"
+    "cards_file": "Dragonmajesty.json",
+    "set_number": 70,
+    "cards_in_set": 70
   },
   {
     "set_code": "LOST_THUNDER",
@@ -837,7 +1003,9 @@
     "set_total": 214,
     "release_date": "2018-11-02",
     "image_url": "/sets/SM8_Logo_EN.png",
-    "cards_file": "Lostthunder.json"
+    "cards_file": "Lostthunder.json",
+    "set_number": 214,
+    "cards_in_set": 214
   },
   {
     "set_code": "TEAM_UP",
@@ -847,7 +1015,9 @@
     "set_total": 181,
     "release_date": "2019-02-01",
     "image_url": "/sets/SM9_Logo_EN.png",
-    "cards_file": "Teamup.json"
+    "cards_file": "Teamup.json",
+    "set_number": 181,
+    "cards_in_set": 181
   },
   {
     "set_code": "DETECTIVE_PIKACHU",
@@ -857,7 +1027,9 @@
     "set_total": 18,
     "release_date": "2019-04-05",
     "image_url": "/sets/1920px-Detective_Pikachu_movie_logo.png",
-    "cards_file": "Detectivepikachu.json"
+    "cards_file": "Detectivepikachu.json",
+    "set_number": 18,
+    "cards_in_set": 18
   },
   {
     "set_code": "UNBROKEN_BONDS",
@@ -867,7 +1039,9 @@
     "set_total": 214,
     "release_date": "2019-05-03",
     "image_url": "/sets/SM10_Logo_EN.png",
-    "cards_file": "Unbrokenbonds.json"
+    "cards_file": "Unbrokenbonds.json",
+    "set_number": 214,
+    "cards_in_set": 214
   },
   {
     "set_code": "UNIFIED_MINDS",
@@ -877,7 +1051,9 @@
     "set_total": 236,
     "release_date": "2019-08-02",
     "image_url": "/sets/SM11_Logo_EN.png",
-    "cards_file": "Unifiedminds.json"
+    "cards_file": "Unifiedminds.json",
+    "set_number": 236,
+    "cards_in_set": 236
   },
   {
     "set_code": "HIDDEN_FATES",
@@ -887,7 +1063,9 @@
     "set_total": 68,
     "release_date": "2019-08-23",
     "image_url": "/sets/Hidden_Fates_Logo_EN.png",
-    "cards_file": "Hiddenfates.json"
+    "cards_file": "Hiddenfates.json",
+    "set_number": 68,
+    "cards_in_set": 68
   },
   {
     "set_code": "COSMIC_ECLIPSE",
@@ -897,7 +1075,9 @@
     "set_total": 236,
     "release_date": "2019-11-01",
     "image_url": "/sets/SM12_Logo_EN.png",
-    "cards_file": "Cosmiceclipse.json"
+    "cards_file": "Cosmiceclipse.json",
+    "set_number": 236,
+    "cards_in_set": 236
   },
   {
     "set_code": "SWORD_SHIELD",
@@ -907,7 +1087,9 @@
     "set_total": 202,
     "release_date": "2020-02-07",
     "image_url": "/sets/SWSH1_Logo_EN.png",
-    "cards_file": "Swordshield.json"
+    "cards_file": "Swordshield.json",
+    "set_number": 202,
+    "cards_in_set": 202
   },
   {
     "set_code": "REBEL_CLASH",
@@ -917,7 +1099,9 @@
     "set_total": 209,
     "release_date": "2020-05-01",
     "image_url": "/sets/SWSH2_Logo_EN.png",
-    "cards_file": "Rebelclash.json"
+    "cards_file": "Rebelclash.json",
+    "set_number": 209,
+    "cards_in_set": 209
   },
   {
     "set_code": "DARKNESS_ABLAZE",
@@ -927,7 +1111,9 @@
     "set_total": 189,
     "release_date": "2020-08-14",
     "image_url": "/sets/SWSH3_Logo_EN.png",
-    "cards_file": "Darknessablaze.json"
+    "cards_file": "Darknessablaze.json",
+    "set_number": 189,
+    "cards_in_set": 189
   },
   {
     "set_code": "CHAMPIONS_PATH",
@@ -937,7 +1123,9 @@
     "set_total": 73,
     "release_date": "2020-09-25",
     "image_url": "/sets/Champion_Path_Logo_EN.png",
-    "cards_file": "Championspath.json"
+    "cards_file": "Championspath.json",
+    "set_number": 73,
+    "cards_in_set": 73
   },
   {
     "set_code": "VIVID_VOLTAGE",
@@ -947,7 +1135,9 @@
     "set_total": 185,
     "release_date": "2020-11-13",
     "image_url": "/sets/SWSH4_Logo_EN.png",
-    "cards_file": "Vividvoltage.json"
+    "cards_file": "Vividvoltage.json",
+    "set_number": 185,
+    "cards_in_set": 185
   },
   {
     "set_code": "SHINING_FATES",
@@ -957,7 +1147,9 @@
     "set_total": 73,
     "release_date": "2021-02-19",
     "image_url": "/sets/Shining_Fates_Logo_EN.png",
-    "cards_file": "Shiningfates.json"
+    "cards_file": "Shiningfates.json",
+    "set_number": 73,
+    "cards_in_set": 73
   },
   {
     "set_code": "BATTLE_STYLES",
@@ -967,7 +1159,9 @@
     "set_total": 163,
     "release_date": "2021-03-19",
     "image_url": "/sets/SWSH5_Logo_EN.png",
-    "cards_file": "Battlestyles.json"
+    "cards_file": "Battlestyles.json",
+    "set_number": 163,
+    "cards_in_set": 163
   },
   {
     "set_code": "CHILLING_REIGN",
@@ -977,7 +1171,9 @@
     "set_total": 198,
     "release_date": "2021-06-18",
     "image_url": "/sets/SWSH6_Logo_EN.png",
-    "cards_file": "Chillingreign.json"
+    "cards_file": "Chillingreign.json",
+    "set_number": 198,
+    "cards_in_set": 198
   },
   {
     "set_code": "EVOLVING_SKIES",
@@ -987,7 +1183,9 @@
     "set_total": 203,
     "release_date": "2021-08-27",
     "image_url": "/sets/SWSH7_Logo_EN.png",
-    "cards_file": "Evolvingskies.json"
+    "cards_file": "Evolvingskies.json",
+    "set_number": 203,
+    "cards_in_set": 203
   },
   {
     "set_code": "CELEBRATIONS",
@@ -997,7 +1195,9 @@
     "set_total": 25,
     "release_date": "2021-10-08",
     "image_url": "/sets/Celebrations_Logo_EN.png",
-    "cards_file": "Celebrations.json"
+    "cards_file": "Celebrations.json",
+    "set_number": 25,
+    "cards_in_set": 25
   },
   {
     "set_code": "FUSION_STRIKE",
@@ -1007,7 +1207,9 @@
     "set_total": 264,
     "release_date": "2021-11-12",
     "image_url": "/sets/SWSH8_Logo_EN.png",
-    "cards_file": "Fusionstrike.json"
+    "cards_file": "Fusionstrike.json",
+    "set_number": 264,
+    "cards_in_set": 264
   },
   {
     "set_code": "BRILLIANT_STARS",
@@ -1017,7 +1219,9 @@
     "set_total": 172,
     "release_date": "2022-02-25",
     "image_url": "/sets/SWSH9_Logo_EN.png",
-    "cards_file": "Brilliantstars.json"
+    "cards_file": "Brilliantstars.json",
+    "set_number": 172,
+    "cards_in_set": 172
   },
   {
     "set_code": "ASTRAL_RADIANCE",
@@ -1027,17 +1231,21 @@
     "set_total": 189,
     "release_date": "2022-05-27",
     "image_url": "/sets/SWSH10_Logo_EN.png",
-    "cards_file": "Astraltadiance.json"
+    "cards_file": "Astraltadiance.json",
+    "set_number": 189,
+    "cards_in_set": 189
   },
   {
     "set_code": "POKEMON_GO",
-    "name": "Pokémon GO",
+    "name": "Pok\u00e9mon GO",
     "era": "Sword & Shield",
     "language": "EN",
     "set_total": 78,
     "release_date": "2022-07-01",
     "image_url": "/sets/Pokemon_Go_Logo.png",
-    "cards_file": "Pokémongo.json"
+    "cards_file": "Pok\u00e9mongo.json",
+    "set_number": 78,
+    "cards_in_set": 78
   },
   {
     "set_code": "LOST_ORIGIN",
@@ -1047,7 +1255,9 @@
     "set_total": 196,
     "release_date": "2022-09-09",
     "image_url": "/sets/SWSH11_Logo_EN.png",
-    "cards_file": "Lostorigin.json"
+    "cards_file": "Lostorigin.json",
+    "set_number": 196,
+    "cards_in_set": 196
   },
   {
     "set_code": "SILVER_TEMPEST",
@@ -1057,7 +1267,9 @@
     "set_total": 195,
     "release_date": "2022-11-11",
     "image_url": "/sets/SWSH12_Logo_EN.png",
-    "cards_file": "Silvertempest.json"
+    "cards_file": "Silvertempest.json",
+    "set_number": 195,
+    "cards_in_set": 195
   },
   {
     "set_code": "CROWN_ZENITH",
@@ -1067,7 +1279,9 @@
     "set_total": 159,
     "release_date": "2023-01-20",
     "image_url": "/sets/Crown_Zenith_Logo_EN.png",
-    "cards_file": "Crownzenith.json"
+    "cards_file": "Crownzenith.json",
+    "set_number": 159,
+    "cards_in_set": 159
   },
   {
     "set_code": "SCARLET_VIOLET",
@@ -1077,7 +1291,9 @@
     "set_total": 198,
     "release_date": "2023-03-31",
     "image_url": "/sets/SV1_Logo_EN.png",
-    "cards_file": "Scarletviolet.json"
+    "cards_file": "Scarletviolet.json",
+    "set_number": 198,
+    "cards_in_set": 198
   },
   {
     "set_code": "PALDEA_EVOLVED",
@@ -1087,7 +1303,9 @@
     "set_total": 193,
     "release_date": "2023-06-09",
     "image_url": "/sets/SV2_Logo_EN.png",
-    "cards_file": "Paldeaevolved.json"
+    "cards_file": "Paldeaevolved.json",
+    "set_number": 193,
+    "cards_in_set": 193
   },
   {
     "set_code": "OBSIDIAN_FLAMES",
@@ -1097,17 +1315,21 @@
     "set_total": 197,
     "release_date": "2023-08-11",
     "image_url": "/sets/SV3_Logo_EN.png",
-    "cards_file": "Obsidianflames.json"
+    "cards_file": "Obsidianflames.json",
+    "set_number": 197,
+    "cards_in_set": 197
   },
   {
     "set_code": "SV_151",
-    "name": "Scarlet & Violet—151",
+    "name": "Scarlet & Violet\u2014151",
     "era": "Scarlet & Violet",
     "language": "EN",
     "set_total": 165,
     "release_date": "2023-09-22",
     "image_url": "/sets/SV3.5_Logo_EN.png",
-    "cards_file": "151.json"
+    "cards_file": "151.json",
+    "set_number": 165,
+    "cards_in_set": 165
   },
   {
     "set_code": "PARADOX_RIFT",
@@ -1117,7 +1339,9 @@
     "set_total": 182,
     "release_date": "2023-11-03",
     "image_url": "/sets/SV4_Logo_EN.png",
-    "cards_file": "Paradoxrift.json"
+    "cards_file": "Paradoxrift.json",
+    "set_number": 182,
+    "cards_in_set": 182
   },
   {
     "set_code": "PALDEAN_FATES",
@@ -1127,7 +1351,9 @@
     "set_total": 91,
     "release_date": "2024-01-26",
     "image_url": "/sets/SV4.5_Logo_EN.png",
-    "cards_file": "Paldeanfates.json"
+    "cards_file": "Paldeanfates.json",
+    "set_number": 91,
+    "cards_in_set": 91
   },
   {
     "set_code": "TEMPORAL_FORCES",
@@ -1137,7 +1363,9 @@
     "set_total": 162,
     "release_date": "2024-03-22",
     "image_url": "/sets/SV5_Logo_EN.png",
-    "cards_file": "Temporalforces.json"
+    "cards_file": "Temporalforces.json",
+    "set_number": 162,
+    "cards_in_set": 162
   },
   {
     "set_code": "TWILIGHT_MASQUERADE",
@@ -1147,7 +1375,9 @@
     "set_total": 167,
     "release_date": "2024-05-24",
     "image_url": "/sets/SV6_Logo_EN.png",
-    "cards_file": "Twilightmasquerade.json"
+    "cards_file": "Twilightmasquerade.json",
+    "set_number": 167,
+    "cards_in_set": 167
   },
   {
     "set_code": "SHROUDED_FABLE",
@@ -1162,7 +1392,9 @@
       "Shroudedfable",
       "SV6.5",
       "SV6 5"
-    ]
+    ],
+    "set_number": 64,
+    "cards_in_set": 64
   },
   {
     "set_code": "STELLAR_CROWN",
@@ -1172,7 +1404,9 @@
     "set_total": 142,
     "release_date": "2024-09-13",
     "image_url": "/sets/1920px-SV7_Logo_EN.png",
-    "cards_file": "Stellarcrown.json"
+    "cards_file": "Stellarcrown.json",
+    "set_number": 142,
+    "cards_in_set": 142
   },
   {
     "set_code": "SURGING_SPARKS",
@@ -1182,7 +1416,9 @@
     "set_total": 191,
     "release_date": null,
     "image_url": null,
-    "cards_file": "Surgingsparks.json"
+    "cards_file": "Surgingsparks.json",
+    "set_number": 191,
+    "cards_in_set": 191
   },
   {
     "set_code": "PRISMATIC_EVOLUTIONS",
@@ -1192,7 +1428,9 @@
     "set_total": 131,
     "release_date": null,
     "image_url": null,
-    "cards_file": "Prismaticevolutions.json"
+    "cards_file": "Prismaticevolutions.json",
+    "set_number": 131,
+    "cards_in_set": 131
   },
   {
     "set_code": "JOURNEY_TOGETHER",
@@ -1202,7 +1440,9 @@
     "set_total": 159,
     "release_date": null,
     "image_url": null,
-    "cards_file": "Journeytogether.json"
+    "cards_file": "Journeytogether.json",
+    "set_number": 159,
+    "cards_in_set": 159
   },
   {
     "set_code": "STELLAR_MIRACLE",
@@ -1212,7 +1452,9 @@
     "set_total": 135,
     "release_date": null,
     "image_url": null,
-    "cards_file": "Stellarmiracle.json"
+    "cards_file": "Stellarmiracle.json",
+    "set_number": 135,
+    "cards_in_set": 135
   },
   {
     "set_code": "DESTINED_RIVALS",
@@ -1222,27 +1464,33 @@
     "set_total": 182,
     "release_date": null,
     "image_url": null,
-    "cards_file": "destinedrivals.json"
+    "cards_file": "destinedrivals.json",
+    "set_number": 182,
+    "cards_in_set": 182
   },
   {
     "set_code": "WHITE_FLARE",
-    "name": "Scarlet & Violet—White Flare",
+    "name": "Scarlet & Violet\u2014White Flare",
     "era": "Scarlet & Violet",
     "language": "EN",
     "set_total": 86,
     "release_date": null,
     "image_url": null,
-    "cards_file": "whiteflare.json"
+    "cards_file": "whiteflare.json",
+    "set_number": 86,
+    "cards_in_set": 86
   },
   {
     "set_code": "BLACK_BOLT",
-    "name": "Scarlet & Violet—Black Bolt",
+    "name": "Scarlet & Violet\u2014Black Bolt",
     "era": "Scarlet & Violet",
     "language": "EN",
     "set_total": 86,
     "release_date": null,
     "image_url": null,
-    "cards_file": "blackbolt.json"
+    "cards_file": "blackbolt.json",
+    "set_number": 86,
+    "cards_in_set": 86
   },
   {
     "set_code": "MEGA_EVOLUTION",
@@ -1252,7 +1500,9 @@
     "set_total": 132,
     "release_date": "2025-09-26",
     "image_url": "/sets/ME1_Logo_EN.png",
-    "cards_file": "megaevelutions.json"
+    "cards_file": "megaevelutions.json",
+    "set_number": 132,
+    "cards_in_set": 132
   },
   {
     "set_code": "PHANTASMAL_FLAMES",
@@ -1262,7 +1512,9 @@
     "set_total": 94,
     "release_date": "2025-11-14",
     "image_url": "/sets/ME2_Logo_EN.png",
-    "cards_file": "phantasmalflames.json"
+    "cards_file": "phantasmalflames.json",
+    "set_number": 94,
+    "cards_in_set": 94
   },
   {
     "set_code": "ASCENDED_HEROES",
@@ -1272,6 +1524,8 @@
     "set_total": 217,
     "release_date": "2026-01-30",
     "image_url": "/sets/1920px-ME2.5_Logo_EN.png",
-    "cards_file": null
+    "cards_file": null,
+    "set_number": 217,
+    "cards_in_set": 217
   }
 ]

@@ -52,6 +52,8 @@ export type ExpansionSummary = {
   name: string | null
   era: string | null
   language: string | null
+  set_number: number | null
+  cards_in_set: number | null
   set_total: number | null
   release_date: string | null
   image_url: string | null

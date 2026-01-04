@@ -51,7 +51,10 @@ function buildSetIndexes(expansions, cardsBySetCode) {
   for (const expansion of expansions || []) {
     const eraKey = normalizeText(expansion.era)
     const cardsEntry = cardsBySetCode?.[expansion.set_code] || null
-    const setTotal = determinePrintedSetTotal(cardsEntry, expansion.set_total)
+    const setTotal = determinePrintedSetTotal(
+      cardsEntry,
+      expansion.set_number ?? expansion.set_total
+    )
     if (!eraKey) continue
 
     if (!setsByEraAndTotal[eraKey]) setsByEraAndTotal[eraKey] = {}
