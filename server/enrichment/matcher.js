@@ -1,7 +1,7 @@
 const { loadCatalog } = require('../catalog/catalogLoader')
 
 function determinePrintedSetTotal(cardsEntry, fallback = null) {
-  let printedTotal = cardsEntry?.set_total ?? null
+  let printedTotal = fallback ?? cardsEntry?.set_total ?? null
 
   for (const card of cardsEntry?.cards || []) {
     const match = String(card.card_number || '').match(/\b\d{1,3}\s*\/(\d{1,3})\b/)
@@ -12,7 +12,7 @@ function determinePrintedSetTotal(cardsEntry, fallback = null) {
     }
   }
 
-  return printedTotal ?? fallback ?? null
+  return printedTotal ?? null
 }
 
 function normalizeText(value) {
