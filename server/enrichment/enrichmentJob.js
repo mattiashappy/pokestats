@@ -1,4 +1,5 @@
-const { matchAuction, loadMatcherIndexes } = require('./matcher')
+const { resolveAuctionMatch } = require('./numberFirstMatcher')
+const { loadCatalog } = require('../catalog/catalogLoader')
 
 async function buildDatabaseCardIndex(pool) {
   if (!pool) return {}
@@ -49,13 +50,8 @@ async function runEnrichmentJob({
   try {
     console.info(`${logLabel} Preparing matcher for up to ${safeLimit} auctions`)
 
-    const matcherIndexes = await loadMatcherIndexes()
+    const { expansions, cardsBySetCode } = await loadCatalog()
     const cardIndex = await buildDatabaseCardIndex(pool)
-
-    console.info(
-      `${logLabel} Loaded matcher indexes (eras: ${Object.keys(matcherIndexes.setsByEraAndTotal || {}).length}, ` +
-        `sets: ${Object.keys(matcherIndexes.cardsBySetAndNumber || {}).length})`
-    )
 
     const {
       rows: [before]
@@ -90,23 +86,32 @@ async function runEnrichmentJob({
     let processed = 0
 
     for (const row of rows) {
-      const match = matchAuction(row, matcherIndexes)
+      const match = await resolveAuctionMatch(client, row, expansions, cardsBySetCode)
 
-      const confidence = match.match_status?.includes('High')
-        ? 'high'
-        : match.match_status?.includes('Medium')
-          ? 'medium'
-          : match.match_status?.includes('Low')
-            ? 'low'
-            : null
+      if (match.set_inference_reason === 'ambiguous') {
+        console.warn(
+          `${logLabel} Ambiguous set inference for item ${row.item_id}: ${JSON.stringify(
+            match.parsed_set_candidates
+          )}`
+        )
+      }
 
       const matchedCardId =
-        match.matched_card_id ||
-        (match.matched_set_code && match.matched_card_number
-          ? cardIndex?.[match.matched_set_code]?.[match.matched_card_number] || null
+        match.card_id ||
+        (match.matched_set_code && match.parsed_card_number
+          ? cardIndex?.[match.matched_set_code]?.[match.parsed_card_number] || null
           : null)
 
       if (matchedCardId) linked++
+
+      const confidence = match.match_confidence || (matchedCardId ? 'medium' : null)
+      const derivedStatus = matchedCardId
+        ? `Matched (${confidence ? confidence.charAt(0).toUpperCase() + confidence.slice(1) : 'Low'})`
+        : match.matched_set_code || match.parsed_set_guess
+          ? 'Needs review'
+          : 'Unmatched'
+
+      const matchStatus = match.match_status || derivedStatus
 
       const debugPayload = { ...match, matched_card_id: matchedCardId }
 
@@ -127,18 +132,18 @@ async function runEnrichmentJob({
         `,
         [
           row.item_id,
-          match.match_status,
+          matchStatus,
           confidence,
-          match.matched_set_code,
-          match.matched_era,
+          match.matched_set_code || match.parsed_set_guess,
+          match.matched_era || row.era || row.pokemon_era || row.attributes?.pokemon_era?.[0] || null,
           match.parsed_card_number,
-          match.parsed_set_total,
+          match.parsed_total_in_set || match.parsed_set_total,
           matchedCardId,
           JSON.stringify(debugPayload)
         ]
       )
 
-      statusCounts.set(match.match_status || 'Unknown', (statusCounts.get(match.match_status || 'Unknown') || 0) + 1)
+      statusCounts.set(matchStatus || 'Unknown', (statusCounts.get(matchStatus || 'Unknown') || 0) + 1)
 
       processed++
       if (processed % 50 === 0) {
