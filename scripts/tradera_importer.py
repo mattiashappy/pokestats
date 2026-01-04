@@ -488,6 +488,41 @@ def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
 
 def ensure_card(conn, payload: Dict[str, Optional[str]]) -> int:
     # The cards table deduplicates on (set_code, card_number) via the
+    # cards_unique_setcode_number constraint. Prefer to reuse any existing
+    # row to avoid duplicate-key errors when ON CONFLICT cannot run (for
+    # instance if the constraint is missing on a specific database).
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id
+            FROM cards
+            WHERE set_code = %(set_code)s AND card_number = %(card_number)s
+            LIMIT 1;
+            """,
+            payload,
+        )
+        found = cur.fetchone()
+        if found:
+            cur.execute(
+                """
+                UPDATE cards
+                SET
+                    name = COALESCE(cards.name, %(name)s),
+                    era = COALESCE(cards.era, %(era)s),
+                    set_name = COALESCE(cards.set_name, %(set_name)s)
+                WHERE id = %(id)s
+                RETURNING id;
+                """,
+                {**payload, "id": found[0]},
+            )
+            row = cur.fetchone()
+            return int(row[0])
+
+        cur.execute(
+            """
+            INSERT INTO cards (name, era, set_name, set_code, card_number, expansion_id)
+            VALUES (%(name)s, %(era)s, %(set_name)s, %(set_code)s, %(card_number)s, NULL)
+            ON CONFLICT ON CONSTRAINT cards_unique_setcode_number DO UPDATE SET
     # cards_unique_setcode_number constraint. Align the ON CONFLICT target
     # to that index so imports can reuse existing "unknown" placeholder
     # rows instead of crashing.
