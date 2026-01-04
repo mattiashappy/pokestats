@@ -168,7 +168,31 @@ function matchAuction(auctionRow, indexes) {
     }
   }
 
-  const { set: chosenSet, reason } = chooseSetCandidate(candidateSets, auctionRow?.title || '', setHintIndex)
+  let consideredCandidates = candidateSets
+  let candidateFilterReason = null
+
+  if (Number.isFinite(cardNumber)) {
+    const withCardNumber = candidateSets.filter((candidate) =>
+      Object.prototype.hasOwnProperty.call(
+        cardsBySetAndNumber?.[candidate.set_code] || {},
+        cardNumber
+      )
+    )
+
+    if (withCardNumber.length === 1) {
+      consideredCandidates = withCardNumber
+      candidateFilterReason = 'card_number_in_set'
+    } else if (withCardNumber.length > 1) {
+      consideredCandidates = withCardNumber
+      candidateFilterReason = 'card_number_in_set'
+    }
+  }
+
+  const { set: chosenSet, reason } = chooseSetCandidate(
+    consideredCandidates,
+    auctionRow?.title || '',
+    setHintIndex
+  )
 
   if (!chosenSet) {
     return {
@@ -179,8 +203,13 @@ function matchAuction(auctionRow, indexes) {
       matched_set_code: null,
       matched_card_number: null,
       matched_card_id: null,
-      candidate_sets: candidateSets,
-      debug: { reason, candidates: candidateSets, era_resolution: eraResolution }
+      candidate_sets: consideredCandidates,
+      debug: {
+        reason,
+        candidates: consideredCandidates,
+        era_resolution: eraResolution,
+        candidate_filter_reason: candidateFilterReason
+      }
     }
   }
 
@@ -193,8 +222,13 @@ function matchAuction(auctionRow, indexes) {
     matched_set_code: chosenSet.set_code,
     matched_card_number: cardNumber,
     matched_card_id: null,
-    candidate_sets: candidateSets,
-    debug: { reason, candidates: candidateSets, era_resolution: eraResolution }
+    candidate_sets: consideredCandidates,
+    debug: {
+      reason,
+      candidates: consideredCandidates,
+      era_resolution: eraResolution,
+      candidate_filter_reason: candidateFilterReason
+    }
   }
 
   if (card) {
