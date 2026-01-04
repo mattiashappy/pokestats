@@ -1084,7 +1084,7 @@
     "name": "Paldea Evolved",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 279,
+    "set_total": 193,
     "release_date": "2023-06-09",
     "image_url": "/sets/SV2_Logo_EN.png",
     "cards_file": "Paldeaevolved.json"
@@ -1114,7 +1114,7 @@
     "name": "Paradox Rift",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 266,
+    "set_total": 182,
     "release_date": "2023-11-03",
     "image_url": "/sets/SV4_Logo_EN.png",
     "cards_file": "Paradoxrift.json"
@@ -1134,7 +1134,7 @@
     "name": "Temporal Forces",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 218,
+    "set_total": 162,
     "release_date": "2024-03-22",
     "image_url": "/sets/SV5_Logo_EN.png",
     "cards_file": "Temporalforces.json"
@@ -1144,7 +1144,7 @@
     "name": "Twilight Masquerade",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 226,
+    "set_total": 167,
     "release_date": "2024-05-24",
     "image_url": "/sets/SV6_Logo_EN.png",
     "cards_file": "Twilightmasquerade.json"
@@ -1169,7 +1169,7 @@
     "name": "Stellar Crown",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 175,
+    "set_total": 142,
     "release_date": "2024-09-13",
     "image_url": "/sets/1920px-SV7_Logo_EN.png",
     "cards_file": "Stellarcrown.json"
@@ -1189,7 +1189,7 @@
     "name": "Prismatic Evolutions",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 180,
+    "set_total": 131,
     "release_date": null,
     "image_url": null,
     "cards_file": "Prismaticevolutions.json"
@@ -1199,7 +1199,7 @@
     "name": "Journey Together",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 190,
+    "set_total": 159,
     "release_date": null,
     "image_url": null,
     "cards_file": "Journeytogether.json"
@@ -1219,27 +1219,27 @@
     "name": "Destined Rivals",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 244,
+    "set_total": 182,
     "release_date": null,
     "image_url": null,
     "cards_file": "destinedrivals.json"
   },
   {
     "set_code": "WHITE_FLARE",
-    "name": "White Flame",
+    "name": "Scarlet & Violet—White Flare",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 173,
+    "set_total": 86,
     "release_date": null,
     "image_url": null,
     "cards_file": "whiteflare.json"
   },
   {
-    "set_code": "BLACK_BOLD",
-    "name": "Black & Bold",
+    "set_code": "BLACK_BOLT",
+    "name": "Scarlet & Violet—Black Bolt",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 172,
+    "set_total": 86,
     "release_date": null,
     "image_url": null,
     "cards_file": "blackbold.json"
@@ -1269,7 +1269,7 @@
     "name": "Ascended Heroes",
     "era": "Mega Evolution",
     "language": "EN",
-    "set_total": null,
+    "set_total": 217,
     "release_date": "2026-01-30",
     "image_url": "/sets/1920px-ME2.5_Logo_EN.png",
     "cards_file": null
