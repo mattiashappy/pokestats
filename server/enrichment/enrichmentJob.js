@@ -62,9 +62,7 @@ async function runEnrichmentJob({
         WHERE card_id IS NULL
           AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')
           AND COALESCE(match_status, '') <> 'Discarded (manual)'
-          AND (updated_at IS NULL OR updated_at < $1)
-      `,
-      [startedAt]
+      `
     )
 
     const { rows } = await client.query(
@@ -74,11 +72,10 @@ async function runEnrichmentJob({
         WHERE card_id IS NULL
           AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')
           AND COALESCE(match_status, '') <> 'Discarded (manual)'
-          AND (updated_at IS NULL OR updated_at < $2)
         ORDER BY end_date ASC NULLS LAST
         LIMIT $1
       `,
-      [safeLimit, startedAt]
+      [safeLimit]
     )
 
     const statusCounts = new Map()
@@ -160,9 +157,7 @@ async function runEnrichmentJob({
         WHERE card_id IS NULL
           AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')
           AND COALESCE(match_status, '') <> 'Discarded (manual)'
-          AND (updated_at IS NULL OR updated_at < $1)
-      `,
-      [startedAt]
+      `
     )
 
     const payload = {
