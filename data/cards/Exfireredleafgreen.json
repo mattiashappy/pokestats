@@ -115,9 +115,9 @@
     { "card_number": "110/112", "name": "Mr. Mime ex" },
     { "card_number": "111/112", "name": "Mr. Mime ex" },
     { "card_number": "112/112", "name": "Venusaur ex" },
-    { "card_number": "SECRET", "name": "Charmander" },
-    { "card_number": "SECRET", "name": "Articuno ex" },
-    { "card_number": "SECRET", "name": "Moltres ex" },
-    { "card_number": "SECRET", "name": "Zapdos ex" }
+    { "card_number": "113/112", "name": "Charmander" },
+    { "card_number": "114/112", "name": "Articuno ex" },
+    { "card_number": "115/112", "name": "Moltres ex" },
+    { "card_number": "116/112", "name": "Zapdos ex" }
   ]
 }
