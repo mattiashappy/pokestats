@@ -112,7 +112,7 @@
     { "card_number": "107/109", "name": "Mudkip Star" },
     { "card_number": "108/109", "name": "Torchic Star" },
     { "card_number": "109/109", "name": "Treecko Star" },
-    { "card_number": "SECRET", "name": "Charmeleon" },
-    { "card_number": "SECRET", "name": "Here Comes Team Rocket!" }
+    { "card_number": "110/109", "name": "Charmeleon" },
+    { "card_number": "111/109", "name": "Here Comes Team Rocket!" }
   ]
 }
