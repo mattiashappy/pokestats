@@ -51,7 +51,7 @@ export const expansions: Expansion[] = [
     code: "TR",
     name: "Team Rocket",
     release: "April 24, 2000",
-    totalCards: 83,
+    totalCards: 82,
     secretRares: 1,
     highlight: "Dark Charizard"
   },
