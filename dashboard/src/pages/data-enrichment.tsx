@@ -65,6 +65,7 @@ export function DataEnrichmentPage(): JSX.Element {
     const summary = summaryQuery.data
     if (!summary) return []
     return [
+      { label: 'Unprocessed', value: summary.unmatched ?? 0 },
       { label: 'Matched', value: summary.matched ?? 0 },
       { label: 'Needs review', value: summary.needsReview ?? 0 },
       { label: 'Mismatched', value: summary.mismatched ?? 0 },

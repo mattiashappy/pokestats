@@ -100,6 +100,7 @@ export type EnrichmentSummary = {
   matched?: number
   needsReview?: number
   mismatched?: number
+  unmatched?: number
   linkedAuctions?: number
   error?: string
 }
