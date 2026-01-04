@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-const { runEnrichmentJob, pool } = require('../server')
+const { pool, ensureCardInfrastructure } = require('../server')
+const { runEnrichmentJob } = require('../server/enrichment/enrichmentJob')
 
 async function main() {
   const limitArg = Number(process.argv[2])
   const limit = Number.isFinite(limitArg) ? limitArg : undefined
   const logPrefix = `[Enrichment job @ ${new Date().toISOString()}]`
 
-  const result = await runEnrichmentJob({ limit, logPrefix })
+  const result = await runEnrichmentJob({ pool, ensureCardInfrastructure, limit, logPrefix })
   console.log(JSON.stringify(result, null, 2))
 }
 
