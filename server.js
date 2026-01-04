@@ -1868,13 +1868,14 @@ app.post('/api/enrichment/run-all', async (req, res) => {
   const batchSize = Math.max(1, Math.min(Number(req.body?.batchSize) || 100, 1000))
   const maxBatches = Math.max(1, Math.min(Number(req.body?.maxBatches) || 1000, 5000))
 
-  const runStartedAt = new Date()
+  let runStartedAt = new Date()
 
   let totalAttempted = 0
   let totalLinked = 0
   let batches = 0
   let remainingBefore = null
   let remainingAfter = null
+  let resetCount = 0
   const statusCounts = new Map()
 
   try {
@@ -1896,7 +1897,18 @@ app.post('/api/enrichment/run-all', async (req, res) => {
 
       batches += 1
 
-      if (!result.remainingAfter || result.remainingAfter <= 0 || result.attempted === 0) break
+      const nothingProcessed = result.attempted === 0
+      const stillRemaining = typeof result.remainingAfter === 'number' ? result.remainingAfter > 0 : false
+
+      if (nothingProcessed && stillRemaining && resetCount === 0) {
+        // If a batch unexpectedly processed nothing even though rows remain, widen the
+        // time window and try again so newly inserted auctions get picked up.
+        resetCount += 1
+        runStartedAt = new Date('9999-12-31T23:59:59.999Z')
+        continue
+      }
+
+      if (!result.remainingAfter || result.remainingAfter <= 0 || nothingProcessed) break
     }
 
     res.json({
@@ -1907,6 +1919,7 @@ app.post('/api/enrichment/run-all', async (req, res) => {
       totalLinked,
       remainingBefore,
       remainingAfter,
+      resetCount,
       statusCounts: Object.fromEntries(statusCounts)
     })
   } catch (error) {
