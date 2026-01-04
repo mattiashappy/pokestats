@@ -1,5 +1,20 @@
 const { loadCatalog } = require('../catalog/catalogLoader')
 
+function determinePrintedSetTotal(cardsEntry, fallback = null) {
+  let printedTotal = cardsEntry?.set_total ?? null
+
+  for (const card of cardsEntry?.cards || []) {
+    const match = String(card.card_number || '').match(/\b\d{1,3}\s*\/(\d{1,3})\b/)
+    const denom = match ? parseInt(match[1], 10) : null
+
+    if (Number.isFinite(denom)) {
+      printedTotal = printedTotal == null ? denom : Math.max(printedTotal, denom)
+    }
+  }
+
+  return printedTotal ?? fallback ?? null
+}
+
 function normalizeText(value) {
   return (value || '')
     .toString()
@@ -35,7 +50,8 @@ function buildSetIndexes(expansions, cardsBySetCode) {
 
   for (const expansion of expansions || []) {
     const eraKey = normalizeText(expansion.era)
-    const setTotal = expansion.set_total || (cardsBySetCode?.[expansion.set_code]?.set_total ?? null)
+    const cardsEntry = cardsBySetCode?.[expansion.set_code] || null
+    const setTotal = determinePrintedSetTotal(cardsEntry, expansion.set_total)
     if (!eraKey) continue
 
     if (!setsByEraAndTotal[eraKey]) setsByEraAndTotal[eraKey] = {}

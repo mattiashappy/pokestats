@@ -774,14 +774,13 @@ async function ensureStaticCatalogSeeded() {
   return seedingCatalogPromise
 }
 
-async function fetchCachedExpansions(db) {
+async function fetchCachedExpansions(_db) {
   const now = Date.now()
   if (cachedExpansions && now - lastExpansionFetch < 60_000) return cachedExpansions
 
-  const { rows } = await db.query('SELECT id, set_code, name, era, set_total, language FROM public.expansions')
-  cachedExpansions = rows
+  cachedExpansions = await loadCatalog()
   lastExpansionFetch = now
-  return rows
+  return cachedExpansions
 }
 
 function filterCandidateExpansions(expansions, { eraHint = null, setHint = null } = {}) {
@@ -1260,8 +1259,8 @@ async function searchCards(q, expansionId = null) {
 
 async function tryAutoMatchAuction(client, row, parsedOverride = null) {
   const text = `${row.title || ''} ${row.description || ''}`
-  const expansions = await fetchCachedExpansions(client)
-  const updateFields = await resolveAuctionMatch(client, row, expansions)
+  const { expansions, cardsBySetCode } = await fetchCachedExpansions(client)
+  const updateFields = await resolveAuctionMatch(client, row, expansions, cardsBySetCode)
 
   return {
     parsed_name: updateFields.parsed_name ?? parsedOverride?.parsed_name ?? parseCardName(text),
