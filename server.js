@@ -1867,6 +1867,9 @@ app.post('/api/enrichment/run-all', async (req, res) => {
 
   const batchSize = Math.max(1, Math.min(Number(req.body?.batchSize) || 100, 1000))
   const maxBatches = Math.max(1, Math.min(Number(req.body?.maxBatches) || 1000, 5000))
+  const resetExisting = req.body?.resetExisting ?? true
+
+  let resetStatusesCount = 0
 
   let runStartedAt = new Date()
 
@@ -1879,6 +1882,37 @@ app.post('/api/enrichment/run-all', async (req, res) => {
   const statusCounts = new Map()
 
   try {
+    if (resetExisting) {
+      const {
+        rows: [{ reset_count }]
+      } = await pool.query(`
+        WITH reset AS (
+          UPDATE public.tradera_sales
+          SET
+            match_status = NULL,
+            match_confidence = NULL,
+            matched_set_code = NULL,
+            matched_era = NULL,
+            parsed_card_number = NULL,
+            parsed_set_total = NULL,
+            match_debug = NULL,
+            updated_at = NOW()
+          WHERE card_id IS NULL
+            AND COALESCE(match_status, '') NOT IN ('', 'Discarded (manual)')
+          RETURNING 1
+        )
+        SELECT COUNT(*)::int AS reset_count FROM reset
+      `)
+
+      resetStatusesCount = reset_count
+
+      if (resetStatusesCount > 0) {
+        console.info(
+          `Reset ${resetStatusesCount} previously reviewed auctions back to unprocessed before rerun`
+        )
+      }
+    }
+
     while (batches < maxBatches) {
       const result = await runEnrichmentJob({
         limit: batchSize,
@@ -1920,6 +1954,7 @@ app.post('/api/enrichment/run-all', async (req, res) => {
       remainingBefore,
       remainingAfter,
       resetCount,
+      resetStatusesCount,
       statusCounts: Object.fromEntries(statusCounts)
     })
   } catch (error) {
@@ -1976,7 +2011,7 @@ app.get('/api/enrichment/summary', async (_req, res) => {
         COUNT(*) FILTER (WHERE match_status = 'Needs review')::int AS needs_review,
         COUNT(*) FILTER (WHERE match_status = 'Mismatched')::int AS mismatched,
         COUNT(*) FILTER (
-          WHERE match_status IS NULL OR match_status = '' OR match_status = 'Unmatched'
+          WHERE card_id IS NULL AND COALESCE(NULLIF(match_status, ''), NULL) IS NULL
         )::int AS unmatched,
         COUNT(*) FILTER (WHERE card_id IS NOT NULL)::int AS linked
       FROM public.tradera_sales
