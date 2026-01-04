@@ -1900,24 +1900,15 @@ app.post('/api/enrichment/run-all', async (req, res) => {
       const nothingProcessed = result.attempted === 0
       const stillRemaining = typeof result.remainingAfter === 'number' ? result.remainingAfter > 0 : false
 
-      if (nothingProcessed) {
-        if (stillRemaining) {
-          if (resetCount === 0) {
-            // If a batch unexpectedly processed nothing even though rows remain, widen the
-            // time window and try again so newly inserted auctions get picked up.
-            resetCount += 1
-            runStartedAt = new Date('9999-12-31T23:59:59.999Z')
-          }
-
-          // After widening the window, keep trying additional batches so all auctions
-          // eventually get processed instead of exiting early with work remaining.
-          continue
-        }
-
-        break
+      if (nothingProcessed && stillRemaining && resetCount === 0) {
+        // If a batch unexpectedly processed nothing even though rows remain, widen the
+        // time window and try again so newly inserted auctions get picked up.
+        resetCount += 1
+        runStartedAt = new Date('9999-12-31T23:59:59.999Z')
+        continue
       }
 
-      if (!result.remainingAfter || result.remainingAfter <= 0) break
+      if (!result.remainingAfter || result.remainingAfter <= 0 || nothingProcessed) break
     }
 
     res.json({
