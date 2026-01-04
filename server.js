@@ -102,7 +102,7 @@ async function getStaticCardsForSet(setCode) {
   if (!cardsEntry?.cards?.length) return []
 
   const setTotal =
-    expansion?.set_number ?? cardsEntry.set_total ?? expansion?.set_total ?? null
+    cardsEntry.set_total ?? expansion?.set_number ?? expansion?.set_total ?? null
 
   return cardsEntry.cards.map((card, index) => {
     const setCodeValue = cardsEntry.set_code ?? expansion?.set_code ?? code
