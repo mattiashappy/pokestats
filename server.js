@@ -555,14 +555,19 @@ async function ensureSalesEnrichmentColumnsAvailable() {
     const results = await Promise.all([
       ensureColumnExists('tradera_sales', 'era', 'TEXT'),
       ensureColumnExists('tradera_sales', 'pokemon_era', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'enrich_status', 'TEXT'),
       ensureColumnExists('tradera_sales', 'match_status', 'TEXT'),
       ensureColumnExists('tradera_sales', 'match_confidence', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'match_confidence_score', 'INTEGER'),
       ensureColumnExists('tradera_sales', 'match_method', 'TEXT'),
       ensureColumnExists('tradera_sales', 'matched_set_code', 'TEXT'),
       ensureColumnExists('tradera_sales', 'matched_era', 'TEXT'),
+      ensureColumnExists('tradera_sales', 'parsed_card_no', 'INTEGER'),
+      ensureColumnExists('tradera_sales', 'parsed_number_text', 'TEXT'),
       ensureColumnExists('tradera_sales', 'parsed_card_number', 'TEXT'),
       ensureColumnExists('tradera_sales', 'parsed_set_total', 'INTEGER'),
       ensureColumnExists('tradera_sales', 'match_debug', 'JSONB'),
+      ensureColumnExists('tradera_sales', 'processing_started_at', 'TIMESTAMPTZ'),
       ensureColumnExists('tradera_sales', 'updated_at', 'TIMESTAMPTZ NOT NULL DEFAULT NOW()')
     ])
 

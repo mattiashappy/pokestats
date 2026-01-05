@@ -17,16 +17,20 @@ function parseCardNumber(text) {
   if (fractionMatch) {
     const cardNumber = Number.parseInt(fractionMatch[1], 10)
     const denominator = Number.parseInt(fractionMatch[2], 10)
-    return { cardNumber: Number.isFinite(cardNumber) ? cardNumber : null, denominator: Number.isFinite(denominator) ? denominator : null }
+    return {
+      cardNumber: Number.isFinite(cardNumber) ? cardNumber : null,
+      denominator: Number.isFinite(denominator) ? denominator : null,
+      rawText: fractionMatch[0]
+    }
   }
 
   const standaloneMatch = normalized.match(/\b(\d{1,3})(?:[a-zA-Z])?\b/)
   if (standaloneMatch) {
     const cardNumber = Number.parseInt(standaloneMatch[1], 10)
-    return { cardNumber: Number.isFinite(cardNumber) ? cardNumber : null, denominator: null }
+    return { cardNumber: Number.isFinite(cardNumber) ? cardNumber : null, denominator: null, rawText: standaloneMatch[0] }
   }
 
-  return { cardNumber: null, denominator: null }
+  return { cardNumber: null, denominator: null, rawText: null }
 }
 
 function parseSetHint(text) {
@@ -167,7 +171,7 @@ function findSetCandidates({
 
 async function resolveAuctionMatch(_client, row, expansions = null, cardsBySetCode = null) {
   const text = `${row?.title || ''} ${row?.description || ''}`
-  const { cardNumber, denominator } = parseCardNumber(text)
+  const { cardNumber, denominator, rawText } = parseCardNumber(text)
   const eraHint = row?.era || row?.pokemon_era || row?.attributes?.pokemon_era?.[0] || null
 
   let catalog = expansions
@@ -225,7 +229,9 @@ async function resolveAuctionMatch(_client, row, expansions = null, cardsBySetCo
 
   return {
     parsed_name: parsedName,
+    parsed_card_no: cardNumber,
     parsed_card_number: cardNumber,
+    parsed_number_text: rawText,
     parsed_total_in_set: denominator,
     parsed_set_hint: setHints.find(Boolean) || null,
     parsed_set_guess: chosenSet?.set_code ?? null,
