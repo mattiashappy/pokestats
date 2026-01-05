@@ -1505,6 +1505,20 @@ async function fetchExpansionSummaries() {
       mergedByCode.set(normalizedRow.set_code, mergeRows(current, normalizedRow))
     }
 
+    for (const row of salesBySetResult.rows || []) {
+      if (!row?.set_code) continue
+      const canonicalCode =
+        resolveCanonicalCode(row.set_code) ?? resolveCanonicalCode(row.name) ?? row.set_code ?? null
+      if (!canonicalCode) continue
+
+      const existing = mergedByCode.get(canonicalCode) ?? { set_code: canonicalCode }
+      mergedByCode.set(canonicalCode, {
+        ...existing,
+        set_code: canonicalCode,
+        linked_auctions: (existing.linked_auctions ?? 0) + (row.linked_auctions ?? 0)
+      })
+    }
+
     // 1) Stable canonical ordering from static catalog
     const orderedResults = staticExpansions.map((expansion) => {
       const mergedRow = mergedByCode.get(expansion.set_code)
