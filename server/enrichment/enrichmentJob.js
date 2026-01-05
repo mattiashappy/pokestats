@@ -69,9 +69,8 @@ async function runEnrichmentJob({
     const { expansions, cardsBySetCode } = await loadCatalog()
     const cardIndex = await buildDatabaseCardIndex(pool)
 
-    const unprocessedClause =
-      "card_id IS NULL AND COALESCE(enrich_status, 'unmatched') IN ('unmatched','needs_review')"
-    const unlinkedClause = unprocessedClause
+    const unprocessedClause = "COALESCE(match_status, '') = ''"
+    const unlinkedClause = `card_id IS NULL AND ${unprocessedClause}`
     const whereClause = target === 'unlinked' ? unlinkedClause : unprocessedClause
 
     const {
@@ -171,27 +170,36 @@ async function runEnrichmentJob({
 
       const debugPayload = { ...match, matched_card_id: matchedCardId }
 
+      const matchStatus =
+        match.match_status ||
+        (derivedStatus === 'matched'
+          ? 'Matched (Auto)'
+          : derivedStatus === 'needs_review'
+            ? 'Needs review'
+            : 'Unmatched')
+
       await client.query(
         `
           UPDATE public.tradera_sales
           SET
-            match_status = NULL,
-            enrich_status = $2,
-            match_confidence = $3,
-            match_confidence_score = $4,
-            matched_set_code = $5,
-            matched_era = $6,
-            parsed_card_no = $7,
-            parsed_number_text = $8,
-            parsed_set_total = $9,
-            card_id = $10,
-            match_debug = $11,
+            match_status = $2,
+            enrich_status = $3,
+            match_confidence = $4,
+            match_confidence_score = $5,
+            matched_set_code = $6,
+            matched_era = $7,
+            parsed_card_no = $8,
+            parsed_number_text = $9,
+            parsed_set_total = $10,
+            card_id = $11,
+            match_debug = $12,
             processing_started_at = NULL,
             updated_at = NOW()
           WHERE item_id = $1
         `,
         [
           row.item_id,
+          matchStatus,
           derivedStatus,
           matchConfidenceLabel,
           matchConfidenceScore,
