@@ -1,23 +1,24 @@
 const { resolveAuctionMatch } = require('./numberFirstMatcher')
 const { loadCatalog } = require('../catalog/catalogLoader')
 
-async function buildDatabaseCardIndex(pool) {
-  if (!pool) return {}
-  const { rows } = await pool.query(
-    `
-      SELECT
-        c.id,
-        c.card_number,
-        COALESCE(e.set_code, c.set_code) AS set_code
-      FROM public.cards c
-      LEFT JOIN public.expansions e ON e.id = c.expansion_id
-    `
-  )
+async function buildDatabaseCardIndex(db) {
+  if (!db) return {}
+
+  const { rows } = await db.query(`
+    SELECT
+      c.id,
+      c.card_number,
+      COALESCE(e.set_code, c.set_code) AS set_code
+    FROM public.cards c
+    LEFT JOIN public.expansions e ON e.id = c.expansion_id
+  `)
 
   const bySetAndNumber = {}
   for (const row of rows) {
-    const setCode = row.set_code?.trim()
-    const numeric = parseInt(String(row.card_number).split(/[\s/]/)[0], 10)
+    const setCode = typeof row.set_code === 'string' ? row.set_code.trim() : null
+    const raw = row.card_number == null ? '' : String(row.card_number)
+    const numeric = parseInt(raw.split(/[\s/]/)[0], 10)
+
     if (!setCode || !Number.isFinite(numeric)) continue
 
     if (!bySetAndNumber[setCode]) bySetAndNumber[setCode] = {}
@@ -42,6 +43,13 @@ function normalizeConfidenceScore(confidenceText, fallbackStatus, matchedCardId)
   return null
 }
 
+function toIntOrNull(value) {
+  if (value == null) return null
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  const n = parseInt(String(value).trim(), 10)
+  return Number.isFinite(n) ? n : null
+}
+
 async function runEnrichmentJob({
   pool,
   ensureCardInfrastructure,
@@ -51,9 +59,7 @@ async function runEnrichmentJob({
   target = 'unprocessed'
 } = {}) {
   if (!pool) throw new Error('DATABASE_URL not set')
-  if (typeof ensureCardInfrastructure !== 'function') {
-    throw new Error('ensureCardInfrastructure not provided')
-  }
+  if (typeof ensureCardInfrastructure !== 'function') throw new Error('ensureCardInfrastructure not provided')
 
   const ok = await ensureCardInfrastructure()
   if (!ok) throw new Error('Card infrastructure unavailable')
@@ -62,66 +68,77 @@ async function runEnrichmentJob({
   const startedAt = runStartedAt ? new Date(runStartedAt) : new Date()
   const logLabel = logPrefix || `[Enrichment run @ ${startedAt.toISOString()}]`
 
+  // IMPORTANT: this was previously computed but unused
+  const updatedBeforeClause =
+    target === 'unlinked'
+      ? `AND COALESCE(updated_at, end_date, 'epoch'::timestamp) < '${startedAt.toISOString()}'`
+      : ''
+
   const client = await pool.connect()
   try {
     console.info(`${logLabel} Preparing matcher for up to ${safeLimit} auctions`)
 
+    // Release stuck "processing" rows before counting/claiming
+    await client.query(`
+      UPDATE public.tradera_sales
+      SET match_status = NULL, processing_started_at = NULL
+      WHERE match_status = 'processing'
+        AND processing_started_at < NOW() - INTERVAL '30 minutes'
+    `)
+
     const { expansions, cardsBySetCode } = await loadCatalog()
-    const cardIndex = await buildDatabaseCardIndex(pool)
+    const cardIndex = await buildDatabaseCardIndex(client)
 
     const unprocessedClause = "COALESCE(match_status, '') = ''"
+
+    // FIX: COALESCE(match_status,'') so NULL rows aren't excluded by <> comparison
     const unlinkedClause =
-      "card_id IS NULL AND match_status <> 'Discarded (manual)' AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')"
-    const whereClause = target === 'unlinked' ? unlinkedClause : unprocessedClause
+      "card_id IS NULL " +
+      "AND COALESCE(match_status, '') <> 'Discarded (manual)' " +
+      "AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')"
+
+    const baseWhereClause = target === 'unlinked' ? unlinkedClause : unprocessedClause
+    const whereClause = `${baseWhereClause} ${updatedBeforeClause}`
 
     const {
       rows: [before]
-    } = await client.query(
-      `
-        SELECT COUNT(*)::int AS count
-        FROM public.tradera_sales
-        WHERE ${whereClause}
-    `
-    )
+    } = await client.query(`
+      SELECT COUNT(*)::int AS count
+      FROM public.tradera_sales
+      WHERE ${whereClause}
+    `)
 
-      await client.query(
+    let rows = []
+
+    // Claim rows transactionally to avoid multi-dyno conflicts
+    await client.query('BEGIN')
+    try {
+      const claimResult = await client.query(
         `
-          UPDATE public.tradera_sales
-          SET match_status = NULL, processing_started_at = NULL
-          WHERE match_status = 'processing'
-            AND processing_started_at < NOW() - INTERVAL '30 minutes'
-        `
+          WITH batch AS (
+            SELECT item_id
+            FROM public.tradera_sales
+            WHERE ${whereClause}
+              AND COALESCE(match_status, '') <> 'processing'
+            ORDER BY updated_at ASC NULLS FIRST, end_date ASC NULLS LAST, item_id ASC
+            LIMIT $1
+            FOR UPDATE SKIP LOCKED
+          )
+          UPDATE public.tradera_sales ts
+          SET match_status = 'processing', processing_started_at = NOW(), updated_at = NOW()
+          FROM batch b
+          WHERE ts.item_id = b.item_id
+          RETURNING ts.item_id, ts.title, ts.description, ts.attributes, ts.era, ts.pokemon_era
+        `,
+        [safeLimit]
       )
 
-      let rows = []
-      await client.query('BEGIN')
-      try {
-        const claimResult = await client.query(
-          `
-            WITH batch AS (
-              SELECT item_id
-              FROM public.tradera_sales
-              WHERE ${whereClause}
-                AND COALESCE(match_status, '') <> 'processing'
-              ORDER BY updated_at ASC NULLS FIRST, end_date ASC NULLS LAST, item_id ASC
-              LIMIT $1
-              FOR UPDATE SKIP LOCKED
-            )
-            UPDATE public.tradera_sales ts
-            SET match_status = 'processing', processing_started_at = NOW(), updated_at = NOW()
-            FROM batch b
-            WHERE ts.item_id = b.item_id
-            RETURNING ts.item_id, ts.title, ts.description, ts.attributes, ts.era, ts.pokemon_era
-          `,
-          [safeLimit]
-        )
-
-        rows = claimResult.rows
-        await client.query('COMMIT')
-      } catch (error) {
-        await client.query('ROLLBACK')
-        throw error
-      }
+      rows = claimResult.rows
+      await client.query('COMMIT')
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    }
 
     const statusCounts = new Map()
     let linked = 0
@@ -138,16 +155,19 @@ async function runEnrichmentJob({
         )
       }
 
-      const parsedCardNo = match.parsed_card_no ?? match.parsed_card_number ?? null
+      const parsedCardNoRaw = match.parsed_card_no ?? match.parsed_card_number ?? null
+      const parsedCardNo = toIntOrNull(parsedCardNoRaw)
+
       const matchedCardId =
         match.card_id ||
-        (match.matched_set_code && parsedCardNo
+        (match.matched_set_code && parsedCardNo != null
           ? cardIndex?.[match.matched_set_code]?.[parsedCardNo] || null
           : null)
 
       if (matchedCardId) linked++
 
       const confidenceText = match.match_confidence || (matchedCardId ? 'medium' : null)
+
       const derivedStatus = matchedCardId
         ? 'matched'
         : match.matched_set_code || match.parsed_set_guess
@@ -159,6 +179,7 @@ async function runEnrichmentJob({
         derivedStatus,
         matchedCardId
       )
+
       const matchConfidenceLabel =
         match.match_confidence ||
         (matchConfidenceScore != null
@@ -204,11 +225,15 @@ async function runEnrichmentJob({
           derivedStatus,
           matchConfidenceLabel,
           matchConfidenceScore,
-          match.matched_set_code || match.parsed_set_guess,
-          match.matched_era || row.era || row.pokemon_era || row.attributes?.pokemon_era?.[0] || null,
+          match.matched_set_code || match.parsed_set_guess || null,
+          match.matched_era ||
+            row.era ||
+            row.pokemon_era ||
+            row.attributes?.pokemon_era?.[0] ||
+            null,
           parsedCardNo,
           match.parsed_number_text || null,
-          match.parsed_total_in_set || match.parsed_set_total,
+          match.parsed_total_in_set || match.parsed_set_total || null,
           matchedCardId,
           JSON.stringify(debugPayload)
         ]
@@ -224,13 +249,11 @@ async function runEnrichmentJob({
 
     const {
       rows: [after]
-    } = await client.query(
-      `
-        SELECT COUNT(*)::int AS count
-        FROM public.tradera_sales
-        WHERE ${whereClause}
-    `
-    )
+    } = await client.query(`
+      SELECT COUNT(*)::int AS count
+      FROM public.tradera_sales
+      WHERE ${whereClause}
+    `)
 
     const payload = {
       ok: true,
