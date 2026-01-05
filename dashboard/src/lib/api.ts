@@ -60,6 +60,27 @@ export async function runEnrichment(limit = 300) {
     statusCounts: Record<string, number>
     remainingBefore: number | null
     remainingAfter: number | null
+    target: string
+  }>
+}
+
+export async function runUnlinkedEnrichment(limit = 300) {
+  const res = await fetch('/api/enrichment/run-unlinked', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ limit })
+  })
+
+  if (!res.ok) throw new Error('Failed to rerun unlinked auctions')
+
+  return res.json() as Promise<{
+    ok: boolean
+    attempted: number
+    linked: number
+    statusCounts: Record<string, number>
+    remainingBefore: number | null
+    remainingAfter: number | null
+    target: string
   }>
 }
 

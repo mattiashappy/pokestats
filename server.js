@@ -1847,8 +1847,15 @@ app.post('/api/import/run', async (_req, res) => {
 // --------------------
 // Enrichment
 // --------------------
-async function runEnrichmentJob({ limit = 500, logPrefix, runStartedAt } = {}) {
-  return runEnrichmentJobCore({ pool, ensureCardInfrastructure, limit, logPrefix, runStartedAt })
+async function runEnrichmentJob({ limit = 500, logPrefix, runStartedAt, target } = {}) {
+  return runEnrichmentJobCore({
+    pool,
+    ensureCardInfrastructure,
+    limit,
+    logPrefix,
+    runStartedAt,
+    target
+  })
 }
 
 app.post('/api/enrichment/run', async (req, res) => {
@@ -1857,6 +1864,20 @@ app.post('/api/enrichment/run', async (req, res) => {
     res.json(payload)
   } catch (error) {
     console.error('Failed to run enrichment matcher', error)
+    res.status(500).json({ ok: false, error: String(error) })
+  }
+})
+
+app.post('/api/enrichment/run-unlinked', async (req, res) => {
+  try {
+    const payload = await runEnrichmentJob({
+      limit: req.body?.limit,
+      logPrefix: '[Enrichment rerun: unlinked only]',
+      target: 'unlinked'
+    })
+    res.json(payload)
+  } catch (error) {
+    console.error('Failed to re-run enrichment for unlinked auctions', error)
     res.status(500).json({ ok: false, error: String(error) })
   }
 })
