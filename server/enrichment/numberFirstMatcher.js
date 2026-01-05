@@ -97,7 +97,8 @@ function findSetCandidates({
   setHints,
   setTotalHint,
   cardNumber,
-  eraHint
+  eraHint,
+  normalizedText
 }) {
   const eraNormalized = normalize(eraHint)
 
@@ -107,6 +108,8 @@ function findSetCandidates({
     const normalizedCode = normalize(expansion.set_code)
     const normalizedName = normalize(expansion.name)
     const normalizedEra = normalize(expansion.era)
+    const codeMentioned = normalizedText && normalizedCode && normalizedText.includes(normalizedCode)
+    const nameMentioned = normalizedText && normalizedName && normalizedText.includes(normalizedName)
 
     const cardsEntry = cardsBySet?.[expansion.set_code] || null
     const printedTotal = determinePrintedSetTotal(
@@ -133,8 +136,9 @@ function findSetCandidates({
 
     const totalScore = setTotalHint && printedTotal === setTotalHint ? 1 : 0
     const eraScore = eraNormalized && normalizedEra && normalizedEra.includes(eraNormalized) ? 1 : 0
+    const textScore = codeMentioned || nameMentioned ? 2 : 0
 
-    const score = hintScore + totalScore + eraScore
+    const score = hintScore + totalScore + eraScore + textScore
 
     if (score === 0 && !setTotalHint) continue
 
@@ -174,6 +178,7 @@ async function resolveAuctionMatch(_client, row, expansions = null, cardsBySetCo
     cardsBySet = cardsBySet || loadedCards || {}
   }
 
+  const normalizedText = normalize(text)
   const setHints = collectSetHints(row, text)
   const { chosen, candidates } = findSetCandidates({
     catalog,
@@ -181,13 +186,13 @@ async function resolveAuctionMatch(_client, row, expansions = null, cardsBySetCo
     setHints,
     setTotalHint: denominator,
     cardNumber,
-    eraHint
+    eraHint,
+    normalizedText
   })
 
   const chosenSet = chosen?.expansion || null
   const cardsEntry = chosenSet ? cardsBySet?.[chosenSet.set_code] || null : null
   const parsedName = parseCardName(text)
-  const normalizedText = normalize(text)
 
   let matchedCard = null
   let nameMatched = false
