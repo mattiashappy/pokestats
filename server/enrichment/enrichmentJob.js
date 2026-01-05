@@ -70,7 +70,8 @@ async function runEnrichmentJob({
     const cardIndex = await buildDatabaseCardIndex(pool)
 
     const unprocessedClause = "COALESCE(match_status, '') = ''"
-    const unlinkedClause = `card_id IS NULL AND ${unprocessedClause}`
+    const unlinkedClause =
+      "card_id IS NULL AND match_status <> 'Discarded (manual)' AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')"
     const whereClause = target === 'unlinked' ? unlinkedClause : unprocessedClause
 
     const {
