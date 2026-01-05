@@ -84,11 +84,21 @@ export async function runUnlinkedEnrichment(limit = 300) {
   }>
 }
 
-export async function runFullEnrichment(batchSize = 500) {
+type RunFullEnrichmentOptions = {
+  batchSize?: number
+  maxRuntimeMs?: number
+  resetExisting?: boolean
+}
+
+export async function runFullEnrichment({
+  batchSize = 500,
+  maxRuntimeMs = 55_000,
+  resetExisting = false
+}: RunFullEnrichmentOptions = {}) {
   const res = await fetch('/api/enrichment/run-all', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ batchSize })
+    body: JSON.stringify({ batchSize, maxRuntimeMs, resetExisting })
   })
 
   let data: any = null

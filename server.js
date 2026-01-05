@@ -1888,8 +1888,8 @@ app.post('/api/enrichment/run-all', async (req, res) => {
 
   const batchSize = Math.max(1, Math.min(Number(req.body?.batchSize) || 100, 1000))
   const maxBatches = Math.max(1, Math.min(Number(req.body?.maxBatches) || 1000, 5000))
-  const resetExisting = req.body?.resetExisting ?? true
-  const maxRuntimeMs = Math.max(5_000, Math.min(Number(req.body?.maxRuntimeMs) || 25_000, 120_000))
+  const resetExisting = req.body?.resetExisting ?? false
+  const maxRuntimeMs = Math.max(5_000, Math.min(Number(req.body?.maxRuntimeMs) || 55_000, 120_000))
 
   let resetStatusesCount = 0
 
@@ -1940,7 +1940,8 @@ app.post('/api/enrichment/run-all', async (req, res) => {
       const result = await runEnrichmentJob({
         limit: batchSize,
         runStartedAt,
-        logPrefix: `[Enrichment run @ ${runStartedAt.toISOString()}]`
+        logPrefix: `[Enrichment run @ ${runStartedAt.toISOString()}]`,
+        target: 'unlinked'
       })
 
       totalAttempted += result.attempted
