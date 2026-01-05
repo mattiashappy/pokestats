@@ -2049,19 +2049,50 @@ app.get('/api/enrichment/summary', async (_req, res) => {
           WHERE card_id IS NULL AND COALESCE(NULLIF(match_status, ''), NULL) IS NULL
         )::int AS unprocessed,
         COUNT(*) FILTER (WHERE match_status = 'Unmatched')::int AS unmatched,
-        COUNT(*) FILTER (WHERE card_id IS NOT NULL)::int AS linked
+        COUNT(*) FILTER (WHERE card_id IS NOT NULL)::int AS linked,
+        COUNT(*) FILTER (
+          WHERE card_id IS NULL AND parsed_card_number IS NULL
+        )::int AS reason_no_card_number,
+        COUNT(*) FILTER (
+          WHERE card_id IS NULL AND parsed_card_number IS NOT NULL AND matched_set_code IS NULL
+        )::int AS reason_has_number_no_set,
+        COUNT(*) FILTER (
+          WHERE card_id IS NULL AND match_status = 'Needs review'
+        )::int AS reason_ambiguous,
+        COUNT(*) FILTER (
+          WHERE card_id IS NULL AND (
+            title ILIKE '%etb%' OR title ILIKE '%booster box%' OR title ILIKE '%sealed%'
+          )
+        )::int AS reason_filtered,
+        COUNT(*) FILTER (
+          WHERE card_id IS NULL AND title ~ '[0-9]+/[0-9]+'
+        )::int AS fixable_fraction_pattern
       FROM public.tradera_sales
     `)
 
+    const total = rows[0].total
+    const unprocessed = rows[0].unprocessed
+    const processed = total - unprocessed
+
     res.json({
       available: true,
-      totalAuctions: rows[0].total,
+      totalAuctions: total,
       matched: rows[0].matched,
       needsReview: rows[0].needs_review,
       mismatched: rows[0].mismatched,
-      unprocessed: rows[0].unprocessed,
+      unprocessed,
       unmatched: rows[0].unmatched,
-      linkedAuctions: rows[0].linked
+      linkedAuctions: rows[0].linked,
+      processed,
+      reasons: {
+        noCardNumber: rows[0].reason_no_card_number,
+        hasNumberNoSet: rows[0].reason_has_number_no_set,
+        ambiguous: rows[0].reason_ambiguous,
+        filteredListing: rows[0].reason_filtered
+      },
+      fixable: {
+        hasFractionButUnlinked: rows[0].fixable_fraction_pattern
+      }
     })
   } catch (e) {
     res.status(500).json({ available: false, error: String(e) })
