@@ -1,6 +1,49 @@
 const { resolveAuctionMatch } = require('./numberFirstMatcher')
 const { loadCatalog } = require('../catalog/catalogLoader')
 
+const SET_CODE_NORMALIZATION = {
+  BLACK_BOLD: 'BLACK_BOLT'
+}
+
+function normalizeSetCode(setCode) {
+  if (!setCode) return null
+  const normalized = String(setCode).trim().toUpperCase()
+  return SET_CODE_NORMALIZATION[normalized] || normalized
+}
+
+function pickCandidateSetCode(match, row) {
+  const explicitSet = normalizeSetCode(match?.matched_set_code || match?.parsed_set_guess)
+  if (explicitSet) return explicitSet
+
+  const candidates = Array.isArray(match?.parsed_set_candidates) ? match.parsed_set_candidates : []
+  const normalizedCandidates = candidates
+    .map((candidate) => ({ ...candidate, set_code: normalizeSetCode(candidate.set_code) }))
+    .filter((candidate) => candidate.set_code)
+
+  const title = `${row?.title || ''} ${row?.description || ''}`.toLowerCase()
+  const titleHints = [
+    { regex: /gym heroes/i, set_code: 'GYMHEROES' },
+    { regex: /gym challenge/i, set_code: 'GYMCHALLENGE' }
+  ]
+
+  for (const hint of titleHints) {
+    if (hint.regex.test(title)) {
+      const normalized = normalizeSetCode(hint.set_code)
+      const fromCandidates = normalizedCandidates.find((candidate) => candidate.set_code === normalized)
+      return fromCandidates?.set_code || normalized
+    }
+  }
+
+  if (normalizedCandidates.length === 1) return normalizedCandidates[0].set_code
+
+  if (normalizedCandidates.length > 1) {
+    const [best] = [...normalizedCandidates].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    return best?.set_code || null
+  }
+
+  return null
+}
+
 async function buildDatabaseCardIndex(db) {
   if (!db) return {}
 
@@ -15,7 +58,7 @@ async function buildDatabaseCardIndex(db) {
 
   const bySetAndNumber = {}
   for (const row of rows) {
-    const setCode = typeof row.set_code === 'string' ? row.set_code.trim() : null
+    const setCode = normalizeSetCode(row.set_code)
     const raw = row.card_number == null ? '' : String(row.card_number)
     const numeric = parseInt(raw.split(/[\s/]/)[0], 10)
 
@@ -164,21 +207,17 @@ async function runEnrichmentJob({
       const parsedCardNoRaw = match.parsed_card_no ?? match.parsed_card_number ?? null
       const parsedCardNo = toIntOrNull(parsedCardNoRaw)
 
+      const chosenSetCode = normalizeSetCode(pickCandidateSetCode(match, row))
+
       const matchedCardId =
         match.card_id ||
-        (match.matched_set_code && parsedCardNo != null
-          ? cardIndex?.[match.matched_set_code]?.[parsedCardNo] || null
-          : null)
+        (chosenSetCode && parsedCardNo != null ? cardIndex?.[chosenSetCode]?.[parsedCardNo] || null : null)
 
       if (matchedCardId) linked++
 
       const confidenceText = match.match_confidence || (matchedCardId ? 'medium' : null)
 
-      const derivedStatus = matchedCardId
-        ? 'matched'
-        : match.matched_set_code || match.parsed_set_guess
-          ? 'needs_review'
-          : 'unmatched'
+      const derivedStatus = matchedCardId ? 'matched' : chosenSetCode ? 'needs_review' : 'unmatched'
 
       const matchConfidenceScore = normalizeConfidenceScore(
         match.match_confidence_score ?? confidenceText,
@@ -196,7 +235,7 @@ async function runEnrichmentJob({
               : 'low'
           : null)
 
-      const debugPayload = { ...match, matched_card_id: matchedCardId }
+      const debugPayload = { ...match, matched_card_id: matchedCardId, selected_set_code: chosenSetCode }
 
       const matchStatus =
         match.match_status ||
@@ -209,7 +248,7 @@ async function runEnrichmentJob({
       if (!matchedCardId) {
         console.warn(
           `${logLabel} No card linked for item ${row.item_id} (${matchStatus}). Parsed card: ${match.parsed_card_no ||
-            match.parsed_card_number || 'n/a'}, set guess: ${match.matched_set_code || match.parsed_set_guess || 'n/a'}, ` +
+            match.parsed_card_number || 'n/a'}, set guess: ${chosenSetCode || match.parsed_set_guess || 'n/a'}, ` +
             `title: ${row.title?.slice(0, 140) || 'n/a'}`
         )
       }
@@ -239,7 +278,7 @@ async function runEnrichmentJob({
           derivedStatus,
           matchConfidenceLabel,
           matchConfidenceScore,
-          match.matched_set_code || match.parsed_set_guess || null,
+          chosenSetCode || null,
           match.matched_era ||
             row.era ||
             row.pokemon_era ||
