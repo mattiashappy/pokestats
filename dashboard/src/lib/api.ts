@@ -161,6 +161,16 @@ export type EnrichmentSummary = {
   unprocessed?: number
   unmatched?: number
   linkedAuctions?: number
+  processed?: number
+  reasons?: {
+    noCardNumber?: number
+    hasNumberNoSet?: number
+    ambiguous?: number
+    filteredListing?: number
+  }
+  fixable?: {
+    hasFractionButUnlinked?: number
+  }
   error?: string
 }
 

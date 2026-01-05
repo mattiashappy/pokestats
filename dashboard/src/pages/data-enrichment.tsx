@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { AlertCircle, RefreshCcw, Rocket, Search } from 'lucide-react'
+import { AlertCircle, Info, ListChecks, RefreshCcw, Rocket, Search } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
@@ -21,12 +21,12 @@ import {
 import type { ExpansionSummary } from '../types'
 
 const matchingSteps = [
-  'Validate ERA; missing or garbage eras are marked as Mismatched.',
-  'Extract the first card number pattern (NNN/TTT) from the auction title.',
-  'Filter candidate sets by ERA + set_total (the denominator).',
-  'Use set hints in the title (set names/aliases) to break ties between sets.',
-  'Resolve the card inside the chosen set using the parsed card number.',
-  'Store match status, parsed number, set total, and matched set/card identifiers with debug details.'
+  'Fetch auction title + metadata.',
+  'Filter out sealed/lot/Topps listings that are not a single card.',
+  'Parse the first card number pattern (e.g., 57/132, #11, DP31).',
+  'Infer the set using set names, set codes, era hints, and printed totals.',
+  'Try to find a unique card in that set.',
+  'Write match_status, parsed_card_number, matched_set_code, and card_id (if linked) to tradera_sales.'
 ]
 
 const FULL_RUN_BATCH_SIZE = 500
@@ -79,12 +79,18 @@ export function DataEnrichmentPage(): JSX.Element {
   const summaryStats = useMemo(() => {
     const summary = summaryQuery.data
     if (!summary) return []
-    const pending = (summary.unprocessed ?? 0) + (summary.unmatched ?? 0) + (summary.needsReview ?? 0)
+    const processed =
+      summary.processed ?? (summary.totalAuctions ?? 0) - (summary.unprocessed ?? 0)
     return [
-      { label: 'Linked auctions', value: summary.linkedAuctions ?? 0 },
-      { label: 'Pending matching', value: pending },
+      { label: 'Total auctions', value: summary.totalAuctions ?? 0 },
+      { label: 'Processed (attempted)', value: processed },
+      { label: 'Linked (has card_id)', value: summary.linkedAuctions ?? 0 },
       { label: 'Needs review', value: summary.needsReview ?? 0 },
-      { label: 'Mismatched', value: summary.mismatched ?? 0 }
+      { label: 'Unmatched', value: summary.unmatched ?? 0 },
+      {
+        label: 'Likely fixable automatically',
+        value: summary.fixable?.hasFractionButUnlinked ?? 0
+      }
     ]
   }, [summaryQuery.data])
 
@@ -93,9 +99,33 @@ export function DataEnrichmentPage(): JSX.Element {
     const total = summary?.totalAuctions ?? 0
     if (!summary || total === 0) return null
     const linked = summary.linkedAuctions ?? 0
-    const pending = (summary.unprocessed ?? 0) + (summary.unmatched ?? 0) + (summary.needsReview ?? 0)
-    const coveragePercent = Math.min(100, Math.round((linked / total) * 100))
-    return { total, linked, pending, coveragePercent }
+    const processed = summary.processed ?? total - (summary.unprocessed ?? 0)
+    const classified = processed
+    return { total, linked, processed, classified }
+  }, [summaryQuery.data])
+
+  const nextActions = useMemo(() => {
+    const summary = summaryQuery.data
+    if (!summary) return []
+    const actions: string[] = []
+
+    if ((summary.fixable?.hasFractionButUnlinked ?? 0) > 0) {
+      actions.push('Parser: fix fraction-pattern detection (titles include 57/132 style numbers).')
+    }
+
+    if ((summary.reasons?.filteredListing ?? 0) > 0) {
+      actions.push('Filtering: expand sealed/lot/Topps detection to skip noisy listings sooner.')
+    }
+
+    if ((summary.reasons?.ambiguous ?? 0) > 0) {
+      actions.push('Scoring: improve set inference weights to break ties (ambiguous set).')
+    }
+
+    if ((summary.reasons?.noCardNumber ?? 0) > 0) {
+      actions.push('Extraction: add card-number parsing fallbacks for titles without clear patterns.')
+    }
+
+    return actions
   }, [summaryQuery.data])
 
   const unmatchedAuctions = unmatchedQuery.data ?? []
@@ -120,13 +150,6 @@ export function DataEnrichmentPage(): JSX.Element {
             Rebuilt to rely on ERA + set totals + set hints for deterministic matching. Oldest unseen auctions are
             processed first to work through the backlog.
           </p>
-          {coverageStats ? (
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Match coverage: {coverageStats.coveragePercent}% ({coverageStats.linked.toLocaleString()} of
-              {coverageStats.total.toLocaleString()} auctions linked, {coverageStats.pending.toLocaleString()} still
-              unlinked)
-            </p>
-          ) : null}
         </div>
         <Button
           onClick={() => mutation.mutate()}
@@ -141,47 +164,97 @@ export function DataEnrichmentPage(): JSX.Element {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Search className="h-5 w-5" />
-            Matching approach
+            <Info className="h-5 w-5" />
+            How enrichment works
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700 dark:text-slate-300">
-            {matchingSteps.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ol>
+        <CardContent className="space-y-4 text-sm text-slate-700 dark:text-slate-300">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase text-slate-500">Pipeline steps</p>
+            <ol className="list-decimal space-y-1 pl-5">
+              {matchingSteps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          </div>
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase text-slate-500">Key definitions</p>
+            <ul className="space-y-1">
+              <li>Processed = enrichment attempted (moved through the pipeline).</li>
+              <li>Linked = card_id assigned.</li>
+              <li className="text-green-600 dark:text-green-400">Matched = has card_id.</li>
+              <li className="text-amber-600 dark:text-amber-400">Needs review = hints exist but not safe to auto-link.</li>
+              <li className="text-red-600 dark:text-red-400">Unmatched = no useful hints / filtered / ambiguous.</li>
+            </ul>
+          </div>
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
+      <div className="grid gap-4 xl:grid-cols-3">
+        <Card className="xl:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Summary</CardTitle>
+            <CardTitle>Enrichment overview</CardTitle>
             {summaryQuery.isFetching ? (
               <div className="text-xs text-slate-500">Refreshing…</div>
             ) : null}
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
+          <CardContent className="space-y-4 text-sm text-slate-700 dark:text-slate-300">
             {summaryQuery.data ? (
-              <div className="space-y-2">
-                <p className="text-3xl font-bold text-slate-900 dark:text-slate-50">
-                  {summaryQuery.data.totalAuctions?.toLocaleString('sv-SE') ?? '–'} auctions
-                </p>
-                <div className="grid grid-cols-2 gap-2 text-sm">
+              <>
+                <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-6">
                   {summaryStats.map((item) => (
-                    <div key={item.label} className="rounded border border-slate-200 p-2 dark:border-slate-800">
-                      <p className="text-xs uppercase text-slate-500">{item.label}</p>
-                      <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">{item.value}</p>
+                    <div
+                      key={item.label}
+                      className="rounded border border-slate-200 p-3 text-center dark:border-slate-800"
+                    >
+                      <p className="text-[11px] uppercase tracking-wide text-slate-500">{item.label}</p>
+                      <p className="text-xl font-semibold text-slate-900 dark:text-slate-50">
+                        {item.value?.toLocaleString?.('sv-SE') ?? item.value}
+                      </p>
                     </div>
                   ))}
                 </div>
+
                 {coverageStats ? (
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Overall coverage: {coverageStats.coveragePercent}% linked
-                  </p>
+                  <div className="rounded border border-slate-200 p-3 dark:border-slate-800">
+                    <p className="text-xs uppercase text-slate-500">Funnel</p>
+                    <div className="mt-2 grid gap-2 md:grid-cols-2 lg:grid-cols-4">
+                      <div>
+                        <p className="text-[11px] uppercase text-slate-500">Total auctions</p>
+                        <p className="text-lg font-semibold">{coverageStats.total.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase text-slate-500">Processed (attempted)</p>
+                        <p className="text-lg font-semibold">{coverageStats.processed.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase text-slate-500">Classified</p>
+                        <p className="text-lg font-semibold">{coverageStats.classified.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase text-slate-500">Linked</p>
+                        <p className="text-lg font-semibold">{coverageStats.linked.toLocaleString()}</p>
+                      </div>
+                    </div>
+                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                      Processed = auctions that moved through the pipeline; Linked = processed + card_id assigned.
+                    </p>
+                  </div>
                 ) : null}
-              </div>
+
+                <div className="rounded border border-slate-200 p-3 dark:border-slate-800">
+                  <p className="text-xs uppercase text-slate-500">Why not linked?</p>
+                  <div className="mt-2 grid gap-2 md:grid-cols-2 lg:grid-cols-4">
+                    <ReasonBadge label="No parsed card number" value={summaryQuery.data.reasons?.noCardNumber ?? 0} />
+                    <ReasonBadge label="Has number but no set" value={summaryQuery.data.reasons?.hasNumberNoSet ?? 0} />
+                    <ReasonBadge label="Ambiguous set" value={summaryQuery.data.reasons?.ambiguous ?? 0} />
+                    <ReasonBadge label="Filtered listing" value={summaryQuery.data.reasons?.filteredListing ?? 0} />
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Counts are limited to unlinked auctions and inferred from existing debug columns.
+                  </p>
+                </div>
+              </>
             ) : (
               <p className="text-slate-500">No summary available.</p>
             )}
@@ -313,6 +386,24 @@ export function DataEnrichmentPage(): JSX.Element {
             ) : null}
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-2">
+            <ListChecks className="h-4 w-4" />
+            <CardTitle>Next actions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-slate-700 dark:text-slate-300">
+            {nextActions.length === 0 ? (
+              <p className="text-slate-500">No obvious blockers detected.</p>
+            ) : (
+              <ul className="list-disc space-y-1 pl-4">
+                {nextActions.map((action) => (
+                  <li key={action}>{action}</li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -395,6 +486,15 @@ export function DataEnrichmentPage(): JSX.Element {
 type ManualMatchCellProps = {
   auction: UnmatchedAuction
   onUpdated: () => void
+}
+
+function ReasonBadge({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded border border-slate-200 p-3 text-center dark:border-slate-800">
+      <p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">{value.toLocaleString()}</p>
+    </div>
+  )
 }
 
 function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
