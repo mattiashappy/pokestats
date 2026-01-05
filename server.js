@@ -1470,20 +1470,9 @@ async function fetchExpansionSummaries() {
       FROM public.expansions e
     `
 
-    const salesBySetQuery = `
-      SELECT
-        COALESCE(e.set_code, c.set_code, c.set_name, ts.matched_set_code, ts.parsed_set_code) AS set_code,
-        COUNT(ts.item_id)::int AS linked_auctions
-      FROM public.tradera_sales ts
-      LEFT JOIN public.cards c ON c.id = ts.card_id
-      LEFT JOIN public.expansions e ON e.id = c.expansion_id
-      GROUP BY 1
-    `
-
-    const [cardRowsResult, expansionsResult, salesBySetResult] = await Promise.all([
+    const [cardRowsResult, expansionsResult] = await Promise.all([
       pool.query(cardRowsQuery),
-      pool.query(expansionsQuery),
-      pool.query(salesBySetQuery)
+      pool.query(expansionsQuery)
     ])
 
     const mergedRows = [...cardRowsResult.rows, ...expansionsResult.rows]
