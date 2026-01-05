@@ -70,19 +70,15 @@ export function DataEnrichmentPage(): JSX.Element {
     }
   })
 
-  const statusBreakdown = useMemo(() => {
+  const summaryStats = useMemo(() => {
     const summary = summaryQuery.data
     if (!summary) return []
-    const unlinkedBacklog =
-      (summary.unprocessed ?? 0) + (summary.unmatched ?? 0) + (summary.needsReview ?? 0)
+    const pending = (summary.unprocessed ?? 0) + (summary.unmatched ?? 0) + (summary.needsReview ?? 0)
     return [
-      { label: 'Unprocessed', value: summary.unprocessed ?? 0 },
-      { label: 'Unmatched', value: summary.unmatched ?? 0 },
-      { label: 'Matched', value: summary.matched ?? 0 },
-      { label: 'Needs review', value: summary.needsReview ?? 0 },
-      { label: 'Mismatched', value: summary.mismatched ?? 0 },
       { label: 'Linked auctions', value: summary.linkedAuctions ?? 0 },
-      { label: 'Unlinked backlog', value: unlinkedBacklog }
+      { label: 'Pending matching', value: pending },
+      { label: 'Needs review', value: summary.needsReview ?? 0 },
+      { label: 'Mismatched', value: summary.mismatched ?? 0 }
     ]
   }, [summaryQuery.data])
 
@@ -167,13 +163,18 @@ export function DataEnrichmentPage(): JSX.Element {
                   {summaryQuery.data.totalAuctions?.toLocaleString('sv-SE') ?? '–'} auctions
                 </p>
                 <div className="grid grid-cols-2 gap-2 text-sm">
-                  {statusBreakdown.map((item) => (
+                  {summaryStats.map((item) => (
                     <div key={item.label} className="rounded border border-slate-200 p-2 dark:border-slate-800">
                       <p className="text-xs uppercase text-slate-500">{item.label}</p>
                       <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">{item.value}</p>
                     </div>
                   ))}
                 </div>
+                {coverageStats ? (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Overall coverage: {coverageStats.coveragePercent}% linked
+                  </p>
+                ) : null}
               </div>
             ) : (
               <p className="text-slate-500">No summary available.</p>
