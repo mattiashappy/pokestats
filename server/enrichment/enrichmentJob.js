@@ -32,7 +32,8 @@ async function runEnrichmentJob({
   ensureCardInfrastructure,
   limit = 500,
   logPrefix,
-  runStartedAt
+  runStartedAt,
+  target = 'unprocessed'
 } = {}) {
   if (!pool) throw new Error('DATABASE_URL not set')
   if (typeof ensureCardInfrastructure !== 'function') {
@@ -55,6 +56,8 @@ async function runEnrichmentJob({
 
     const unprocessedClause =
       'card_id IS NULL AND COALESCE(NULLIF(match_status, \'\'), NULL) IS NULL'
+    const unlinkedClause = "card_id IS NULL AND COALESCE(match_status, '') <> 'Discarded (manual)'"
+    const whereClause = target === 'unlinked' ? unlinkedClause : unprocessedClause
 
     const {
       rows: [before]
@@ -62,7 +65,7 @@ async function runEnrichmentJob({
       `
         SELECT COUNT(*)::int AS count
         FROM public.tradera_sales
-        WHERE ${unprocessedClause}
+        WHERE ${whereClause}
           AND COALESCE(match_status, '') <> 'Discarded (manual)'
       `
     )
@@ -71,7 +74,7 @@ async function runEnrichmentJob({
       `
         SELECT item_id, title, attributes, era, pokemon_era
         FROM public.tradera_sales
-        WHERE ${unprocessedClause}
+        WHERE ${whereClause}
           AND COALESCE(match_status, '') <> 'Discarded (manual)'
         ORDER BY end_date ASC NULLS LAST
         LIMIT $1
@@ -155,7 +158,7 @@ async function runEnrichmentJob({
       `
         SELECT COUNT(*)::int AS count
         FROM public.tradera_sales
-        WHERE ${unprocessedClause}
+        WHERE ${whereClause}
           AND COALESCE(match_status, '') <> 'Discarded (manual)'
       `
     )
@@ -166,7 +169,8 @@ async function runEnrichmentJob({
       linked,
       statusCounts: Object.fromEntries(statusCounts),
       remainingBefore: before?.count ?? null,
-      remainingAfter: after?.count ?? null
+      remainingAfter: after?.count ?? null,
+      target
     }
 
     console.info(

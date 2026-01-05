@@ -14,6 +14,7 @@ import {
   fetchUnmatchedAuctions,
   manuallyMatchAuction,
   runEnrichment,
+  runUnlinkedEnrichment,
   runFullEnrichment,
   type UnmatchedAuction
 } from '../lib/api'
@@ -53,6 +54,14 @@ export function DataEnrichmentPage(): JSX.Element {
     }
   })
 
+  const unlinkedMutation = useMutation({
+    mutationFn: () => runUnlinkedEnrichment(runLimit),
+    onSuccess: () => {
+      summaryQuery.refetch()
+      unmatchedQuery.refetch()
+    }
+  })
+
   const fullRunMutation = useMutation({
     mutationFn: () => runFullEnrichment(FULL_RUN_BATCH_SIZE),
     onSuccess: () => {
@@ -64,14 +73,27 @@ export function DataEnrichmentPage(): JSX.Element {
   const statusBreakdown = useMemo(() => {
     const summary = summaryQuery.data
     if (!summary) return []
+    const unlinkedBacklog =
+      (summary.unprocessed ?? 0) + (summary.unmatched ?? 0) + (summary.needsReview ?? 0)
     return [
       { label: 'Unprocessed', value: summary.unprocessed ?? 0 },
       { label: 'Unmatched', value: summary.unmatched ?? 0 },
       { label: 'Matched', value: summary.matched ?? 0 },
       { label: 'Needs review', value: summary.needsReview ?? 0 },
       { label: 'Mismatched', value: summary.mismatched ?? 0 },
-      { label: 'Linked auctions', value: summary.linkedAuctions ?? 0 }
+      { label: 'Linked auctions', value: summary.linkedAuctions ?? 0 },
+      { label: 'Unlinked backlog', value: unlinkedBacklog }
     ]
+  }, [summaryQuery.data])
+
+  const coverageStats = useMemo(() => {
+    const summary = summaryQuery.data
+    const total = summary?.totalAuctions ?? 0
+    if (!summary || total === 0) return null
+    const linked = summary.linkedAuctions ?? 0
+    const pending = (summary.unprocessed ?? 0) + (summary.unmatched ?? 0) + (summary.needsReview ?? 0)
+    const coveragePercent = Math.min(100, Math.round((linked / total) * 100))
+    return { total, linked, pending, coveragePercent }
   }, [summaryQuery.data])
 
   const unmatchedAuctions = unmatchedQuery.data ?? []
@@ -96,6 +118,13 @@ export function DataEnrichmentPage(): JSX.Element {
             Rebuilt to rely on ERA + set totals + set hints for deterministic matching. Oldest unseen auctions are
             processed first to work through the backlog.
           </p>
+          {coverageStats ? (
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Match coverage: {coverageStats.coveragePercent}% ({coverageStats.linked.toLocaleString()} of
+              {coverageStats.total.toLocaleString()} auctions linked, {coverageStats.pending.toLocaleString()} still
+              unlinked)
+            </p>
+          ) : null}
         </div>
         <Button
           onClick={() => mutation.mutate()}
@@ -162,8 +191,8 @@ export function DataEnrichmentPage(): JSX.Element {
               totals, and debug metadata for every row.
             </p>
             <p className="text-xs text-slate-500">
-              Use the full re-run to process all auctions in manageable batches (currently {FULL_RUN_BATCH_SIZE.toLocaleString()} at a time) without
-              overloading the matcher.
+              Use the full re-run to process all auctions in manageable batches (currently
+              {` ${FULL_RUN_BATCH_SIZE.toLocaleString()} `}at a time) without overloading the matcher.
             </p>
             <label className="text-xs uppercase text-slate-500">Batch size</label>
             <div className="flex items-center gap-2">
@@ -178,6 +207,19 @@ export function DataEnrichmentPage(): JSX.Element {
               <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
                 {mutation.isPending ? 'Running…' : 'Run'}
               </Button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => unlinkedMutation.mutate()}
+                disabled={unlinkedMutation.isPending}
+              >
+                {unlinkedMutation.isPending ? 'Retrying…' : 'Retry unlinked auctions'}
+              </Button>
+              <p className="text-xs text-slate-500">
+                Re-run the matcher for everything without a linked card (including previous attempts) without resetting
+                manual discards.
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -196,42 +238,60 @@ export function DataEnrichmentPage(): JSX.Element {
             {fullRunMutation.isSuccess ? (
               <p className="text-xs text-green-600">
                 Full re-run finished: processed {fullRunMutation.data.totalAttempted.toLocaleString()} auctions.
+                {fullRunMutation.data.durationMs ? ` (${Math.round(fullRunMutation.data.durationMs / 1000)}s)` : ''}
+                {fullRunMutation.data.timedOut
+                  ? '; paused early to stay within the request timeout—run again to keep going.'
+                  : ''}
               </p>
             ) : null}
             {fullRunMutation.isError ? (
               <p className="text-xs text-red-600">{(fullRunMutation.error as Error).message}</p>
             ) : null}
-            {mutation.data ? (
-              <div className="rounded border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-800 dark:bg-slate-900/50">
-                <div className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
-                  <AlertCircle className="h-4 w-4" /> Matcher result
-                </div>
-                <p className="mt-1">
-                  Processed {mutation.data.attempted} auctions; linked {mutation.data.linked} cards.
-                </p>
-                {mutation.data.remainingBefore !== null && mutation.data.remainingAfter !== null ? (
+            {[mutation.data, unlinkedMutation.data]
+              .filter(Boolean)
+              .map((result) => (
+                <div
+                  key={`${result?.target}-${result?.remainingAfter}-${result?.attempted}`}
+                  className="rounded border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-800 dark:bg-slate-900/50"
+                >
+                  <div className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
+                    <AlertCircle className="h-4 w-4" /> Matcher result ({result?.target})
+                  </div>
                   <p className="mt-1">
-                    Remaining in queue: {mutation.data.remainingAfter} (previously {mutation.data.remainingBefore}).
+                    Processed {result?.attempted.toLocaleString()} auctions; linked {result?.linked.toLocaleString()} cards.
                   </p>
-                ) : null}
-                {Object.keys(mutation.data.statusCounts || {}).length ? (
-                  <ul className="mt-2 list-disc space-y-1 pl-4">
-                    {Object.entries(mutation.data.statusCounts).map(([status, count]) => (
-                      <li key={status}>
-                        <span className="font-semibold">{status}:</span> {count}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ) : null}
+                  {result?.remainingBefore !== null && result?.remainingAfter !== null ? (
+                    <p className="mt-1">
+                      Remaining in queue: {result.remainingAfter} (previously {result.remainingBefore}).
+                    </p>
+                  ) : null}
+                  {Object.keys(result?.statusCounts || {}).length ? (
+                    <ul className="mt-2 list-disc space-y-1 pl-4">
+                      {Object.entries(result?.statusCounts ?? {}).map(([status, count]) => (
+                        <li key={status}>
+                          <span className="font-semibold">{status}:</span> {count}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ))}
             {fullRunMutation.data ? (
               <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/70 dark:bg-amber-950">
                 <div className="flex items-center gap-2 font-semibold">
                   <AlertCircle className="h-4 w-4" /> Full re-run completed
                 </div>
                 <p className="mt-1">Processed {fullRunMutation.data.totalAttempted.toLocaleString()} auctions across {fullRunMutation.data.batches} batches of {fullRunMutation.data.batchSize}.</p>
-                <p className="mt-1">Linked {fullRunMutation.data.totalLinked.toLocaleString()} auctions. Remaining: {fullRunMutation.data.remainingAfter ?? '–'} (previously {fullRunMutation.data.remainingBefore ?? '–'}).</p>
+              <p className="mt-1">Linked {fullRunMutation.data.totalLinked.toLocaleString()} auctions. Remaining: {fullRunMutation.data.remainingAfter ?? '–'} (previously {fullRunMutation.data.remainingBefore ?? '–'}).</p>
+                {typeof fullRunMutation.data.resetStatusesCount === 'number' && fullRunMutation.data.resetStatusesCount > 0 ? (
+                  <p className="mt-1">Reset {fullRunMutation.data.resetStatusesCount.toLocaleString()} previously reviewed auctions before reprocessing.</p>
+                ) : null}
+                {fullRunMutation.data.durationMs ? (
+                  <p className="mt-1">Runtime: {Math.round(fullRunMutation.data.durationMs / 1000)}s.</p>
+                ) : null}
+                {fullRunMutation.data.timedOut ? (
+                  <p className="mt-1">Stopped early to avoid request timeouts—run again to continue the backlog.</p>
+                ) : null}
                 {Object.keys(fullRunMutation.data.statusCounts || {}).length ? (
                   <ul className="mt-2 list-disc space-y-1 pl-4">
                     {Object.entries(fullRunMutation.data.statusCounts).map(([status, count]) => (
