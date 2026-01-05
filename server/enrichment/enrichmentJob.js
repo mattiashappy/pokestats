@@ -70,7 +70,8 @@ async function runEnrichmentJob({
     const cardIndex = await buildDatabaseCardIndex(pool)
 
     const unprocessedClause = "COALESCE(match_status, '') = ''"
-    const unlinkedClause = `card_id IS NULL AND ${unprocessedClause}`
+    const unlinkedClause =
+      "card_id IS NULL AND match_status <> 'Discarded (manual)' AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')"
     const whereClause = target === 'unlinked' ? unlinkedClause : unprocessedClause
 
     const {
@@ -127,7 +128,13 @@ async function runEnrichmentJob({
     let processed = 0
 
     for (const row of rows) {
-      const match = await resolveAuctionMatch(client, row, expansions, cardsBySetCode)
+      let match
+      try {
+        match = await resolveAuctionMatch(client, row, expansions, cardsBySetCode)
+      } catch (error) {
+        console.error(`${logLabel} Error resolving match for item ${row.item_id}`, error)
+        throw error
+      }
 
       if (match.set_inference_reason === 'ambiguous') {
         console.warn(
@@ -177,6 +184,14 @@ async function runEnrichmentJob({
           : derivedStatus === 'needs_review'
             ? 'Needs review'
             : 'Unmatched')
+
+      if (!matchedCardId) {
+        console.warn(
+          `${logLabel} No card linked for item ${row.item_id} (${matchStatus}). Parsed card: ${match.parsed_card_no ||
+            match.parsed_card_number || 'n/a'}, set guess: ${match.matched_set_code || match.parsed_set_guess || 'n/a'}, ` +
+            `title: ${row.title?.slice(0, 140) || 'n/a'}`
+        )
+      }
 
       await client.query(
         `
