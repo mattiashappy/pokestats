@@ -1448,9 +1448,10 @@ async function fetchExpansionSummaries() {
         COALESCE(e.release_date, c.release_date) AS release_date,
         COALESCE(e.image_url, c.image_url) AS image_url,
         COUNT(DISTINCT c.id)::int AS cards_total,
-        0::int AS linked_auctions
+        COUNT(ts.item_id)::int AS linked_auctions
       FROM public.cards c
       LEFT JOIN public.expansions e ON c.expansion_id = e.id
+      LEFT JOIN public.tradera_sales ts ON ts.card_id = c.id
       GROUP BY 2, 3, 4, 5, 6, 7, 8
     `
 
@@ -1469,31 +1470,23 @@ async function fetchExpansionSummaries() {
       FROM public.expansions e
     `
 
-    const salesRowsQuery = `
+    const salesBySetQuery = `
       SELECT
-        COALESCE(
-          c.set_code,
-          e.set_code,
-          c.set_name,
-          e.name,
-          s.matched_set_code,
-          s.parsed_set_code
-        ) AS set_code,
-        COUNT(s.item_id)::int AS linked_auctions
-      FROM public.tradera_sales s
-      LEFT JOIN public.cards c ON c.id = s.card_id
+        COALESCE(e.set_code, c.set_code, c.set_name, ts.matched_set_code, ts.parsed_set_code) AS set_code,
+        COUNT(ts.item_id)::int AS linked_auctions
+      FROM public.tradera_sales ts
+      LEFT JOIN public.cards c ON c.id = ts.card_id
       LEFT JOIN public.expansions e ON e.id = c.expansion_id
-      WHERE s.card_id IS NOT NULL
       GROUP BY 1
     `
 
-    const [cardRowsResult, expansionsResult, salesRowsResult] = await Promise.all([
+    const [cardRowsResult, expansionsResult, salesBySetResult] = await Promise.all([
       pool.query(cardRowsQuery),
       pool.query(expansionsQuery),
-      pool.query(salesRowsQuery)
+      pool.query(salesBySetQuery)
     ])
 
-    const mergedRows = [...cardRowsResult.rows, ...expansionsResult.rows, ...salesRowsResult.rows]
+    const mergedRows = [...cardRowsResult.rows, ...expansionsResult.rows]
     if (mergedRows.length === 0) return staticExpansions
 
     const mergedByCode = new Map()
@@ -1521,6 +1514,20 @@ async function fetchExpansionSummaries() {
       const normalizedRow = { ...row, set_code: canonicalCode ?? row.set_code ?? row.name ?? null }
       const current = mergedByCode.get(normalizedRow.set_code)
       mergedByCode.set(normalizedRow.set_code, mergeRows(current, normalizedRow))
+    }
+
+    for (const row of salesBySetResult.rows || []) {
+      if (!row?.set_code) continue
+      const canonicalCode =
+        resolveCanonicalCode(row.set_code) ?? resolveCanonicalCode(row.name) ?? row.set_code ?? null
+      if (!canonicalCode) continue
+
+      const existing = mergedByCode.get(canonicalCode) ?? { set_code: canonicalCode }
+      mergedByCode.set(canonicalCode, {
+        ...existing,
+        set_code: canonicalCode,
+        linked_auctions: (existing.linked_auctions ?? 0) + (row.linked_auctions ?? 0)
+      })
     }
 
     // 1) Stable canonical ordering from static catalog
