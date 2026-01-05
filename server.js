@@ -6,6 +6,7 @@ const { spawn } = require('child_process')
 const { Pool } = require('pg')
 const crypto = require('crypto')
 const mockAuctions = require('./server/mock-auctions.json')
+const { createExpansionService } = require('./server/routes/expansions')
 
 const { loadCatalog } = require('./server/catalog/catalogLoader')
 const { seedCatalog } = require('./server/catalog/catalogSeeder')
@@ -1402,8 +1403,7 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
   return dbCards
 }
 
-async function fetchExpansionSummaries() {
-  if (!pool) return getStaticExpansionSummaries()
+// Expansion summary logic lives in server/routes/expansions.js
 
   try {
     const ok = await ensureCardInfrastructure()
@@ -1574,6 +1574,8 @@ app.get('/api/health', (_req, res) => {
   })
 })
 
+registerExpansionRoutes(app)
+
 app.get('/api/sales', async (req, res) => {
   try {
     const parsedLimit = req.query.limit ? Number(req.query.limit) : null
@@ -1617,26 +1619,6 @@ app.get('/api/sales', async (req, res) => {
     }
 
     return res.status(500).json({ error: 'Failed to load auctions' })
-  }
-})
-
-app.get('/api/expansions', async (_req, res) => {
-  try {
-    const expansions = await fetchExpansionSummaries()
-    return res.json(expansions)
-  } catch (error) {
-    console.error('Failed to fetch expansions', error)
-    return res.status(500).json({ error: 'Failed to load expansions' })
-  }
-})
-
-app.get('/api/sets', async (_req, res) => {
-  try {
-    const expansions = await fetchExpansionSummaries()
-    return res.json(expansions)
-  } catch (error) {
-    console.error('Failed to fetch sets', error)
-    return res.status(500).json({ error: 'Failed to load sets' })
   }
 })
 
