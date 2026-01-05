@@ -1889,10 +1889,12 @@ app.post('/api/enrichment/run-all', async (req, res) => {
   const batchSize = Math.max(1, Math.min(Number(req.body?.batchSize) || 100, 1000))
   const maxBatches = Math.max(1, Math.min(Number(req.body?.maxBatches) || 1000, 5000))
   const resetExisting = req.body?.resetExisting ?? true
+  const maxRuntimeMs = Math.max(5_000, Math.min(Number(req.body?.maxRuntimeMs) || 25_000, 120_000))
 
   let resetStatusesCount = 0
 
   let runStartedAt = new Date()
+  const startedAtMs = Date.now()
 
   let totalAttempted = 0
   let totalLinked = 0
@@ -1955,6 +1957,8 @@ app.post('/api/enrichment/run-all', async (req, res) => {
       const nothingProcessed = result.attempted === 0
       const stillRemaining = typeof result.remainingAfter === 'number' ? result.remainingAfter > 0 : false
 
+      const elapsedMs = Date.now() - startedAtMs
+
       if (nothingProcessed && stillRemaining && resetCount === 0) {
         // If a batch unexpectedly processed nothing even though rows remain, widen the
         // time window and try again so newly inserted auctions get picked up.
@@ -1964,6 +1968,7 @@ app.post('/api/enrichment/run-all', async (req, res) => {
       }
 
       if (!result.remainingAfter || result.remainingAfter <= 0 || nothingProcessed) break
+      if (elapsedMs >= maxRuntimeMs) break
     }
 
     res.json({
@@ -1976,7 +1981,9 @@ app.post('/api/enrichment/run-all', async (req, res) => {
       remainingAfter,
       resetCount,
       resetStatusesCount,
-      statusCounts: Object.fromEntries(statusCounts)
+      statusCounts: Object.fromEntries(statusCounts),
+      durationMs: Date.now() - startedAtMs,
+      timedOut: Boolean(remainingAfter && remainingAfter > 0 && Date.now() - startedAtMs >= maxRuntimeMs)
     })
   } catch (error) {
     console.error('Failed to run full enrichment pass', error)

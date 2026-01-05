@@ -238,6 +238,10 @@ export function DataEnrichmentPage(): JSX.Element {
             {fullRunMutation.isSuccess ? (
               <p className="text-xs text-green-600">
                 Full re-run finished: processed {fullRunMutation.data.totalAttempted.toLocaleString()} auctions.
+                {fullRunMutation.data.durationMs ? ` (${Math.round(fullRunMutation.data.durationMs / 1000)}s)` : ''}
+                {fullRunMutation.data.timedOut
+                  ? '; paused early to stay within the request timeout—run again to keep going.'
+                  : ''}
               </p>
             ) : null}
             {fullRunMutation.isError ? (
@@ -278,7 +282,16 @@ export function DataEnrichmentPage(): JSX.Element {
                   <AlertCircle className="h-4 w-4" /> Full re-run completed
                 </div>
                 <p className="mt-1">Processed {fullRunMutation.data.totalAttempted.toLocaleString()} auctions across {fullRunMutation.data.batches} batches of {fullRunMutation.data.batchSize}.</p>
-                <p className="mt-1">Linked {fullRunMutation.data.totalLinked.toLocaleString()} auctions. Remaining: {fullRunMutation.data.remainingAfter ?? '–'} (previously {fullRunMutation.data.remainingBefore ?? '–'}).</p>
+              <p className="mt-1">Linked {fullRunMutation.data.totalLinked.toLocaleString()} auctions. Remaining: {fullRunMutation.data.remainingAfter ?? '–'} (previously {fullRunMutation.data.remainingBefore ?? '–'}).</p>
+                {typeof fullRunMutation.data.resetStatusesCount === 'number' && fullRunMutation.data.resetStatusesCount > 0 ? (
+                  <p className="mt-1">Reset {fullRunMutation.data.resetStatusesCount.toLocaleString()} previously reviewed auctions before reprocessing.</p>
+                ) : null}
+                {fullRunMutation.data.durationMs ? (
+                  <p className="mt-1">Runtime: {Math.round(fullRunMutation.data.durationMs / 1000)}s.</p>
+                ) : null}
+                {fullRunMutation.data.timedOut ? (
+                  <p className="mt-1">Stopped early to avoid request timeouts—run again to continue the backlog.</p>
+                ) : null}
                 {Object.keys(fullRunMutation.data.statusCounts || {}).length ? (
                   <ul className="mt-2 list-disc space-y-1 pl-4">
                     {Object.entries(fullRunMutation.data.statusCounts).map(([status, count]) => (

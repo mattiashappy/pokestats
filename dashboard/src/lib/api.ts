@@ -91,13 +91,13 @@ export async function runFullEnrichment(batchSize = 500) {
     body: JSON.stringify({ batchSize })
   })
 
-  const text = await res.text()
   let data: any = null
 
   try {
-    data = text ? JSON.parse(text) : null
+    data = await res.json()
   } catch (_error) {
-    data = text
+    const fallbackText = await res.text().catch(() => '')
+    data = fallbackText || null
   }
 
   if (!res.ok) {
@@ -105,16 +105,22 @@ export async function runFullEnrichment(batchSize = 500) {
       (data && typeof data === 'object' && typeof data.error === 'string' && data.error) ||
       (data && typeof data === 'object' && typeof data.message === 'string' && data.message) ||
       (typeof data === 'string' && data.trim().slice(0, 500)) ||
-      'Failed to run full enrichment'
+      `Failed to run full enrichment (HTTP ${res.status})`
 
     throw new Error(message)
   }
 
-  if (!data || typeof data !== 'object') {
-    throw new Error('Unexpected response while running full enrichment')
-  }
-
-  return data as {
+  return (data || {
+    ok: false,
+    batchSize,
+    batches: 0,
+    totalAttempted: 0,
+    totalLinked: 0,
+    remainingBefore: null,
+    remainingAfter: null,
+    resetCount: 0,
+    statusCounts: {}
+  }) as {
     ok: boolean
     batchSize: number
     batches: number
@@ -123,8 +129,11 @@ export async function runFullEnrichment(batchSize = 500) {
     remainingBefore: number | null
     remainingAfter: number | null
     resetCount: number
+    resetStatusesCount?: number
     statusCounts: Record<string, number>
-  }>
+    durationMs?: number
+    timedOut?: boolean
+  }
 }
 
 export async function fetchSets(): Promise<ExpansionSummary[]> {
