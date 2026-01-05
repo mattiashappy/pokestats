@@ -61,6 +61,8 @@ async function runEnrichmentJob({
   const safeLimit = Math.min(Math.max(Number(limit) || 500, 1), 1000)
   const startedAt = runStartedAt ? new Date(runStartedAt) : new Date()
   const logLabel = logPrefix || `[Enrichment run @ ${startedAt.toISOString()}]`
+  const updatedBefore =
+    target === 'unlinked' ? `AND COALESCE(updated_at, end_date, 'epoch'::timestamp) < '${startedAt.toISOString()}'` : ''
 
   const client = await pool.connect()
   try {
@@ -70,8 +72,9 @@ async function runEnrichmentJob({
     const cardIndex = await buildDatabaseCardIndex(pool)
 
     const unprocessedClause = "COALESCE(match_status, '') = ''"
-    const unlinkedClause = `card_id IS NULL AND ${unprocessedClause}`
-    const whereClause = target === 'unlinked' ? unlinkedClause : unprocessedClause
+    const unlinkedClause =
+      "card_id IS NULL AND match_status <> 'Discarded (manual)' AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')"
+    const whereClause = target === 'unlinked' ? `${unlinkedClause} ${updatedBefore}` : unprocessedClause
 
     const {
       rows: [before]
