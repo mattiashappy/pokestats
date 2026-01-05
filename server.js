@@ -6,6 +6,7 @@ const { spawn } = require('child_process')
 const { Pool } = require('pg')
 const crypto = require('crypto')
 const mockAuctions = require('./server/mock-auctions.json')
+const { createExpansionService } = require('./server/routes/expansions')
 
 const { loadCatalog } = require('./server/catalog/catalogLoader')
 const { seedCatalog } = require('./server/catalog/catalogSeeder')
@@ -1402,170 +1403,13 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
   return dbCards
 }
 
-async function fetchExpansionSummaries() {
-  if (!pool) return getStaticExpansionSummaries()
+// Expansion summary logic lives in server/routes/expansions.js
 
-  try {
-    const ok = await ensureCardInfrastructure()
-    if (!ok) return getStaticExpansionSummaries()
-
-    const staticExpansions = await getStaticExpansionSummaries()
-    const staticByCode = new Map(staticExpansions.map((expansion) => [expansion.set_code, expansion]))
-
-    // Canonical set_code resolution (handles alias set_code / name variants from DB)
-    const normalizeKey = (value) => (value ? String(value).trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : '')
-
-    const aliasToCanonicalCode = new Map()
-    for (const expansion of staticExpansions) {
-      const canonicalCode = expansion.set_code
-      const normalizedCanonical = normalizeKey(canonicalCode)
-
-      aliasToCanonicalCode.set(canonicalCode, canonicalCode)
-      aliasToCanonicalCode.set(normalizedCanonical, canonicalCode)
-
-      if (expansion.name) {
-        aliasToCanonicalCode.set(normalizeKey(expansion.name), canonicalCode)
-      }
-    }
-
-    const resolveCanonicalCode = (candidate) => {
-      if (!candidate) return null
-      const direct = aliasToCanonicalCode.get(candidate)
-      if (direct) return direct
-
-      const normalized = normalizeKey(candidate)
-      return aliasToCanonicalCode.get(normalized) ?? null
-    }
-
-    const cardRowsQuery = `
-      SELECT
-        NULL::int AS id,
-        COALESCE(e.set_code, c.set_code, c.set_name) AS set_code,
-        COALESCE(e.name, c.set_name) AS name,
-        COALESCE(e.era, c.era) AS era,
-        COALESCE(e.language, c.language) AS language,
-        COALESCE(e.set_total, c.set_total) AS set_total,
-        COALESCE(e.release_date, c.release_date) AS release_date,
-        COALESCE(e.image_url, c.image_url) AS image_url,
-        COUNT(DISTINCT c.id)::int AS cards_total,
-        0::int AS linked_auctions
-      FROM public.cards c
-      LEFT JOIN public.expansions e ON c.expansion_id = e.id
-      GROUP BY 2, 3, 4, 5, 6, 7, 8
-    `
-
-    const expansionsQuery = `
-      SELECT
-        e.id,
-        e.set_code,
-        e.name,
-        e.era,
-        e.language,
-        e.set_total,
-        e.release_date,
-        e.image_url,
-        0::int AS cards_total,
-        0::int AS linked_auctions
-      FROM public.expansions e
-    `
-
-    const salesRowsQuery = `
-      SELECT
-        COALESCE(
-          c.set_code,
-          e.set_code,
-          c.set_name,
-          e.name,
-          s.matched_set_code,
-          s.parsed_set_code
-        ) AS set_code,
-        COUNT(s.item_id)::int AS linked_auctions
-      FROM public.tradera_sales s
-      LEFT JOIN public.cards c ON c.id = s.card_id
-      LEFT JOIN public.expansions e ON e.id = c.expansion_id
-      WHERE s.card_id IS NOT NULL
-      GROUP BY 1
-    `
-
-    const [cardRowsResult, expansionsResult, salesRowsResult] = await Promise.all([
-      pool.query(cardRowsQuery),
-      pool.query(expansionsQuery),
-      pool.query(salesRowsQuery)
-    ])
-
-    const mergedRows = [...cardRowsResult.rows, ...expansionsResult.rows, ...salesRowsResult.rows]
-    if (mergedRows.length === 0) return staticExpansions
-
-    const mergedByCode = new Map()
-
-    const mergeRows = (current, incoming) => {
-      if (!current) return incoming
-      return {
-        id: current.id ?? incoming.id ?? null,
-        set_code: current.set_code ?? incoming.set_code ?? null,
-        name: current.name ?? incoming.name ?? null,
-        era: current.era ?? incoming.era ?? null,
-        language: current.language ?? incoming.language ?? null,
-        set_total: current.set_total ?? incoming.set_total ?? null,
-        release_date: current.release_date ?? incoming.release_date ?? null,
-        image_url: current.image_url ?? incoming.image_url ?? null,
-        cards_total: (current.cards_total ?? 0) + (incoming.cards_total ?? 0),
-        linked_auctions: (current.linked_auctions ?? 0) + (incoming.linked_auctions ?? 0)
-      }
-    }
-
-    for (const row of mergedRows) {
-      const canonicalCode = resolveCanonicalCode(row.set_code) ?? resolveCanonicalCode(row.name) ?? row.set_code
-      if (!canonicalCode && !row.set_code && !row.name) continue
-
-      const normalizedRow = { ...row, set_code: canonicalCode ?? row.set_code ?? row.name ?? null }
-      const current = mergedByCode.get(normalizedRow.set_code)
-      mergedByCode.set(normalizedRow.set_code, mergeRows(current, normalizedRow))
-    }
-
-    // 1) Stable canonical ordering from static catalog
-    const orderedResults = staticExpansions.map((expansion) => {
-      const mergedRow = mergedByCode.get(expansion.set_code)
-      const row = mergedRow ?? {}
-      const fallback = staticByCode.get(expansion.set_code)
-
-      return {
-        ...row,
-        set_code: expansion.set_code,
-        name: row?.name ?? fallback?.name ?? null,
-        era: row?.era ?? fallback?.era ?? null,
-        language: row?.language ?? fallback?.language ?? null,
-        set_total: row?.set_total ?? fallback?.set_total ?? null,
-        release_date: row?.release_date ?? fallback?.release_date ?? null,
-        image_url: row?.image_url ?? fallback?.image_url ?? null,
-        cards_total: row?.cards_total ?? fallback?.cards_total ?? 0,
-        linked_auctions: row?.linked_auctions ?? fallback?.linked_auctions ?? 0
-      }
-    })
-
-    // 2) Append DB-only expansions not in static catalog
-    for (const [setCode, row] of mergedByCode.entries()) {
-      if (staticByCode.has(setCode)) continue
-      orderedResults.push({
-        ...row,
-        set_code: setCode,
-        name: row?.name ?? null,
-        era: row?.era ?? null,
-        language: row?.language ?? null,
-        set_total: row?.set_total ?? null,
-        release_date: row?.release_date ?? null,
-        image_url: row?.image_url ?? null,
-        cards_total: row?.cards_total ?? 0,
-        linked_auctions: row?.linked_auctions ?? 0
-      })
-    }
-
-    return orderedResults
-  } catch (error) {
-    console.error('Falling back to canonical expansions due to DB error', error)
-    return getStaticExpansionSummaries()
-  }
-}
+const { fetchExpansionSummaries, registerRoutes: registerExpansionRoutes } = createExpansionService({
+  pool,
+  ensureCardInfrastructure,
+  getStaticExpansionSummaries
+})
 
 // --------------------
 // API
@@ -1577,6 +1421,8 @@ app.get('/api/health', (_req, res) => {
     dbConfigured: Boolean(DATABASE_URL)
   })
 })
+
+registerExpansionRoutes(app)
 
 app.get('/api/sales', async (req, res) => {
   try {
@@ -1621,26 +1467,6 @@ app.get('/api/sales', async (req, res) => {
     }
 
     return res.status(500).json({ error: 'Failed to load auctions' })
-  }
-})
-
-app.get('/api/expansions', async (_req, res) => {
-  try {
-    const expansions = await fetchExpansionSummaries()
-    return res.json(expansions)
-  } catch (error) {
-    console.error('Failed to fetch expansions', error)
-    return res.status(500).json({ error: 'Failed to load expansions' })
-  }
-})
-
-app.get('/api/sets', async (_req, res) => {
-  try {
-    const expansions = await fetchExpansionSummaries()
-    return res.json(expansions)
-  } catch (error) {
-    console.error('Failed to fetch sets', error)
-    return res.status(500).json({ error: 'Failed to load sets' })
   }
 })
 
