@@ -53,122 +53,146 @@ async function resolveCardsFile(expansion, availableCardFiles) {
   return { resolved: false, candidates }
 }
 
-async function loadCatalog() {
-  const expansionsPath = path.join(dataRoot, 'expansions.json')
-  const expansions = await readJson(expansionsPath)
+let cachedCatalog = null
+let lastCatalogLoad = 0
+let loadingPromise = null
+const CATALOG_CACHE_TTL_MS = 10 * 60 * 1000
 
-  if (!Array.isArray(expansions)) {
-    throw new Error('Expansions data must be an array')
+async function loadCatalog() {
+  const now = Date.now()
+  if (cachedCatalog && now - lastCatalogLoad < CATALOG_CACHE_TTL_MS) {
+    return cachedCatalog
   }
 
-  const availableCardFiles = (await fs.promises.readdir(cardsRoot))
-    .filter((file) => file.toLowerCase().endsWith('.json'))
-    .map((fileName) => ({
-      fileName,
-      normalizedKey: normalizeKey(path.basename(fileName, path.extname(fileName)))
-    }))
+  if (loadingPromise) {
+    return loadingPromise
+  }
 
-  const setCodes = new Set()
-  const cardsBySetCode = {}
+  loadingPromise = (async () => {
+    const expansionsPath = path.join(dataRoot, 'expansions.json')
+    const expansions = await readJson(expansionsPath)
 
-  for (const expansion of expansions) {
-    if (!expansion?.set_code) {
-      throw new Error('Expansion is missing set_code')
+    if (!Array.isArray(expansions)) {
+      throw new Error('Expansions data must be an array')
     }
 
-    if (setCodes.has(expansion.set_code)) {
-      throw new Error(`Duplicate set_code detected: ${expansion.set_code}`)
-    }
-    setCodes.add(expansion.set_code)
+    const availableCardFiles = (await fs.promises.readdir(cardsRoot))
+      .filter((file) => file.toLowerCase().endsWith('.json'))
+      .map((fileName) => ({
+        fileName,
+        normalizedKey: normalizeKey(path.basename(fileName, path.extname(fileName)))
+      }))
 
-    const resolvedCardsFile = await resolveCardsFile(expansion, availableCardFiles)
+    const setCodes = new Set()
+    const cardsBySetCode = {}
 
-    if (!resolvedCardsFile.resolved) {
-      const tried =
-        resolvedCardsFile.candidates?.map((candidate) => candidate.fileName).join(', ') || 'none'
-      console.warn(
-        `No readable cards file found for ${expansion.set_code} (cards_file=${
-          expansion.cards_file || 'unset'
-        }). Tried: ${tried}`
-      )
-      cardsBySetCode[expansion.set_code] = {
-        set_code: expansion.set_code,
-        cards: []
+    for (const expansion of expansions) {
+      if (!expansion?.set_code) {
+        throw new Error('Expansion is missing set_code')
       }
-      continue
-    }
 
-    let cardData = null
-    try {
-      cardData = await readJson(resolvedCardsFile.fullPath)
-      if (resolvedCardsFile.reason !== 'cards_file') {
+      if (setCodes.has(expansion.set_code)) {
+        throw new Error(`Duplicate set_code detected: ${expansion.set_code}`)
+      }
+      setCodes.add(expansion.set_code)
+
+      const resolvedCardsFile = await resolveCardsFile(expansion, availableCardFiles)
+
+      if (!resolvedCardsFile.resolved) {
+        const tried =
+          resolvedCardsFile.candidates?.map((candidate) => candidate.fileName).join(', ') || 'none'
         console.warn(
-          `Using ${resolvedCardsFile.fileName} for ${expansion.set_code} (matched by ${resolvedCardsFile.reason})`
+          `No readable cards file found for ${expansion.set_code} (cards_file=${
+            expansion.cards_file || 'unset'
+          }). Tried: ${tried}`
         )
+        cardsBySetCode[expansion.set_code] = {
+          set_code: expansion.set_code,
+          cards: []
+        }
+        continue
       }
-    } catch (error) {
-      console.warn(
-        `Cards file not found, unreadable, or invalid for ${expansion.set_code}: ${resolvedCardsFile.fileName} (${error.message})`
-      )
-      cardsBySetCode[expansion.set_code] = {
-        set_code: expansion.set_code,
-        cards: []
-      }
-      continue
-    }
 
-    if (!cardData || (cardData.set_code && cardData.set_code !== expansion.set_code)) {
-      console.warn(
-        `Cards file ${resolvedCardsFile.fileName} has mismatched set_code; continuing with empty cards`
-      )
-      cardsBySetCode[expansion.set_code] = {
-        set_code: expansion.set_code,
-        cards: []
+      let cardData = null
+      try {
+        cardData = await readJson(resolvedCardsFile.fullPath)
+        if (resolvedCardsFile.reason !== 'cards_file') {
+          console.warn(
+            `Using ${resolvedCardsFile.fileName} for ${expansion.set_code} (matched by ${resolvedCardsFile.reason})`
+          )
+        }
+      } catch (error) {
+        console.warn(
+          `Cards file not found, unreadable, or invalid for ${expansion.set_code}: ${resolvedCardsFile.fileName} (${error.message})`
+        )
+        cardsBySetCode[expansion.set_code] = {
+          set_code: expansion.set_code,
+          cards: []
+        }
+        continue
       }
-      continue
-    }
 
-    const cards = Array.isArray(cardData.cards) ? cardData.cards : []
-    if (cards.length === 0) {
-      console.warn(
-        `Cards file ${resolvedCardsFile.fileName} does not include any cards; continuing with empty cards`
-      )
+      if (!cardData || (cardData.set_code && cardData.set_code !== expansion.set_code)) {
+        console.warn(
+          `Cards file ${resolvedCardsFile.fileName} has mismatched set_code; continuing with empty cards`
+        )
+        cardsBySetCode[expansion.set_code] = {
+          set_code: expansion.set_code,
+          cards: []
+        }
+        continue
+      }
+
+      const cards = Array.isArray(cardData.cards) ? cardData.cards : []
+      if (cards.length === 0) {
+        console.warn(
+          `Cards file ${resolvedCardsFile.fileName} does not include any cards; continuing with empty cards`
+        )
+        cardsBySetCode[expansion.set_code] = {
+          ...cardData,
+          set_code: cardData.set_code ?? expansion.set_code,
+          cards: []
+        }
+        continue
+      }
+
+      const cardNumbers = new Set()
+      const validatedCards = cards.map((card) => {
+        if (!card?.name || !card?.card_number) {
+          console.warn(`Card missing name or card_number in ${resolvedCardsFile.fileName}; skipping card`)
+          return null
+        }
+
+        const cardNumber = String(card.card_number)
+        if (cardNumbers.has(cardNumber)) {
+          console.warn(`Duplicate card_number ${cardNumber} in set ${expansion.set_code}; skipping card`)
+          return null
+        }
+        cardNumbers.add(cardNumber)
+
+        return {
+          ...card,
+          card_number: cardNumber
+        }
+      })
+
       cardsBySetCode[expansion.set_code] = {
         ...cardData,
         set_code: cardData.set_code ?? expansion.set_code,
-        cards: []
+        cards: validatedCards.filter(Boolean)
       }
-      continue
     }
 
-    const cardNumbers = new Set()
-    const validatedCards = cards.map((card) => {
-      if (!card?.name || !card?.card_number) {
-        console.warn(`Card missing name or card_number in ${resolvedCardsFile.fileName}; skipping card`)
-        return null
-      }
+    cachedCatalog = { expansions, cardsBySetCode }
+    lastCatalogLoad = now
+    return cachedCatalog
+  })()
 
-      const cardNumber = String(card.card_number)
-      if (cardNumbers.has(cardNumber)) {
-        console.warn(`Duplicate card_number ${cardNumber} in set ${expansion.set_code}; skipping card`)
-        return null
-      }
-      cardNumbers.add(cardNumber)
-
-      return {
-        ...card,
-        card_number: cardNumber
-      }
-    })
-
-    cardsBySetCode[expansion.set_code] = {
-      ...cardData,
-      set_code: cardData.set_code ?? expansion.set_code,
-      cards: validatedCards.filter(Boolean)
-    }
+  try {
+    return await loadingPromise
+  } finally {
+    loadingPromise = null
   }
-
-  return { expansions, cardsBySetCode }
 }
 
 module.exports = { loadCatalog }

@@ -37,7 +37,7 @@ describe('resolveAuctionMatch set-first flow', () => {
 
     assert.strictEqual(result.parsed_set_guess, 'PAR')
     assert.strictEqual(result.matched_set_code, 'PAR')
-    assert.strictEqual(result.parsed_card_number, 89)
+    assert.strictEqual(result.parsed_card_no, 89)
     assert.strictEqual(result.matched_card_number, 89)
     assert.strictEqual(result.match_confidence, 'high')
     assert.ok(result.parsed_set_candidates.some((candidate) => candidate.set_code === 'PAR'))
