@@ -76,7 +76,7 @@ async function runEnrichmentJob({
         FROM public.tradera_sales
         WHERE ${whereClause}
           AND COALESCE(match_status, '') <> 'Discarded (manual)'
-        ORDER BY end_date ASC NULLS LAST
+        ORDER BY updated_at ASC NULLS FIRST, end_date ASC NULLS LAST, item_id ASC
         LIMIT $1
       `,
       [safeLimit]
