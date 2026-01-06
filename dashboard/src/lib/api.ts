@@ -100,6 +100,7 @@ export async function fetchEnrichmentStats(): Promise<EnrichmentStats> {
 export type EnrichmentQueueRow = {
   item_id: number
   title: string | null
+  card_id: number | null
   end_date: string | null
   status: string | null
   stage: string | null
