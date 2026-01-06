@@ -140,6 +140,21 @@ export type ImportRun = {
   error_stack_preview?: string | null
 }
 
+export type ImportRun = {
+  id: number
+  source: string
+  started_at: string
+  finished_at: string | null
+  status: string
+  new_rows: number
+  pages_fetched: number
+  requests_used: number
+  message?: string | null
+  run_uuid?: string | null
+  error_stack?: string | null
+  error_stack_preview?: string | null
+}
+
 export type ImportRunResult = {
   ok: boolean
   newRows: number
@@ -172,8 +187,12 @@ const runImporter = async (): Promise<ImportRunResult> => {
   return res.json()
 }
 
+/**
+ * Legacy compatibility: some UI pages may still call fetchSets().
+ * Prefer fetchExpansions(), but keep this alias so nothing breaks.
+ */
 export async function fetchSets(): Promise<ExpansionSummary[]> {
-  const res = await fetch('/api/sets')
+  const res = await fetch('/api/expansions')
   if (!res.ok) throw new Error('Failed to load sets')
   return res.json()
 }
@@ -181,3 +200,4 @@ export async function fetchSets(): Promise<ExpansionSummary[]> {
 // Explicit re-exports to guard against tree-shaking regressions in build tooling.
 // These named exports are relied upon by the auction imports page.
 export { fetchImportRuns, fetchImportRun, runImporter }
+main
