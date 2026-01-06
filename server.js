@@ -806,8 +806,6 @@ async function fetchAuctionsFromDatabase(filters = {}) {
   const ok = await ensureCardInfrastructure()
   if (!ok) return []
 
-  await ensureMissingSalesAreLinkedToCards()
-
   const {
     era = null,
     language = null,
