@@ -36,6 +36,7 @@ CREATE INDEX IF NOT EXISTS idx_auctions_unlinked_end_date ON auctions (end_date 
 CREATE TABLE IF NOT EXISTS auction_enrichment (
     item_id BIGINT PRIMARY KEY REFERENCES auctions(item_id) ON DELETE CASCADE,
     status TEXT NOT NULL DEFAULT 'unmatched',
+    stage TEXT NOT NULL DEFAULT 'era',
     confidence_score INT NULL,
     method TEXT NULL,
     matched_set_code TEXT NULL,
@@ -43,11 +44,16 @@ CREATE TABLE IF NOT EXISTS auction_enrichment (
     parsed_card_number TEXT NULL,
     parsed_number_text TEXT NULL,
     parsed_set_hint TEXT NULL,
+    parsed_card_name TEXT NULL,
+    parsed_set_candidates JSONB NULL,
     suggested_cards JSONB NULL,
+    notes JSONB NULL,
+    debug JSONB NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_auction_enrichment_status ON auction_enrichment (status);
+CREATE INDEX IF NOT EXISTS idx_auction_enrichment_stage ON auction_enrichment (stage);
 
 -- Compatibility view for existing queries that still target tradera_sales.
 CREATE OR REPLACE VIEW tradera_sales AS
