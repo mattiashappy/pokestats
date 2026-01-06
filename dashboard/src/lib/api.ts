@@ -219,6 +219,40 @@ export type EnrichedAuction = {
   card_set_code: string | null
 }
 
+export type PendingAuction = {
+  item_id: number
+  end_date: string
+  title: string | null
+  category_id: number | null
+  price: number | null
+  bid_count: number | null
+  seller_alias: string | null
+  seller_id: number | null
+  seller_dsr: number | null
+  enrich_status: string | null
+  match_status: string | null
+  match_confidence: string | null
+  match_confidence_score: number | null
+  match_method: string | null
+  matched_set_code: string | null
+  matched_era: string | null
+  parsed_card_no: number | null
+  parsed_number_text: string | null
+  parsed_card_number: string | null
+  parsed_set_total: number | null
+  processing_started_at: string | null
+  updated_at: string | null
+  item_url: string | null
+  thumbnail_url: string | null
+}
+
+export type LinkedAuction = PendingAuction & {
+  card_id: number | null
+  card_name: string | null
+  card_number: string | null
+  card_set_code: string | null
+}
+
 export async function fetchUnmatchedAuctions(limit = 25) {
   const res = await fetch(`/api/enrichment/unmatched?limit=${limit}`)
   if (!res.ok) throw new Error('Failed to fetch unmatched auctions')
@@ -229,6 +263,18 @@ export async function fetchRecentEnrichment(limit = 25) {
   const res = await fetch(`/api/enrichment/recent?limit=${limit}`)
   if (!res.ok) throw new Error('Failed to fetch recent enrichment activity')
   return res.json() as Promise<EnrichedAuction[]>
+}
+
+export async function fetchPendingAuctions(limit = 50) {
+  const res = await fetch(`/api/enrichment/pending?limit=${limit}`)
+  if (!res.ok) throw new Error('Failed to fetch pending auctions')
+  return res.json() as Promise<PendingAuction[]>
+}
+
+export async function fetchLinkedAuctions(limit = 50) {
+  const res = await fetch(`/api/enrichment/linked?limit=${limit}`)
+  if (!res.ok) throw new Error('Failed to fetch linked auctions')
+  return res.json() as Promise<LinkedAuction[]>
 }
 
 export async function manuallyMatchAuction(itemId: number, cardId: number, setCode: string) {

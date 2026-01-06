@@ -1,57 +1,52 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { AlertCircle, Info, ListChecks, RefreshCcw, Rocket, Search } from 'lucide-react'
+import { AlertCircle, RefreshCcw, Rocket } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
-import { Select } from '../components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import {
-  fetchCardsForSet,
-  fetchSets,
-  discardAuction,
   fetchEnrichmentSummary,
-  fetchUnmatchedAuctions,
-  manuallyMatchAuction,
+  fetchPendingAuctions,
+  fetchLinkedAuctions,
   runEnrichment,
   runUnlinkedEnrichment,
   runFullEnrichment,
-  type UnmatchedAuction
+  type PendingAuction,
+  type LinkedAuction
 } from '../lib/api'
-import type { ExpansionSummary } from '../types'
-
-const matchingSteps = [
-  'Fetch auction title + metadata.',
-  'Filter out sealed/lot/Topps listings that are not a single card.',
-  'Parse the first card number pattern (e.g., 57/132, #11, DP31).',
-  'Infer the set using set names, set codes, era hints, and printed totals.',
-  'Try to find a unique card in that set.',
-  'Write match_status, parsed_card_number, matched_set_code, and card_id (if linked) to tradera_sales.'
-]
 
 const FULL_RUN_BATCH_SIZE = 500
 const FULL_RUN_MAX_RUNTIME_MS = 55_000
 
 export function DataEnrichmentPage(): JSX.Element {
   const [runLimit, setRunLimit] = useState(300)
-  const [unmatchedLimit, setUnmatchedLimit] = useState(50)
-  const [unmatchedLimitInput, setUnmatchedLimitInput] = useState('50')
+  const [pendingLimit, setPendingLimit] = useState(50)
+  const [pendingLimitInput, setPendingLimitInput] = useState('50')
+  const [linkedLimit, setLinkedLimit] = useState(50)
+  const [linkedLimitInput, setLinkedLimitInput] = useState('50')
 
   const summaryQuery = useQuery({
     queryKey: ['enrichment-summary'],
     queryFn: fetchEnrichmentSummary
   })
 
-  const unmatchedQuery = useQuery({
-    queryKey: ['enrichment-unmatched', unmatchedLimit],
-    queryFn: () => fetchUnmatchedAuctions(unmatchedLimit)
+  const pendingQuery = useQuery({
+    queryKey: ['enrichment-pending', pendingLimit],
+    queryFn: () => fetchPendingAuctions(pendingLimit)
+  })
+
+  const linkedQuery = useQuery({
+    queryKey: ['enrichment-linked', linkedLimit],
+    queryFn: () => fetchLinkedAuctions(linkedLimit)
   })
 
   const mutation = useMutation({
     mutationFn: () => runEnrichment(runLimit),
     onSuccess: () => {
       summaryQuery.refetch()
-      unmatchedQuery.refetch()
+      pendingQuery.refetch()
+      linkedQuery.refetch()
     }
   })
 
@@ -59,7 +54,8 @@ export function DataEnrichmentPage(): JSX.Element {
     mutationFn: () => runUnlinkedEnrichment(runLimit),
     onSuccess: () => {
       summaryQuery.refetch()
-      unmatchedQuery.refetch()
+      pendingQuery.refetch()
+      linkedQuery.refetch()
     }
   })
 
@@ -72,73 +68,40 @@ export function DataEnrichmentPage(): JSX.Element {
       }),
     onSuccess: () => {
       summaryQuery.refetch()
-      unmatchedQuery.refetch()
+      pendingQuery.refetch()
+      linkedQuery.refetch()
     }
   })
 
-  const summaryStats = useMemo(() => {
-    const summary = summaryQuery.data
-    if (!summary) return []
-    const processed =
-      summary.processed ?? (summary.totalAuctions ?? 0) - (summary.unprocessed ?? 0)
-    return [
-      { label: 'Total auctions', value: summary.totalAuctions ?? 0 },
-      { label: 'Processed (attempted)', value: processed },
-      { label: 'Linked (has card_id)', value: summary.linkedAuctions ?? 0 },
-      { label: 'Needs review', value: summary.needsReview ?? 0 },
-      { label: 'Unmatched', value: summary.unmatched ?? 0 },
-      {
-        label: 'Likely fixable automatically',
-        value: summary.fixable?.hasFractionButUnlinked ?? 0
-      }
-    ]
-  }, [summaryQuery.data])
-
-  const coverageStats = useMemo(() => {
-    const summary = summaryQuery.data
-    const total = summary?.totalAuctions ?? 0
-    if (!summary || total === 0) return null
-    const linked = summary.linkedAuctions ?? 0
-    const processed = summary.processed ?? total - (summary.unprocessed ?? 0)
-    const classified = processed
-    return { total, linked, processed, classified }
-  }, [summaryQuery.data])
-
-  const nextActions = useMemo(() => {
-    const summary = summaryQuery.data
-    if (!summary) return []
-    const actions: string[] = []
-
-    if ((summary.fixable?.hasFractionButUnlinked ?? 0) > 0) {
-      actions.push('Parser: fix fraction-pattern detection (titles include 57/132 style numbers).')
-    }
-
-    if ((summary.reasons?.filteredListing ?? 0) > 0) {
-      actions.push('Filtering: expand sealed/lot/Topps detection to skip noisy listings sooner.')
-    }
-
-    if ((summary.reasons?.ambiguous ?? 0) > 0) {
-      actions.push('Scoring: improve set inference weights to break ties (ambiguous set).')
-    }
-
-    if ((summary.reasons?.noCardNumber ?? 0) > 0) {
-      actions.push('Extraction: add card-number parsing fallbacks for titles without clear patterns.')
-    }
-
-    return actions
-  }, [summaryQuery.data])
-
-  const unmatchedAuctions = unmatchedQuery.data ?? []
+  const pendingAuctions = pendingQuery.data ?? []
+  const linkedAuctions = linkedQuery.data ?? []
   const refetchEnrichmentTables = () => {
-    unmatchedQuery.refetch()
+    pendingQuery.refetch()
+    linkedQuery.refetch()
+    summaryQuery.refetch()
   }
 
-  const applyUnmatchedLimit = () => {
-    const parsed = Number(unmatchedLimitInput)
-    const nextLimit = Math.min(500, Math.max(10, Number.isFinite(parsed) ? parsed : unmatchedLimit))
-    setUnmatchedLimit(nextLimit)
-    setUnmatchedLimitInput(String(nextLimit))
+  const applyPendingLimit = () => {
+    const parsed = Number(pendingLimitInput)
+    const nextLimit = Math.min(500, Math.max(10, Number.isFinite(parsed) ? parsed : pendingLimit))
+    setPendingLimit(nextLimit)
+    setPendingLimitInput(String(nextLimit))
   }
+
+  const applyLinkedLimit = () => {
+    const parsed = Number(linkedLimitInput)
+    const nextLimit = Math.min(500, Math.max(10, Number.isFinite(parsed) ? parsed : linkedLimit))
+    setLinkedLimit(nextLimit)
+    setLinkedLimitInput(String(nextLimit))
+  }
+
+  const formatDateTime = (value?: string | null) =>
+    value ? new Date(value).toLocaleString('sv-SE') : '—'
+
+  const formatNumber = (value?: number | null) =>
+    typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString('sv-SE') : '—'
+
+  const formatText = (value?: string | null) => value?.trim() || '—'
 
   return (
     <div className="space-y-6">
@@ -162,258 +125,15 @@ export function DataEnrichmentPage(): JSX.Element {
       </header>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Info className="h-5 w-5" />
-            How enrichment works
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm text-slate-700 dark:text-slate-300">
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase text-slate-500">Pipeline steps</p>
-            <ol className="list-decimal space-y-1 pl-5">
-              {matchingSteps.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
-          </div>
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase text-slate-500">Key definitions</p>
-            <ul className="space-y-1">
-              <li>Processed = enrichment attempted (moved through the pipeline).</li>
-              <li>Linked = card_id assigned.</li>
-              <li className="text-green-600 dark:text-green-400">Matched = has card_id.</li>
-              <li className="text-amber-600 dark:text-amber-400">Needs review = hints exist but not safe to auto-link.</li>
-              <li className="text-red-600 dark:text-red-400">Unmatched = no useful hints / filtered / ambiguous.</li>
-            </ul>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-4 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Enrichment overview</CardTitle>
-            {summaryQuery.isFetching ? (
-              <div className="text-xs text-slate-500">Refreshing…</div>
-            ) : null}
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm text-slate-700 dark:text-slate-300">
-            {summaryQuery.data ? (
-              <>
-                <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-6">
-                  {summaryStats.map((item) => (
-                    <div
-                      key={item.label}
-                      className="rounded border border-slate-200 p-3 text-center dark:border-slate-800"
-                    >
-                      <p className="text-[11px] uppercase tracking-wide text-slate-500">{item.label}</p>
-                      <p className="text-xl font-semibold text-slate-900 dark:text-slate-50">
-                        {item.value?.toLocaleString?.('sv-SE') ?? item.value}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-
-                {coverageStats ? (
-                  <div className="rounded border border-slate-200 p-3 dark:border-slate-800">
-                    <p className="text-xs uppercase text-slate-500">Funnel</p>
-                    <div className="mt-2 grid gap-2 md:grid-cols-2 lg:grid-cols-4">
-                      <div>
-                        <p className="text-[11px] uppercase text-slate-500">Total auctions</p>
-                        <p className="text-lg font-semibold">{coverageStats.total.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] uppercase text-slate-500">Processed (attempted)</p>
-                        <p className="text-lg font-semibold">{coverageStats.processed.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] uppercase text-slate-500">Classified</p>
-                        <p className="text-lg font-semibold">{coverageStats.classified.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] uppercase text-slate-500">Linked</p>
-                        <p className="text-lg font-semibold">{coverageStats.linked.toLocaleString()}</p>
-                      </div>
-                    </div>
-                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                      Processed = auctions that moved through the pipeline; Linked = processed + card_id assigned.
-                    </p>
-                  </div>
-                ) : null}
-
-                <div className="rounded border border-slate-200 p-3 dark:border-slate-800">
-                  <p className="text-xs uppercase text-slate-500">Why not linked?</p>
-                  <div className="mt-2 grid gap-2 md:grid-cols-2 lg:grid-cols-4">
-                    <ReasonBadge label="No parsed card number" value={summaryQuery.data.reasons?.noCardNumber ?? 0} />
-                    <ReasonBadge label="Has number but no set" value={summaryQuery.data.reasons?.hasNumberNoSet ?? 0} />
-                    <ReasonBadge label="Ambiguous set" value={summaryQuery.data.reasons?.ambiguous ?? 0} />
-                    <ReasonBadge label="Filtered listing" value={summaryQuery.data.reasons?.filteredListing ?? 0} />
-                  </div>
-                  <p className="mt-2 text-xs text-slate-500">
-                    Counts are limited to unlinked auctions and inferred from existing debug columns.
-                  </p>
-                </div>
-              </>
-            ) : (
-              <p className="text-slate-500">No summary available.</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Run matcher</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
-            <p>
-              The matcher processes the next batch of untouched auctions (oldest first) and records match status, set
-              totals, and debug metadata for every row.
+        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle>Auctions waiting for enrichment</CardTitle>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Raw rows that have not been processed by the matcher yet. Oldest auctions are shown first.
             </p>
-            <p className="text-xs text-slate-500">
-              Use the full re-run to sweep every unlinked auction in batches (currently
-              {` ${FULL_RUN_BATCH_SIZE.toLocaleString()} `}at a time) until the queue is empty or the
-              {` ${(FULL_RUN_MAX_RUNTIME_MS / 1000).toLocaleString()}s `}time budget is reached.
-            </p>
-            <label className="text-xs uppercase text-slate-500">Batch size</label>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                min={1}
-                max={1000}
-                value={runLimit}
-                onChange={(e) => setRunLimit(Number(e.target.value) || 0)}
-                className="max-w-[120px]"
-              />
-              <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-                {mutation.isPending ? 'Running…' : 'Run'}
-              </Button>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={() => unlinkedMutation.mutate()}
-                disabled={unlinkedMutation.isPending}
-              >
-                {unlinkedMutation.isPending ? 'Retrying…' : 'Retry unlinked auctions'}
-              </Button>
-              <p className="text-xs text-slate-500">
-                Re-run the matcher for everything without a linked card (including previous attempts) without resetting
-                manual discards.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => fullRunMutation.mutate()}
-                disabled={fullRunMutation.isPending}
-              >
-                {fullRunMutation.isPending ? 'Sweeping unlinked…' : 'Sweep all unlinked auctions'}
-              </Button>
-              {fullRunMutation.isPending ? (
-                <span className="text-xs text-slate-500">
-                  Working through every unlinked auction in {FULL_RUN_BATCH_SIZE.toLocaleString()}-item batches…
-                </span>
-              ) : null}
-            </div>
-            {fullRunMutation.isSuccess ? (
-              <p className="text-xs text-green-600">
-                Full re-run finished: processed {fullRunMutation.data.totalAttempted.toLocaleString()} auctions.
-                {fullRunMutation.data.durationMs ? ` (${Math.round(fullRunMutation.data.durationMs / 1000)}s)` : ''}
-                {fullRunMutation.data.timedOut
-                  ? '; paused early to stay within the request timeout—run again to keep going.'
-                  : ''}
-              </p>
-            ) : null}
-            {fullRunMutation.isError ? (
-              <p className="text-xs text-red-600">{(fullRunMutation.error as Error).message}</p>
-            ) : null}
-            {[mutation.data, unlinkedMutation.data]
-              .filter(Boolean)
-              .map((result) => (
-                <div
-                  key={`${result?.target}-${result?.remainingAfter}-${result?.attempted}`}
-                  className="rounded border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-800 dark:bg-slate-900/50"
-                >
-                  <div className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
-                    <AlertCircle className="h-4 w-4" /> Matcher result ({result?.target})
-                  </div>
-                  <p className="mt-1">
-                    Processed {result?.attempted.toLocaleString()} auctions; linked {result?.linked.toLocaleString()} cards.
-                  </p>
-                  {result?.remainingBefore !== null && result?.remainingAfter !== null ? (
-                    <p className="mt-1">
-                      Remaining in queue: {result.remainingAfter} (previously {result.remainingBefore}).
-                    </p>
-                  ) : null}
-                  {Object.keys(result?.statusCounts || {}).length ? (
-                    <ul className="mt-2 list-disc space-y-1 pl-4">
-                      {Object.entries(result?.statusCounts ?? {}).map(([status, count]) => (
-                        <li key={status}>
-                          <span className="font-semibold">{status}:</span> {count}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </div>
-              ))}
-            {fullRunMutation.data ? (
-              <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/70 dark:bg-amber-950">
-                <div className="flex items-center gap-2 font-semibold">
-                  <AlertCircle className="h-4 w-4" /> Full re-run completed
-                </div>
-                <p className="mt-1">Processed {fullRunMutation.data.totalAttempted.toLocaleString()} auctions across {fullRunMutation.data.batches} batches of {fullRunMutation.data.batchSize}.</p>
-              <p className="mt-1">Linked {fullRunMutation.data.totalLinked.toLocaleString()} auctions. Remaining: {fullRunMutation.data.remainingAfter ?? '–'} (previously {fullRunMutation.data.remainingBefore ?? '–'}).</p>
-                {typeof fullRunMutation.data.resetStatusesCount === 'number' && fullRunMutation.data.resetStatusesCount > 0 ? (
-                  <p className="mt-1">Reset {fullRunMutation.data.resetStatusesCount.toLocaleString()} previously reviewed auctions before reprocessing.</p>
-                ) : null}
-                {fullRunMutation.data.durationMs ? (
-                  <p className="mt-1">Runtime: {Math.round(fullRunMutation.data.durationMs / 1000)}s.</p>
-                ) : null}
-                {fullRunMutation.data.timedOut ? (
-                  <p className="mt-1">Stopped early to avoid request timeouts—run again to continue the backlog.</p>
-                ) : null}
-                {Object.keys(fullRunMutation.data.statusCounts || {}).length ? (
-                  <ul className="mt-2 list-disc space-y-1 pl-4">
-                    {Object.entries(fullRunMutation.data.statusCounts).map(([status, count]) => (
-                      <li key={status}>
-                        <span className="font-semibold">{status}:</span> {count}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center gap-2">
-            <ListChecks className="h-4 w-4" />
-            <CardTitle>Next actions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-slate-700 dark:text-slate-300">
-            {nextActions.length === 0 ? (
-              <p className="text-slate-500">No obvious blockers detected.</p>
-            ) : (
-              <ul className="list-disc space-y-1 pl-4">
-                {nextActions.map((action) => (
-                  <li key={action}>{action}</li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Items needing review</CardTitle>
+          </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-            <span>
-              Showing {unmatchedAuctions.length.toLocaleString('sv-SE')} of{' '}
-              {summaryQuery.data?.needsReview?.toLocaleString('sv-SE') ?? '–'} items needing review
-            </span>
+            <span>Showing {pendingAuctions.length.toLocaleString('sv-SE')} pending auctions</span>
             <div className="flex items-center gap-2">
               <label className="text-[11px] uppercase tracking-wide">Rows to load</label>
               <Input
@@ -421,269 +141,325 @@ export function DataEnrichmentPage(): JSX.Element {
                 type="number"
                 min={10}
                 max={500}
-                value={unmatchedLimitInput}
-                onChange={(e) => setUnmatchedLimitInput(e.target.value)}
+                value={pendingLimitInput}
+                onChange={(e) => setPendingLimitInput(e.target.value)}
               />
-              <Button size="sm" variant="outline" onClick={applyUnmatchedLimit} disabled={unmatchedQuery.isFetching}>
-                {unmatchedQuery.isFetching ? 'Updating…' : `Load ${Number(unmatchedLimitInput) || unmatchedLimit}`}
+              <Button size="sm" variant="outline" onClick={applyPendingLimit} disabled={pendingQuery.isFetching}>
+                {pendingQuery.isFetching ? 'Updating…' : `Load ${Number(pendingLimitInput) || pendingLimit}`}
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => unmatchedQuery.refetch()} disabled={unmatchedQuery.isFetching}>
+              <Button size="sm" variant="ghost" onClick={() => pendingQuery.refetch()} disabled={pendingQuery.isFetching}>
                 Refresh
               </Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Auctions needing attention</p>
-                <p className="text-xs text-slate-500">
-                  Includes rows marked "Needs review" or "Mismatched" along with any unresolved auctions without a
-                  set hint. Parsed numbers still surface the easiest wins first.
-                </p>
-              </div>
-              {unmatchedQuery.isFetching ? <span className="text-xs text-slate-500">Refreshing…</span> : null}
-            </div>
+        <CardContent className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
+          <p className="text-xs text-slate-500">
+            Use this table to validate that the backlog contains the fields we expect (seller, category, parsed hints) before
+            the enrichment job runs.
+          </p>
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>ID</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Parsed number</TableHead>
-                  <TableHead>Set total</TableHead>
-                  <TableHead>Set hint</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Manual actions</TableHead>
+                  <TableHead>Auction</TableHead>
+                  <TableHead>Price & bids</TableHead>
+                  <TableHead>Seller</TableHead>
+                  <TableHead>Parsed hints</TableHead>
+                  <TableHead>Matcher metadata</TableHead>
+                  <TableHead>Timing</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {unmatchedAuctions.map((row) => (
+                {pendingAuctions.map((row: PendingAuction) => (
                   <TableRow key={row.item_id}>
                     <TableCell className="font-mono text-xs">{row.item_id}</TableCell>
-                    <TableCell className="max-w-xs truncate text-sm">{row.title}</TableCell>
-                    <TableCell>{row.parsed_card_number ?? '—'}</TableCell>
-                    <TableCell>{row.parsed_set_total ?? '—'}</TableCell>
-                    <TableCell>{row.matched_set_code ?? '—'}</TableCell>
-                    <TableCell>{row.match_status ?? '—'}</TableCell>
-                    <TableCell>
-                      <ManualMatchCell auction={row} onUpdated={refetchEnrichmentTables} />
+                    <TableCell className="min-w-[260px] space-y-1">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{row.title || '—'}</p>
+                      <p className="text-[11px] text-slate-500">Category: {row.category_id ?? '—'}</p>
+                      <p className="text-[11px] text-slate-500">Ends: {formatDateTime(row.end_date)}</p>
+                      <p className="text-[11px] text-slate-500">
+                        URL:{' '}
+                        {row.item_url ? (
+                          <a className="text-blue-600 underline" href={row.item_url} target="_blank" rel="noreferrer">
+                            Open auction
+                          </a>
+                        ) : (
+                          '—'
+                        )}
+                      </p>
+                    </TableCell>
+                    <TableCell className="min-w-[160px] space-y-1 text-xs">
+                      <p>Price: {formatNumber(row.price)}</p>
+                      <p>Bids: {formatNumber(row.bid_count)}</p>
+                    </TableCell>
+                    <TableCell className="min-w-[180px] space-y-1 text-xs">
+                      <p className="font-medium text-slate-900 dark:text-slate-100">{formatText(row.seller_alias)}</p>
+                      <p className="text-[11px] text-slate-500">Seller ID: {row.seller_id ?? '—'}</p>
+                      <p className="text-[11px] text-slate-500">DSR: {row.seller_dsr ?? '—'}</p>
+                    </TableCell>
+                    <TableCell className="min-w-[200px] space-y-1 text-[11px]">
+                      <p>Parsed #: {row.parsed_card_no ?? row.parsed_card_number ?? '—'}</p>
+                      <p>Raw number: {formatText(row.parsed_number_text)}</p>
+                      <p>Set total: {row.parsed_set_total ?? '—'}</p>
+                      <p>Matched set: {formatText(row.matched_set_code)}</p>
+                    </TableCell>
+                    <TableCell className="min-w-[220px] space-y-1 text-[11px]">
+                      <p>Status: {formatText(row.match_status)}</p>
+                      <p>Enrichment: {formatText(row.enrich_status)}</p>
+                      <p>Method: {formatText(row.match_method)}</p>
+                      <p>
+                        Confidence: {formatText(row.match_confidence)}
+                        {row.match_confidence_score ? ` (${row.match_confidence_score})` : ''}
+                      </p>
+                    </TableCell>
+                    <TableCell className="min-w-[200px] space-y-1 text-[11px]">
+                      <p>Processing started: {formatDateTime(row.processing_started_at)}</p>
+                      <p>Updated: {formatDateTime(row.updated_at)}</p>
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
-            {unmatchedAuctions.length === 0 ? (
-              <p className="text-sm text-slate-500">No auctions needing manual review right now.</p>
-            ) : null}
           </div>
+          {pendingAuctions.length === 0 ? (
+            <p className="text-xs text-slate-500">No pending auctions found in the queue.</p>
+          ) : null}
         </CardContent>
       </Card>
-    </div>
-  )
-}
 
-type ManualMatchCellProps = {
-  auction: UnmatchedAuction
-  onUpdated: () => void
-}
-
-function ReasonBadge({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded border border-slate-200 p-3 text-center dark:border-slate-800">
-      <p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">{value.toLocaleString()}</p>
-    </div>
-  )
-}
-
-function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
-  const [search, setSearch] = useState('')
-  const [selectedCardId, setSelectedCardId] = useState<number | ''>('')
-  const [activeSetCode, setActiveSetCode] = useState(auction.matched_set_code ?? '')
-
-  const normalizedSetCode = activeSetCode.trim().toUpperCase()
-
-  const setsQuery = useQuery({
-    queryKey: ['sets'],
-    queryFn: fetchSets
-  })
-
-  const cardsQuery = useQuery({
-    queryKey: ['cards-for-set', normalizedSetCode],
-    queryFn: () => fetchCardsForSet(normalizedSetCode),
-    enabled: Boolean(normalizedSetCode)
-  })
-
-  const manualMatchMutation = useMutation({
-    mutationFn: (cardId: number) => manuallyMatchAuction(auction.item_id, cardId, normalizedSetCode),
-    onSuccess: () => {
-      setSelectedCardId('')
-      onUpdated()
-    }
-  })
-
-  const discardMutation = useMutation({
-    mutationFn: () => discardAuction(auction.item_id),
-    onSuccess: () => {
-      setSelectedCardId('')
-      onUpdated()
-    }
-  })
-
-  const normalizeCardNumber = (value: string | null | undefined) => {
-    if (!value) return null
-    const match = String(value).match(/^(\d+)/)
-    return match ? Number(match[1]) : null
-  }
-
-  const cardsMatchingParsedNumber = useMemo(() => {
-    if (auction.parsed_card_number === null) return []
-    const target = auction.parsed_card_number
-    return (cardsQuery.data || []).filter((card) => normalizeCardNumber(card.card_number) === target)
-  }, [auction.parsed_card_number, cardsQuery.data])
-
-  const filteredCards = useMemo(() => {
-    const query = search.trim().toLowerCase()
-    const cards = cardsQuery.data || []
-    if (!query) return cards
-    return cards.filter((card) => {
-      const name = card.name?.toLowerCase() || ''
-      const number = card.card_number?.toLowerCase() || ''
-      return name.includes(query) || number.includes(query)
-    })
-  }, [cardsQuery.data, search])
-
-  const cardsForSelect = useMemo(() => {
-    if (auction.parsed_card_number !== null && search.trim() === '') {
-      if (cardsMatchingParsedNumber.length > 0) return cardsMatchingParsedNumber
-    }
-    return filteredCards
-  }, [auction.parsed_card_number, cardsMatchingParsedNumber, filteredCards, search])
-
-  const canMatch = Boolean(normalizedSetCode)
-
-  const handleSetChange = (value: string) => {
-    setActiveSetCode(value)
-    setSelectedCardId('')
-    setSearch('')
-  }
-
-  const displaySet: ExpansionSummary | null = useMemo(() => {
-    if (!normalizedSetCode) return null
-    return (setsQuery.data || []).find(
-      (set) => set.set_code?.toUpperCase() === normalizedSetCode || set.name?.toUpperCase() === normalizedSetCode
-    ) ?? null
-  }, [normalizedSetCode, setsQuery.data])
-
-  return (
-    <div className="space-y-2 text-xs">
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <Select
-            value={activeSetCode}
-            disabled={setsQuery.isFetching}
-            onChange={(e) => handleSetChange(e.target.value)}
-          >
-            <option value="">{setsQuery.isFetching ? 'Loading sets…' : 'Select a set'}</option>
-            {(setsQuery.data || []).map((set) => (
-              <option key={set.set_code ?? set.name ?? set.id} value={set.set_code ?? ''}>
-                {set.name ?? set.set_code}
-                {set.era ? ` — ${set.era}` : ''}
-                {set.set_code ? ` (${set.set_code})` : ''}
-              </option>
-            ))}
-          </Select>
-          {auction.matched_set_code ? (
-            <span className="text-[11px] text-slate-500">Hinted: {auction.matched_set_code}</span>
-          ) : null}
-        </div>
-        {displaySet ? (
-          <p className="text-[11px] text-slate-500">
-            {displaySet.name || displaySet.set_code} {displaySet.era ? `• ${displaySet.era}` : ''}
-            {displaySet.set_total ? ` • ${displaySet.set_total} cards` : ''}
-            {!displaySet.set_total && typeof displaySet.cards_total === 'number'
-              ? ` • ${displaySet.cards_total} cards`
-              : ''}
-          </p>
-        ) : (
-          <p className="text-[11px] text-slate-500">Select a set to load its cards for manual matching.</p>
-        )}
-        {canMatch ? (
-          <div className="space-y-1">
-            {auction.parsed_card_number !== null ? (
-              <p className="text-[11px] text-slate-500">
-                Showing cards numbered {auction.parsed_card_number}
-                {cardsMatchingParsedNumber.length === 0 ? ' (none found; search to pick manually)' : ''}.
-              </p>
-            ) : null}
-            <Input
-              className="h-8"
-              placeholder={
-                auction.parsed_card_number !== null
-                  ? 'Optional search (fallback)'
-                  : 'Search card name/#'
-              }
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+      <Card>
+        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle>Processed + linked auctions</CardTitle>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Recent auctions that the enrichment pipeline linked to a card, with all available context.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <span>Showing {linkedAuctions.length.toLocaleString('sv-SE')} linked auctions</span>
             <div className="flex items-center gap-2">
-              <Select
-                value={selectedCardId === '' ? '' : String(selectedCardId)}
-                disabled={cardsQuery.isFetching || !canMatch}
-                onChange={(e) => setSelectedCardId(Number(e.target.value) || '')}
-              >
-                <option value="">{cardsQuery.isFetching ? 'Loading cards…' : 'Select a card'}</option>
-                {cardsForSelect.map((card) => (
-                  <option key={card.id} value={card.id}>
-                    {card.card_number ? `${card.card_number} — ` : ''}
-                    {card.name || 'Unnamed card'}
-                  </option>
-                ))}
-                {!cardsQuery.isFetching && cardsForSelect.length === 0 ? (
-                  <option disabled value="">
-                    {auction.parsed_card_number !== null && search.trim() === ''
-                      ? `No cards numbered ${auction.parsed_card_number}`
-                      : `No matches for “${search}”`}
-                  </option>
-                ) : null}
-              </Select>
-              <Button
-                size="sm"
-                disabled={!selectedCardId || manualMatchMutation.isPending}
-                onClick={() => typeof selectedCardId === 'number' && manualMatchMutation.mutate(selectedCardId)}
-              >
-                {manualMatchMutation.isPending ? 'Linking…' : 'Link'}
+              <label className="text-[11px] uppercase tracking-wide">Rows to load</label>
+              <Input
+                className="h-8 max-w-[96px]"
+                type="number"
+                min={10}
+                max={500}
+                value={linkedLimitInput}
+                onChange={(e) => setLinkedLimitInput(e.target.value)}
+              />
+              <Button size="sm" variant="outline" onClick={applyLinkedLimit} disabled={linkedQuery.isFetching}>
+                {linkedQuery.isFetching ? 'Updating…' : `Load ${Number(linkedLimitInput) || linkedLimit}`}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => linkedQuery.refetch()} disabled={linkedQuery.isFetching}>
+                Refresh
               </Button>
             </div>
           </div>
-        ) : (
-          <p className="text-[11px] text-slate-500">Choose a set to load and link one of its cards.</p>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={discardMutation.isPending}
-          onClick={() => discardMutation.mutate()}
-        >
-          {discardMutation.isPending ? 'Discarding…' : 'Discard'}
-        </Button>
-        {manualMatchMutation.isSuccess ? (
-          <span className="text-[11px] text-green-600">Linked!</span>
-        ) : null}
-        {discardMutation.isSuccess ? <span className="text-[11px] text-green-600">Discarded.</span> : null}
-      </div>
-      {manualMatchMutation.isError ? (
-        <p className="text-[11px] text-red-500">{(manualMatchMutation.error as Error).message}</p>
-      ) : null}
-      {cardsQuery.isError ? (
-        <p className="text-[11px] text-red-500">Failed to load cards for set {normalizedSetCode || '—'}.</p>
-      ) : null}
-      {discardMutation.isError ? (
-        <p className="text-[11px] text-red-500">{(discardMutation.error as Error).message}</p>
-      ) : null}
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
+          <p className="text-xs text-slate-500">
+            Inspect matcher metadata alongside the linked card to verify that the enrichment rules line up with the stored
+            card information.
+          </p>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Auction</TableHead>
+                  <TableHead>Price & seller</TableHead>
+                  <TableHead>Parsed hints</TableHead>
+                  <TableHead>Matcher metadata</TableHead>
+                  <TableHead>Linked card</TableHead>
+                  <TableHead>Timing</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {linkedAuctions.map((row: LinkedAuction) => (
+                  <TableRow key={row.item_id}>
+                    <TableCell className="font-mono text-xs">{row.item_id}</TableCell>
+                    <TableCell className="min-w-[240px] space-y-1">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{row.title || '—'}</p>
+                      <p className="text-[11px] text-slate-500">Category: {row.category_id ?? '—'}</p>
+                      <p className="text-[11px] text-slate-500">Ends: {formatDateTime(row.end_date)}</p>
+                      <p className="text-[11px] text-slate-500">
+                        URL:{' '}
+                        {row.item_url ? (
+                          <a className="text-blue-600 underline" href={row.item_url} target="_blank" rel="noreferrer">
+                            Open auction
+                          </a>
+                        ) : (
+                          '—'
+                        )}
+                      </p>
+                    </TableCell>
+                    <TableCell className="min-w-[180px] space-y-1 text-xs">
+                      <p>Price: {formatNumber(row.price)}</p>
+                      <p>Bids: {formatNumber(row.bid_count)}</p>
+                      <p>Seller: {formatText(row.seller_alias)}</p>
+                      <p className="text-[11px] text-slate-500">Seller ID: {row.seller_id ?? '—'}</p>
+                      <p className="text-[11px] text-slate-500">DSR: {row.seller_dsr ?? '—'}</p>
+                    </TableCell>
+                    <TableCell className="min-w-[200px] space-y-1 text-[11px]">
+                      <p>Parsed #: {row.parsed_card_no ?? row.parsed_card_number ?? '—'}</p>
+                      <p>Raw number: {formatText(row.parsed_number_text)}</p>
+                      <p>Set total: {row.parsed_set_total ?? '—'}</p>
+                      <p>Matched set: {formatText(row.matched_set_code)}</p>
+                      <p>Matched era: {formatText(row.matched_era)}</p>
+                    </TableCell>
+                    <TableCell className="min-w-[220px] space-y-1 text-[11px]">
+                      <p>Status: {formatText(row.match_status)}</p>
+                      <p>Enrichment: {formatText(row.enrich_status)}</p>
+                      <p>Method: {formatText(row.match_method)}</p>
+                      <p>
+                        Confidence: {formatText(row.match_confidence)}
+                        {row.match_confidence_score ? ` (${row.match_confidence_score})` : ''}
+                      </p>
+                    </TableCell>
+                    <TableCell className="min-w-[220px] space-y-1 text-[11px]">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatText(row.card_name)}</p>
+                      <p>Card #: {formatText(row.card_number)}</p>
+                      <p>Set code: {formatText(row.card_set_code)}</p>
+                      <p>Linked card ID: {row.card_id ?? '—'}</p>
+                    </TableCell>
+                    <TableCell className="min-w-[200px] space-y-1 text-[11px]">
+                      <p>Processing started: {formatDateTime(row.processing_started_at)}</p>
+                      <p>Updated: {formatDateTime(row.updated_at)}</p>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          {linkedAuctions.length === 0 ? (
+            <p className="text-xs text-slate-500">No processed + linked auctions available yet.</p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Run matcher</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
+          <p>
+            The matcher processes the next batch of untouched auctions (oldest first) and records match status, set
+            totals, and debug metadata for every row.
+          </p>
+          <p className="text-xs text-slate-500">
+            Use the full re-run to sweep every unlinked auction in batches (currently
+            {` ${FULL_RUN_BATCH_SIZE.toLocaleString()} `}at a time) until the queue is empty or the
+            {` ${(FULL_RUN_MAX_RUNTIME_MS / 1000).toLocaleString()}s `}time budget is reached.
+          </p>
+          <label className="text-xs uppercase text-slate-500">Batch size</label>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={1}
+              max={1000}
+              value={runLimit}
+              onChange={(e) => setRunLimit(Number(e.target.value) || 0)}
+              className="max-w-[120px]"
+            />
+            <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+              {mutation.isPending ? 'Running…' : 'Run'}
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => unlinkedMutation.mutate()} disabled={unlinkedMutation.isPending}>
+              {unlinkedMutation.isPending ? 'Retrying…' : 'Retry unlinked auctions'}
+            </Button>
+            <p className="text-xs text-slate-500">
+              Re-run the matcher for everything without a linked card (including previous attempts) without resetting
+              manual discards.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => fullRunMutation.mutate()}
+              disabled={fullRunMutation.isPending}
+            >
+              {fullRunMutation.isPending ? 'Sweeping unlinked…' : 'Sweep all unlinked auctions'}
+            </Button>
+            {fullRunMutation.isPending ? (
+              <span className="text-xs text-slate-500">
+                Working through every unlinked auction in {FULL_RUN_BATCH_SIZE.toLocaleString()}-item batches…
+              </span>
+            ) : null}
+          </div>
+          {fullRunMutation.isSuccess ? (
+            <p className="text-xs text-green-600">
+              Full re-run finished: processed {fullRunMutation.data.totalAttempted.toLocaleString()} auctions.
+              {fullRunMutation.data.durationMs ? ` (${Math.round(fullRunMutation.data.durationMs / 1000)}s)` : ''}
+              {fullRunMutation.data.timedOut
+                ? '; paused early to stay within the request timeout—run again to keep going.'
+                : ''}
+            </p>
+          ) : null}
+          {fullRunMutation.isError ? (
+            <p className="text-xs text-red-600">{(fullRunMutation.error as Error).message}</p>
+          ) : null}
+          {[mutation.data, unlinkedMutation.data]
+            .filter(Boolean)
+            .map((result) => (
+              <div
+                key={`${result?.target}-${result?.remainingAfter}-${result?.attempted}`}
+                className="rounded border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-800 dark:bg-slate-900/50"
+              >
+                <div className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
+                  <AlertCircle className="h-4 w-4" /> Matcher result ({result?.target})
+                </div>
+                <p className="mt-1">
+                  Processed {result?.attempted.toLocaleString()} auctions; linked {result?.linked.toLocaleString()} cards.
+                </p>
+                {result?.remainingBefore !== null && result?.remainingAfter !== null ? (
+                  <p className="mt-1">
+                    Remaining in queue: {result.remainingAfter} (previously {result.remainingBefore}).
+                  </p>
+                ) : null}
+                {Object.keys(result?.statusCounts || {}).length ? (
+                  <ul className="mt-2 list-disc space-y-1 pl-4">
+                    {Object.entries(result?.statusCounts ?? {}).map(([status, count]) => (
+                      <li key={status}>
+                        <span className="font-semibold">{status}:</span> {count}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ))}
+          {fullRunMutation.data ? (
+            <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/70 dark:bg-amber-950">
+              <div className="flex items-center gap-2 font-semibold">
+                <AlertCircle className="h-4 w-4" /> Full re-run completed
+              </div>
+              <p className="mt-1">Processed {fullRunMutation.data.totalAttempted.toLocaleString()} auctions across {fullRunMutation.data.batches} batches of {fullRunMutation.data.batchSize}.</p>
+              <p className="mt-1">Linked {fullRunMutation.data.totalLinked.toLocaleString()} auctions. Remaining: {fullRunMutation.data.remainingAfter ?? '–'} (previously {fullRunMutation.data.remainingBefore ?? '–'}).</p>
+              {typeof fullRunMutation.data.resetStatusesCount === 'number' && fullRunMutation.data.resetStatusesCount > 0 ? (
+                <p className="mt-1">Reset {fullRunMutation.data.resetStatusesCount.toLocaleString()} previously reviewed auctions before reprocessing.</p>
+              ) : null}
+              {fullRunMutation.data.durationMs ? (
+                <p className="mt-1">Runtime: {Math.round(fullRunMutation.data.durationMs / 1000)}s.</p>
+              ) : null}
+              {fullRunMutation.data.timedOut ? (
+                <p className="mt-1">Stopped early to avoid request timeouts—run again to continue the backlog.</p>
+              ) : null}
+              {Object.keys(fullRunMutation.data.statusCounts || {}).length ? (
+                <ul className="mt-2 list-disc space-y-1 pl-4">
+                  {Object.entries(fullRunMutation.data.statusCounts).map(([status, count]) => (
+                    <li key={status}>
+                      <span className="font-semibold">{status}:</span> {count}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
     </div>
   )
 }
