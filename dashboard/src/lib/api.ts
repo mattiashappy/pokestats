@@ -140,8 +140,64 @@ export type ImportRun = {
   error_stack_preview?: string | null
 }
 
+export type ImportRun = {
+  id: number
+  source: string
+  started_at: string
+  finished_at: string | null
+  status: string
+  new_rows: number
+  pages_fetched: number
+  requests_used: number
+  message?: string | null
+  run_uuid?: string | null
+  error_stack?: string | null
+  error_stack_preview?: string | null
+}
+
+export type ImportRunResult = {
+  ok: boolean
+  newRows: number
+  durationMs: number
+  startedAt: string
+  lastFetchedAt?: string | null
+  output?: string
+  runUuid?: string
+  exitCode?: number
+  error?: string | null
+}
+
+const fetchImportRuns = async (limit = 10): Promise<ImportRun[]> => {
+  const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100)
+  const params = new URLSearchParams({ limit: String(safeLimit) })
+  const res = await fetch(`/api/import/runs?${params.toString()}`)
+  if (!res.ok) throw new Error('Failed to load import runs')
+  return res.json()
+}
+
+const fetchImportRun = async (id: number): Promise<ImportRun> => {
+  const res = await fetch(`/api/import/runs/${id}`)
+  if (!res.ok) throw new Error('Failed to load import run')
+  return res.json()
+}
+
+const runImporter = async (): Promise<ImportRunResult> => {
+  const res = await fetch('/api/import/run', { method: 'POST' })
+  if (!res.ok) throw new Error('Failed to run importer')
+  return res.json()
+}
+
+/**
+ * Legacy compatibility: some UI pages may still call fetchSets().
+ * Prefer fetchExpansions(), but keep this alias so nothing breaks.
+ */
 export async function fetchSets(): Promise<ExpansionSummary[]> {
-  const res = await fetch('/api/sets')
+  const res = await fetch('/api/expansions')
   if (!res.ok) throw new Error('Failed to load sets')
   return res.json()
 }
+
+// Explicit re-exports to guard against tree-shaking regressions in build tooling.
+// These named exports are relied upon by the auction imports page.
+export { fetchImportRuns, fetchImportRun, runImporter }
+main
