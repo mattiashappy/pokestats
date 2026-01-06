@@ -256,8 +256,5 @@ async function resolveAuctionMatch(_client, row, expansions = null, cardsBySetCo
 }
 
 module.exports = {
-  resolveAuctionMatch,
-  parseCardNumber,
-  parseSetHint,
-  parseCardName
+  resolveAuctionMatch
 }
