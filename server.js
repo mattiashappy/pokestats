@@ -6,6 +6,7 @@ const { existsSync } = require('fs')
 const { spawn, spawnSync } = require('child_process')
 const { Pool } = require('pg')
 const crypto = require('crypto')
+
 const mockAuctions = require('./server/mock-auctions.json')
 const { createExpansionService } = require('./server/routes/expansions')
 
@@ -18,25 +19,40 @@ const app = express()
 const PORT = process.env.PORT || 8000
 const distPath = path.join(__dirname, 'dashboard', 'dist')
 
+let ensureDashboardBuildResult = null
 function ensureDashboardBuild() {
+  if (ensureDashboardBuildResult !== null) return ensureDashboardBuildResult
+
   const hasBuildOutput = existsSync(path.join(distPath, 'index.html'))
-  if (hasBuildOutput) return true
-
-  console.warn('Dashboard build output missing; running npm run build --prefix dashboard')
-
-  const { status, error } = spawnSync('npm', ['run', 'build', '--prefix', 'dashboard'], {
-    stdio: 'inherit',
-    env: process.env
-  })
-
-  if (error) {
-    console.error('Failed to execute dashboard build', error)
-    return false
+  if (hasBuildOutput) {
+    ensureDashboardBuildResult = true
+    return true
   }
 
-  const ok = status === 0 && existsSync(path.join(distPath, 'index.html'))
-  if (!ok) console.error('Dashboard build did not produce dist/index.html')
-  return ok
+  console.warn('Dashboard build output missing. Attempting a one-time runtime build so dist assets are available.')
+
+  try {
+    const { status } = spawnSync('npm', ['run', 'build', '--prefix', 'dashboard'], {
+      cwd: __dirname,
+      stdio: 'inherit',
+      env: process.env
+    })
+
+    ensureDashboardBuildResult = status === 0 && existsSync(path.join(distPath, 'index.html'))
+
+    if (ensureDashboardBuildResult) {
+      console.info('Dashboard build completed at runtime.')
+      return true
+    }
+
+    console.error('Runtime dashboard build failed or did not produce dist/index.html')
+    ensureDashboardBuildResult = false
+    return false
+  } catch (error) {
+    console.error('Dashboard runtime build threw an error', error)
+    ensureDashboardBuildResult = false
+    return false
+  }
 }
 
 app.use(compression())
@@ -117,14 +133,11 @@ async function getStaticCardsForSet(setCode) {
 
   if (!cardsEntry?.cards?.length) return []
 
-  const setTotal =
-    cardsEntry.set_total ?? expansion?.set_number ?? expansion?.set_total ?? null
+  const setTotal = cardsEntry.set_total ?? expansion?.set_number ?? expansion?.set_total ?? null
 
   return cardsEntry.cards.map((card, index) => {
     const setCodeValue = cardsEntry.set_code ?? expansion?.set_code ?? code
-    const stableId = Number.isFinite(card.id)
-      ? card.id
-      : computeStaticCardId(setCodeValue, card.card_number, `${index}`)
+    const stableId = Number.isFinite(card.id) ? card.id : computeStaticCardId(setCodeValue, card.card_number, `${index}`)
 
     return applyCardOverrides({
       id: stableId,
@@ -177,11 +190,7 @@ async function getStaticExpansionSummaries() {
     language: expansion.language ?? null,
     set_number: expansion.set_number ?? null,
     cards_in_set: expansion.cards_in_set ?? null,
-    set_total:
-      expansion.set_number ??
-      expansion.set_total ??
-      cardsBySetCode?.[expansion.set_code]?.set_total ??
-      null,
+    set_total: expansion.set_number ?? expansion.set_total ?? cardsBySetCode?.[expansion.set_code]?.set_total ?? null,
     release_date: expansion.release_date ?? null,
     image_url: expansion.image_url ?? null,
     cards_total: cardsBySetCode?.[expansion.set_code]?.cards?.length ?? 0,
@@ -199,12 +208,6 @@ const pool = DATABASE_URL
     })
   : null
 
-const { registerRoutes: registerExpansionRoutes } = createExpansionService({
-  pool,
-  ensureCardInfrastructure,
-  getStaticExpansionSummaries
-})
-
 let hasCheckedSalesTable = false
 let salesTableAvailable = false
 let hasCheckedCardsTable = false
@@ -218,10 +221,8 @@ let salesParsedSetCodeColumnAvailable = false
 let hasEnsuredSalesCardIndex = false
 let hasEnsuredEnrichmentColumns = false
 let hasEnsuredEnrichmentIndexes = false
-let hasSeededStaticCatalog = false
 let hasCheckedEnrichmentTable = false
 let enrichmentTableAvailable = false
-let seedingCatalogPromise = null
 let hasCheckedImportRunsTable = false
 let importRunsTableAvailable = false
 let ensureCardInfrastructurePromise = null
@@ -349,15 +350,15 @@ async function ensureImportRunsTable() {
         error_stack TEXT
       )
     `)
+
     const runUuidColumnReady = await ensureColumnExists('import_runs', 'run_uuid', 'TEXT')
     const errorStackColumnReady = await ensureColumnExists('import_runs', 'error_stack', 'TEXT')
     const [startIndexReady, runUuidIndexReady] = await Promise.all([
       ensureIndexExists('import_runs', 'idx_import_runs_started_at', '(started_at DESC)'),
       ensureIndexExists('import_runs', 'idx_import_runs_run_uuid', '(run_uuid)')
     ])
-    importRunsTableAvailable = Boolean(
-      startIndexReady && runUuidColumnReady && errorStackColumnReady && runUuidIndexReady
-    )
+
+    importRunsTableAvailable = Boolean(startIndexReady && runUuidColumnReady && errorStackColumnReady && runUuidIndexReady)
   } catch (error) {
     console.error('Failed to ensure import_runs table exists', error)
     importRunsTableAvailable = false
@@ -506,11 +507,7 @@ async function ensureCardInfrastructure() {
       if (salesReady) {
         if (!hasCheckedSalesCardColumn) {
           try {
-            salesCardColumnAvailable = await ensureColumnExists(
-              'auctions',
-              'card_id',
-              'INTEGER REFERENCES public.cards(id)'
-            )
+            salesCardColumnAvailable = await ensureColumnExists('auctions', 'card_id', 'INTEGER REFERENCES public.cards(id)')
           } catch (error) {
             console.error('Failed to ensure auctions.card_id column exists', error)
             salesCardColumnAvailable = false
@@ -548,7 +545,6 @@ async function ensureCardInfrastructure() {
           ensureColumnExists('auction_enrichment', 'parsed_card_number', 'TEXT'),
           ensureColumnExists('auction_enrichment', 'parsed_card_name', 'TEXT')
         ])
-
         hasEnsuredEnrichmentColumns = columnResults.every(Boolean)
       }
 
@@ -558,7 +554,6 @@ async function ensureCardInfrastructure() {
           ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_matched', '(matched_era, matched_set_code)'),
           ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_parsed_card_number', '(parsed_card_number)')
         ])
-
         hasEnsuredEnrichmentIndexes = indexResults.every(Boolean)
       }
 
@@ -570,6 +565,44 @@ async function ensureCardInfrastructure() {
   })()
 
   return ensureCardInfrastructurePromise
+}
+
+// --------------------
+// Routes that depend on ensureCardInfrastructure
+// (moved here to avoid TDZ/ReferenceError)
+// --------------------
+const { registerRoutes: registerExpansionRoutes } = createExpansionService({
+  pool,
+  ensureCardInfrastructure,
+  getStaticExpansionSummaries
+})
+
+function normalizeAuctionRow(row) {
+  // Keep this mapping loose: your dashboard/types can shape it on the client.
+  // If you already have a stricter normalizeAuctionRow elsewhere, replace this.
+  return {
+    item_id: row.item_id,
+    title: row.title,
+    price: row.price,
+    bid_count: row.bid_count,
+    end_date: row.end_date,
+    seller_alias: row.seller_alias,
+    seller_dsr: row.seller_dsr,
+    item_url: row.item_url,
+    thumbnail_url: row.thumbnail_url,
+    attributes: row.attributes,
+    fetched_at: row.fetched_at,
+    card_id: row.card_id ?? null,
+    card_name: row.card_name ?? null,
+    card_era: row.card_era ?? null,
+    card_set_name: row.card_set_name ?? null,
+    card_set_code: row.card_set_code ?? null,
+    card_number: row.card_number ?? null,
+    pokemon_era: row.pokemon_era ?? null,
+    pokemon_language: row.pokemon_language ?? null,
+    grading_issuer: row.grading_issuer ?? null,
+    grading_grade: row.grading_grade ?? null
+  }
 }
 
 async function fetchAuctionsFromDatabase(filters = {}) {
@@ -839,8 +872,7 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
   const result = await pool.query(query, params)
   const dbCards = result.rows.map(applyCardOverrides)
 
-  // If the database has no cards for this set, fall back to the static catalog so
-  // set pages still render cards instead of an empty list.
+  // If the database has no cards for this set, fall back to the static catalog so set pages still render.
   if (dbCards.length === 0 && setCode) {
     const staticCards = await getStaticCardsForSet(setCode)
     if (staticCards.length) return staticCards
@@ -881,9 +913,7 @@ app.get('/api/sales', async (req, res) => {
 
     const auctions = await fetchAuctionsFromDatabase(filters)
 
-    if (auctions.length) {
-      return res.json(auctions)
-    }
+    if (auctions.length) return res.json(auctions)
 
     const fallback = filterMockAuctions(filters)
     console.warn('Serving mock auctions because database rows were unavailable')
@@ -988,9 +1018,7 @@ app.get('/api/cards/:id/auctions', async (req, res) => {
 app.get('/api/sales/diagnostic', async (_req, res) => {
   try {
     const auctions = await fetchAuctionsFromDatabase()
-    if (auctions.length) {
-      return res.json({ source: 'database', count: auctions.length, auctions })
-    }
+    if (auctions.length) return res.json({ source: 'database', count: auctions.length, auctions })
     return res.json({ source: 'mock', count: mockAuctions.length, auctions: mockAuctions })
   } catch (error) {
     res.status(500).json({ source: 'database', error: error?.message || String(error) })
@@ -1070,8 +1098,9 @@ app.post('/api/import/run', async (_req, res) => {
   try {
     const salesAvailable = await ensureSalesTableAvailable()
     const runsAvailable = await ensureImportRunsTable()
-    if (!salesAvailable || !runsAvailable)
+    if (!salesAvailable || !runsAvailable) {
       return res.status(500).json({ ok: false, error: 'Required tables unavailable' })
+    }
 
     const startTime = Date.now()
     const runUuid = crypto.randomUUID()
@@ -1236,7 +1265,8 @@ app.get('/api/enrichment/stats', async (_req, res) => {
           SUM(CASE WHEN a.card_id IS NOT NULL AND (e.matched_era IS NULL OR e.matched_set_code IS NULL OR e.parsed_card_number IS NULL OR e.parsed_card_name IS NULL) THEN 1 ELSE 0 END) AS linked_but_missing_fields,
           SUM(CASE WHEN a.card_id IS NULL AND e.status = 'matched' THEN 1 ELSE 0 END) AS matched_status_but_unlinked
         FROM public.auctions a
-        LEFT JOIN public.auction_enrichment e ON e.item_id = a.item_id
+        LEFT JOIN public.auction_enrichment
+          e ON e.item_id = a.item_id
       `
     )
 
@@ -1261,6 +1291,7 @@ app.get('/api/enrichment/stats', async (_req, res) => {
     res.status(500).json({ ok: false, error: String(error) })
   }
 })
+
 // Bootstrap seed
 if (pool) {
   ensureCardInfrastructure()
@@ -1276,11 +1307,10 @@ if (pool) {
 // --------------------
 // Frontend
 // --------------------
-if (!ensureDashboardBuild()) {
-  console.warn('Dashboard build unavailable; frontend responses may be blank until a build succeeds')
+const hasDashboardBuild = ensureDashboardBuild()
+if (!hasDashboardBuild) {
+  console.warn('Dashboard build unavailable; frontend responses will show an error until a build succeeds')
 }
-
-app.use(express.static(distPath))
 
 if (hasDashboardBuild) {
   app.use(express.static(distPath))
