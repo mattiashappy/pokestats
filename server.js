@@ -399,6 +399,13 @@ async function ensureEnrichmentTableAvailable() {
   return enrichmentTableAvailable
 }
 
+async function tableExists(fullyQualifiedName) {
+  if (!pool) return false
+
+  const { rows } = await pool.query('SELECT to_regclass($1) AS oid', [fullyQualifiedName])
+  return Boolean(rows?.[0]?.oid)
+}
+
 // ✅ single canonical expansions definition
 async function ensureExpansionsTableAvailable() {
   if (!pool) return false
@@ -623,11 +630,56 @@ function normalizeAuctionRow(row) {
 
 async function fetchAuctionsFromDatabase(filters = {}) {
   if (!pool) return []
-  const ok = await ensureCardInfrastructure()
-  if (!ok) return []
+  const salesAvailable = await ensureSalesTableAvailable()
+  if (!salesAvailable) return []
 
-  const { era = null, language = null, minPrice = null, maxPrice = null, limit = null, offset = 0 } = filters
+  const cardsAvailable = await tableExists('public.cards')
+  const expansionsAvailable = cardsAvailable && (await tableExists('public.expansions'))
 
+  const cardNameSelect = cardsAvailable ? 'c.name' : 'NULL::text'
+  const cardEraSelect = cardsAvailable
+    ? expansionsAvailable
+      ? 'COALESCE(e.era, c.era)'
+      : 'c.era'
+    : 'NULL::text'
+  const cardSetNameSelect = cardsAvailable
+    ? expansionsAvailable
+      ? 'COALESCE(e.name, c.set_name)'
+      : 'c.set_name'
+    : 'NULL::text'
+  const cardSetCodeSelect = cardsAvailable
+    ? expansionsAvailable
+      ? 'COALESCE(e.set_code, c.set_code)'
+      : 'c.set_code'
+    : 'NULL::text'
+  const cardLanguageSelect = cardsAvailable
+    ? expansionsAvailable
+      ? 'COALESCE(e.language, c.language)'
+      : 'c.language'
+    : 'NULL::text'
+  const cardNumberSelect = cardsAvailable ? 'c.card_number' : 'NULL::text'
+
+  const eraFilterExpr = cardsAvailable
+    ? expansionsAvailable
+      ? 'COALESCE(e.era, c.era, ts.matched_era)'
+      : 'COALESCE(c.era, ts.matched_era)'
+    : 'ts.matched_era'
+  const languageFilterExpr = cardsAvailable
+    ? expansionsAvailable
+      ? 'COALESCE(e.language, c.language)'
+      : 'c.language'
+    : null
+
+  const {
+    era = null,
+    language = null,
+    minPrice = null,
+    maxPrice = null,
+    limit = null,
+    offset = 0
+  } = filters
+
+  const params = []
   let query = `
     SELECT
       ts.item_id,
@@ -648,23 +700,39 @@ async function fetchAuctionsFromDatabase(filters = {}) {
       ts.parsed_number_text,
       ts.parsed_set_hint,
       ts.suggested_cards,
-      c.name AS card_name,
-      COALESCE(e.era, c.era) AS card_era,
-      COALESCE(e.name, c.set_name) AS card_set_name,
-      COALESCE(e.set_code, c.set_code) AS card_set_code,
-      COALESCE(e.language, c.language) AS card_language,
-      c.card_number AS card_number
+      ${cardNameSelect} AS card_name,
+      ${cardEraSelect} AS card_era,
+      ${cardSetNameSelect} AS card_set_name,
+      ${cardSetCodeSelect} AS card_set_code,
+      ${cardLanguageSelect} AS card_language,
+      ${cardNumberSelect} AS card_number
     FROM public.tradera_sales ts
-    LEFT JOIN public.cards c ON c.id = ts.card_id
-    LEFT JOIN public.expansions e ON e.id = c.expansion_id
-    WHERE
-      ($1::text IS NULL OR COALESCE(e.era, c.era, ts.matched_era) = $1)
-      AND ($2::text IS NULL OR COALESCE(e.language, c.language) = $2)
-      AND ($3::int IS NULL OR ts.price >= $3)
-      AND ($4::int IS NULL OR ts.price <= $4)
-    ORDER BY ts.end_date DESC
+    ${cardsAvailable ? 'LEFT JOIN public.cards c ON c.id = ts.card_id' : ''}
+    ${expansionsAvailable ? 'LEFT JOIN public.expansions e ON e.id = c.expansion_id' : ''}
+    WHERE 1 = 1
   `
-  const params = [era, language, minPrice, maxPrice]
+
+  if (era) {
+    params.push(era)
+    query += ` AND ${eraFilterExpr} = $${params.length}`
+  }
+
+  if (language && languageFilterExpr) {
+    params.push(language)
+    query += ` AND ${languageFilterExpr} = $${params.length}`
+  }
+
+  if (minPrice !== null && Number.isFinite(minPrice)) {
+    params.push(minPrice)
+    query += ` AND ts.price >= $${params.length}`
+  }
+
+  if (maxPrice !== null && Number.isFinite(maxPrice)) {
+    params.push(maxPrice)
+    query += ` AND ts.price <= $${params.length}`
+  }
+
+  query += ' ORDER BY ts.end_date DESC'
 
   if (typeof limit === 'number' && Number.isFinite(limit)) {
     params.push(limit)
