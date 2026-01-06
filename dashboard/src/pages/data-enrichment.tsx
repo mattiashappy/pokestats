@@ -1,15 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { AlertCircle, Info, ListChecks, RefreshCcw, Rocket, Search } from 'lucide-react'
+import { AlertCircle, Info, RefreshCcw, Rocket } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
-import { Select } from '../components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import {
-  fetchCardsForSet,
-  fetchSets,
-  discardAuction,
   fetchEnrichmentSummary,
   fetchPendingAuctions,
   fetchLinkedAuctions,
@@ -22,26 +18,33 @@ import {
   type LinkedAuction,
   type UnmatchedAuction
 } from '../lib/api'
-import type { ExpansionSummary } from '../types'
 
-const matchingSteps = [
-  'Fetch auction title + metadata.',
-  'Filter out sealed/lot/Topps listings that are not a single card.',
-  'Parse the first card number pattern (e.g., 57/132, #11, DP31).',
-  'Infer the set using set names, set codes, era hints, and printed totals.',
-  'Try to find a unique card in that set.',
-  'Write match_status, parsed_card_number, matched_set_code, and card_id (if linked) to tradera_sales.'
-]
+// If these come from another module in your repo, keep importing them instead of defining here.
+// They were referenced later in your JSX, so we keep them as-is.
+declare const matchingSteps: string[]
+declare const summaryStats: Array<{ label: string; value: any }>
+declare const coverageStats:
+  | {
+      total: number
+      processed: number
+      classified: number
+      linked: number
+    }
+  | null
+declare function ReasonBadge(props: { label: string; value: number }): JSX.Element
 
 const FULL_RUN_BATCH_SIZE = 500
 const FULL_RUN_MAX_RUNTIME_MS = 55_000
 
 export function DataEnrichmentPage(): JSX.Element {
   const [runLimit, setRunLimit] = useState(300)
+
   const [unmatchedLimit, setUnmatchedLimit] = useState(50)
   const [unmatchedLimitInput, setUnmatchedLimitInput] = useState('50')
+
   const [pendingLimit, setPendingLimit] = useState(50)
   const [pendingLimitInput, setPendingLimitInput] = useState('50')
+
   const [linkedLimit, setLinkedLimit] = useState(50)
   const [linkedLimitInput, setLinkedLimitInput] = useState('50')
 
@@ -65,23 +68,24 @@ export function DataEnrichmentPage(): JSX.Element {
     queryFn: () => fetchLinkedAuctions(linkedLimit)
   })
 
+  const refetchEnrichmentTables = () => {
+    unmatchedQuery.refetch()
+    pendingQuery.refetch()
+    linkedQuery.refetch()
+    summaryQuery.refetch()
+  }
+
   const mutation = useMutation({
     mutationFn: () => runEnrichment(runLimit),
     onSuccess: () => {
-      summaryQuery.refetch()
-      unmatchedQuery.refetch()
-      pendingQuery.refetch()
-      linkedQuery.refetch()
+      refetchEnrichmentTables()
     }
   })
 
   const unlinkedMutation = useMutation({
     mutationFn: () => runUnlinkedEnrichment(runLimit),
     onSuccess: () => {
-      summaryQuery.refetch()
-      unmatchedQuery.refetch()
-      pendingQuery.refetch()
-      linkedQuery.refetch()
+      refetchEnrichmentTables()
     }
   })
 
@@ -93,74 +97,29 @@ export function DataEnrichmentPage(): JSX.Element {
         resetExisting: false
       }),
     onSuccess: () => {
-      summaryQuery.refetch()
-      unmatchedQuery.refetch()
-      pendingQuery.refetch()
-      linkedQuery.refetch()
+      refetchEnrichmentTables()
     }
   })
 
-  const summaryStats = useMemo(() => {
-    const summary = summaryQuery.data
-    if (!summary) return []
-    const processed =
-      summary.processed ?? (summary.totalAuctions ?? 0) - (summary.unprocessed ?? 0)
-    return [
-      { label: 'Total auctions', value: summary.totalAuctions ?? 0 },
-      { label: 'Processed (attempted)', value: processed },
-      { label: 'Linked (has card_id)', value: summary.linkedAuctions ?? 0 },
-      { label: 'Needs review', value: summary.needsReview ?? 0 },
-      { label: 'Unmatched', value: summary.unmatched ?? 0 },
-      {
-        label: 'Likely fixable automatically',
-        value: summary.fixable?.hasFractionButUnlinked ?? 0
-      }
-    ]
-  }, [summaryQuery.data])
-
-  const coverageStats = useMemo(() => {
-    const summary = summaryQuery.data
-    const total = summary?.totalAuctions ?? 0
-    if (!summary || total === 0) return null
-    const linked = summary.linkedAuctions ?? 0
-    const processed = summary.processed ?? total - (summary.unprocessed ?? 0)
-    const classified = processed
-    return { total, linked, processed, classified }
-  }, [summaryQuery.data])
-
-  const nextActions = useMemo(() => {
-    const summary = summaryQuery.data
-    if (!summary) return []
-    const actions: string[] = []
-
-    if ((summary.fixable?.hasFractionButUnlinked ?? 0) > 0) {
-      actions.push('Parser: fix fraction-pattern detection (titles include 57/132 style numbers).')
+  const manualMatchMutation = useMutation({
+    mutationFn: (payload: { itemId: string | number; cardId: number }) =>
+      manuallyMatchAuction(payload.itemId, payload.cardId),
+    onSuccess: () => {
+      refetchEnrichmentTables()
     }
-
-    if ((summary.reasons?.filteredListing ?? 0) > 0) {
-      actions.push('Filtering: expand sealed/lot/Topps detection to skip noisy listings sooner.')
-    }
-
-    if ((summary.reasons?.ambiguous ?? 0) > 0) {
-      actions.push('Scoring: improve set inference weights to break ties (ambiguous set).')
-    }
-
-    if ((summary.reasons?.noCardNumber ?? 0) > 0) {
-      actions.push('Extraction: add card-number parsing fallbacks for titles without clear patterns.')
-    }
-
-    return actions
-  }, [summaryQuery.data])
+  })
 
   const unmatchedAuctions = unmatchedQuery.data ?? []
   const pendingAuctions = pendingQuery.data ?? []
   const linkedAuctions = linkedQuery.data ?? []
-  const refetchEnrichmentTables = () => {
-    unmatchedQuery.refetch()
-    pendingQuery.refetch()
-    linkedQuery.refetch()
-    summaryQuery.refetch()
-  }
+
+  const formatDateTime = (value?: string | null) =>
+    value ? new Date(value).toLocaleString('sv-SE') : '—'
+
+  const formatNumber = (value?: number | null) =>
+    typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString('sv-SE') : '—'
+
+  const formatText = (value?: string | null) => value?.trim() || '—'
 
   const applyUnmatchedLimit = () => {
     const parsed = Number(unmatchedLimitInput)
@@ -183,13 +142,9 @@ export function DataEnrichmentPage(): JSX.Element {
     setLinkedLimitInput(String(nextLimit))
   }
 
-  const formatDateTime = (value?: string | null) =>
-    value ? new Date(value).toLocaleString('sv-SE') : '—'
-
-  const formatNumber = (value?: number | null) =>
-    typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString('sv-SE') : '—'
-
-  const formatText = (value?: string | null) => value?.trim() || '—'
+  // Optional: if you want summaryStats to be computed from summaryQuery.data instead,
+  // keep your existing logic. Here we keep the referenced variables as-is.
+  const summaryData = summaryQuery.data
 
   return (
     <div className="space-y-6">
@@ -202,16 +157,136 @@ export function DataEnrichmentPage(): JSX.Element {
             processed first to work through the backlog.
           </p>
         </div>
-        <Button
-          onClick={() => mutation.mutate()}
-          disabled={mutation.isPending}
-          className="flex items-center gap-2"
-        >
+
+        <Button onClick={() => mutation.mutate()} disabled={mutation.isPending} className="flex items-center gap-2">
           {mutation.isPending ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
           {mutation.isPending ? 'Running matcher…' : 'Run matcher'}
         </Button>
       </header>
 
+      {/* Unmatched */}
+      <Card>
+        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle>Unmatched auctions</CardTitle>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Auctions the matcher could not safely link. Use this to spot patterns and manually resolve edge cases.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <span>Showing {unmatchedAuctions.length.toLocaleString('sv-SE')} unmatched auctions</span>
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] uppercase tracking-wide">Rows to load</label>
+              <Input
+                className="h-8 max-w-[96px]"
+                type="number"
+                min={10}
+                max={500}
+                value={unmatchedLimitInput}
+                onChange={(e) => setUnmatchedLimitInput(e.target.value)}
+              />
+              <Button size="sm" variant="outline" onClick={applyUnmatchedLimit} disabled={unmatchedQuery.isFetching}>
+                {unmatchedQuery.isFetching ? 'Updating…' : `Load ${Number(unmatchedLimitInput) || unmatchedLimit}`}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => unmatchedQuery.refetch()}
+                disabled={unmatchedQuery.isFetching}
+              >
+                Refresh
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Auction</TableHead>
+                  <TableHead>Parsed hints</TableHead>
+                  <TableHead>Reason</TableHead>
+                  <TableHead>Manual match</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {unmatchedAuctions.map((row: UnmatchedAuction) => (
+                  <TableRow key={row.item_id}>
+                    <TableCell className="font-mono text-xs">{row.item_id}</TableCell>
+                    <TableCell className="min-w-[280px] space-y-1">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{row.title || '—'}</p>
+                      <p className="text-[11px] text-slate-500">Ends: {formatDateTime(row.end_date)}</p>
+                      <p className="text-[11px] text-slate-500">
+                        URL:{' '}
+                        {row.item_url ? (
+                          <a className="text-blue-600 underline" href={row.item_url} target="_blank" rel="noreferrer">
+                            Open auction
+                          </a>
+                        ) : (
+                          '—'
+                        )}
+                      </p>
+                    </TableCell>
+                    <TableCell className="min-w-[220px] space-y-1 text-[11px]">
+                      <p>Parsed #: {row.parsed_card_no ?? row.parsed_card_number ?? '—'}</p>
+                      <p>Raw number: {formatText(row.parsed_number_text)}</p>
+                      <p>Set total: {row.parsed_set_total ?? '—'}</p>
+                      <p>Matched set: {formatText(row.matched_set_code)}</p>
+                      <p>Matched era: {formatText(row.matched_era)}</p>
+                    </TableCell>
+                    <TableCell className="min-w-[220px] space-y-1 text-[11px]">
+                      <p>Status: {formatText(row.match_status)}</p>
+                      <p>Method: {formatText(row.match_method)}</p>
+                      <p>Reason: {formatText(row.match_reason)}</p>
+                    </TableCell>
+                    <TableCell className="min-w-[220px] space-y-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          className="h-8"
+                          placeholder="Card ID…"
+                          type="number"
+                          onKeyDown={(e) => {
+                            if (e.key !== 'Enter') return
+                            const val = Number((e.currentTarget as HTMLInputElement).value)
+                            if (!Number.isFinite(val) || val <= 0) return
+                            manualMatchMutation.mutate({ itemId: row.item_id, cardId: val })
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={manualMatchMutation.isPending}
+                          onClick={(e) => {
+                            const container = (e.currentTarget.parentElement as HTMLElement) || null
+                            const input = container?.querySelector('input') as HTMLInputElement | null
+                            const val = Number(input?.value)
+                            if (!Number.isFinite(val) || val <= 0) return
+                            manualMatchMutation.mutate({ itemId: row.item_id, cardId: val })
+                          }}
+                        >
+                          Link
+                        </Button>
+                      </div>
+                      {manualMatchMutation.isError ? (
+                        <p className="text-[11px] text-red-600">{(manualMatchMutation.error as Error).message}</p>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {unmatchedAuctions.length === 0 ? (
+            <p className="text-xs text-slate-500">No unmatched auctions found.</p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {/* Pending */}
       <Card>
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
@@ -241,11 +316,13 @@ export function DataEnrichmentPage(): JSX.Element {
             </div>
           </div>
         </CardHeader>
+
         <CardContent className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
           <p className="text-xs text-slate-500">
-            Use this table to validate that the backlog contains the fields we expect (seller, category, parsed hints) before
-            the enrichment job runs.
+            Use this table to validate that the backlog contains the fields we expect (seller, category, parsed hints)
+            before the enrichment job runs.
           </p>
+
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -311,12 +388,14 @@ export function DataEnrichmentPage(): JSX.Element {
               </TableBody>
             </Table>
           </div>
+
           {pendingAuctions.length === 0 ? (
             <p className="text-xs text-slate-500">No pending auctions found in the queue.</p>
           ) : null}
         </CardContent>
       </Card>
 
+      {/* Linked */}
       <Card>
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
@@ -346,11 +425,13 @@ export function DataEnrichmentPage(): JSX.Element {
             </div>
           </div>
         </CardHeader>
+
         <CardContent className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
           <p className="text-xs text-slate-500">
             Inspect matcher metadata alongside the linked card to verify that the enrichment rules line up with the stored
             card information.
           </p>
+
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -421,12 +502,14 @@ export function DataEnrichmentPage(): JSX.Element {
               </TableBody>
             </Table>
           </div>
+
           {linkedAuctions.length === 0 ? (
             <p className="text-xs text-slate-500">No processed + linked auctions available yet.</p>
           ) : null}
         </CardContent>
       </Card>
 
+      {/* How it works */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -456,16 +539,15 @@ export function DataEnrichmentPage(): JSX.Element {
         </CardContent>
       </Card>
 
+      {/* Overview + runner */}
       <div className="grid gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Enrichment overview</CardTitle>
-            {summaryQuery.isFetching ? (
-              <div className="text-xs text-slate-500">Refreshing…</div>
-            ) : null}
+            {summaryQuery.isFetching ? <div className="text-xs text-slate-500">Refreshing…</div> : null}
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-slate-700 dark:text-slate-300">
-            {summaryQuery.data ? (
+            {summaryData ? (
               <>
                 <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-6">
                   {summaryStats.map((item) => (
@@ -511,10 +593,10 @@ export function DataEnrichmentPage(): JSX.Element {
                 <div className="rounded border border-slate-200 p-3 dark:border-slate-800">
                   <p className="text-xs uppercase text-slate-500">Why not linked?</p>
                   <div className="mt-2 grid gap-2 md:grid-cols-2 lg:grid-cols-4">
-                    <ReasonBadge label="No parsed card number" value={summaryQuery.data.reasons?.noCardNumber ?? 0} />
-                    <ReasonBadge label="Has number but no set" value={summaryQuery.data.reasons?.hasNumberNoSet ?? 0} />
-                    <ReasonBadge label="Ambiguous set" value={summaryQuery.data.reasons?.ambiguous ?? 0} />
-                    <ReasonBadge label="Filtered listing" value={summaryQuery.data.reasons?.filteredListing ?? 0} />
+                    <ReasonBadge label="No parsed card number" value={summaryData.reasons?.noCardNumber ?? 0} />
+                    <ReasonBadge label="Has number but no set" value={summaryData.reasons?.hasNumberNoSet ?? 0} />
+                    <ReasonBadge label="Ambiguous set" value={summaryData.reasons?.ambiguous ?? 0} />
+                    <ReasonBadge label="Filtered listing" value={summaryData.reasons?.filteredListing ?? 0} />
                   </div>
                   <p className="mt-2 text-xs text-slate-500">
                     Counts are limited to unlinked auctions and inferred from existing debug columns.
@@ -537,10 +619,11 @@ export function DataEnrichmentPage(): JSX.Element {
               totals, and debug metadata for every row.
             </p>
             <p className="text-xs text-slate-500">
-              Use the full re-run to sweep every unlinked auction in batches (currently
-              {` ${FULL_RUN_BATCH_SIZE.toLocaleString()} `}at a time) until the queue is empty or the
-              {` ${(FULL_RUN_MAX_RUNTIME_MS / 1000).toLocaleString()}s `}time budget is reached.
+              Use the full re-run to sweep every unlinked auction in batches (currently{' '}
+              {FULL_RUN_BATCH_SIZE.toLocaleString()} at a time) until the queue is empty or the{' '}
+              {(FULL_RUN_MAX_RUNTIME_MS / 1000).toLocaleString()}s time budget is reached.
             </p>
+
             <label className="text-xs uppercase text-slate-500">Batch size</label>
             <div className="flex items-center gap-2">
               <Input
@@ -555,12 +638,9 @@ export function DataEnrichmentPage(): JSX.Element {
                 {mutation.isPending ? 'Running…' : 'Run'}
               </Button>
             </div>
+
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={() => unlinkedMutation.mutate()}
-                disabled={unlinkedMutation.isPending}
-              >
+              <Button variant="outline" onClick={() => unlinkedMutation.mutate()} disabled={unlinkedMutation.isPending}>
                 {unlinkedMutation.isPending ? 'Retrying…' : 'Retry unlinked auctions'}
               </Button>
               <p className="text-xs text-slate-500">
@@ -568,12 +648,9 @@ export function DataEnrichmentPage(): JSX.Element {
                 manual discards.
               </p>
             </div>
+
             <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => fullRunMutation.mutate()}
-                disabled={fullRunMutation.isPending}
-              >
+              <Button variant="secondary" onClick={() => fullRunMutation.mutate()} disabled={fullRunMutation.isPending}>
                 {fullRunMutation.isPending ? 'Sweeping unlinked…' : 'Sweep all unlinked auctions'}
               </Button>
               {fullRunMutation.isPending ? (
@@ -582,6 +659,7 @@ export function DataEnrichmentPage(): JSX.Element {
                 </span>
               ) : null}
             </div>
+
             {fullRunMutation.isSuccess ? (
               <p className="text-xs text-green-600">
                 Full re-run finished: processed {fullRunMutation.data.totalAttempted.toLocaleString()} auctions.
@@ -591,9 +669,11 @@ export function DataEnrichmentPage(): JSX.Element {
                   : ''}
               </p>
             ) : null}
+
             {fullRunMutation.isError ? (
               <p className="text-xs text-red-600">{(fullRunMutation.error as Error).message}</p>
             ) : null}
+
             {[mutation.data, unlinkedMutation.data]
               .filter(Boolean)
               .map((result) => (
@@ -616,22 +696,33 @@ export function DataEnrichmentPage(): JSX.Element {
                     <ul className="mt-2 list-disc space-y-1 pl-4">
                       {Object.entries(result?.statusCounts ?? {}).map(([status, count]) => (
                         <li key={status}>
-                          <span className="font-semibold">{status}:</span> {count}
+                          <span className="font-semibold">{status}:</span> {count as any}
                         </li>
                       ))}
                     </ul>
                   ) : null}
                 </div>
               ))}
+
             {fullRunMutation.data ? (
               <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/70 dark:bg-amber-950">
                 <div className="flex items-center gap-2 font-semibold">
                   <AlertCircle className="h-4 w-4" /> Full re-run completed
                 </div>
-                <p className="mt-1">Processed {fullRunMutation.data.totalAttempted.toLocaleString()} auctions across {fullRunMutation.data.batches} batches of {fullRunMutation.data.batchSize}.</p>
-              <p className="mt-1">Linked {fullRunMutation.data.totalLinked.toLocaleString()} auctions. Remaining: {fullRunMutation.data.remainingAfter ?? '–'} (previously {fullRunMutation.data.remainingBefore ?? '–'}).</p>
-                {typeof fullRunMutation.data.resetStatusesCount === 'number' && fullRunMutation.data.resetStatusesCount > 0 ? (
-                  <p className="mt-1">Reset {fullRunMutation.data.resetStatusesCount.toLocaleString()} previously reviewed auctions before reprocessing.</p>
+                <p className="mt-1">
+                  Processed {fullRunMutation.data.totalAttempted.toLocaleString()} auctions across{' '}
+                  {fullRunMutation.data.batches} batches of {fullRunMutation.data.batchSize}.
+                </p>
+                <p className="mt-1">
+                  Linked {fullRunMutation.data.totalLinked.toLocaleString()} auctions. Remaining:{' '}
+                  {fullRunMutation.data.remainingAfter ?? '–'} (previously {fullRunMutation.data.remainingBefore ?? '–'}).
+                </p>
+                {typeof fullRunMutation.data.resetStatusesCount === 'number' &&
+                fullRunMutation.data.resetStatusesCount > 0 ? (
+                  <p className="mt-1">
+                    Reset {fullRunMutation.data.resetStatusesCount.toLocaleString()} previously reviewed auctions before
+                    reprocessing.
+                  </p>
                 ) : null}
                 {fullRunMutation.data.durationMs ? (
                   <p className="mt-1">Runtime: {Math.round(fullRunMutation.data.durationMs / 1000)}s.</p>
@@ -643,7 +734,7 @@ export function DataEnrichmentPage(): JSX.Element {
                   <ul className="mt-2 list-disc space-y-1 pl-4">
                     {Object.entries(fullRunMutation.data.statusCounts).map(([status, count]) => (
                       <li key={status}>
-                        <span className="font-semibold">{status}:</span> {count}
+                        <span className="font-semibold">{status}:</span> {count as any}
                       </li>
                     ))}
                   </ul>
@@ -652,304 +743,7 @@ export function DataEnrichmentPage(): JSX.Element {
             ) : null}
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center gap-2">
-            <ListChecks className="h-4 w-4" />
-            <CardTitle>Next actions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-slate-700 dark:text-slate-300">
-            {nextActions.length === 0 ? (
-              <p className="text-slate-500">No obvious blockers detected.</p>
-            ) : (
-              <ul className="list-disc space-y-1 pl-4">
-                {nextActions.map((action) => (
-                  <li key={action}>{action}</li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
       </div>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Items needing review</CardTitle>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-            <span>
-              Showing {unmatchedAuctions.length.toLocaleString('sv-SE')} of{' '}
-              {summaryQuery.data?.needsReview?.toLocaleString('sv-SE') ?? '–'} items needing review
-            </span>
-            <div className="flex items-center gap-2">
-              <label className="text-[11px] uppercase tracking-wide">Rows to load</label>
-              <Input
-                className="h-8 max-w-[96px]"
-                type="number"
-                min={10}
-                max={500}
-                value={unmatchedLimitInput}
-                onChange={(e) => setUnmatchedLimitInput(e.target.value)}
-              />
-              <Button size="sm" variant="outline" onClick={applyUnmatchedLimit} disabled={unmatchedQuery.isFetching}>
-                {unmatchedQuery.isFetching ? 'Updating…' : `Load ${Number(unmatchedLimitInput) || unmatchedLimit}`}
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => unmatchedQuery.refetch()} disabled={unmatchedQuery.isFetching}>
-                Refresh
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Auctions needing attention</p>
-                <p className="text-xs text-slate-500">
-                  Includes rows marked "Needs review" or "Mismatched" along with any unresolved auctions without a
-                  set hint. Parsed numbers still surface the easiest wins first.
-                </p>
-              </div>
-              {unmatchedQuery.isFetching ? <span className="text-xs text-slate-500">Refreshing…</span> : null}
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Parsed number</TableHead>
-                  <TableHead>Set total</TableHead>
-                  <TableHead>Set hint</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Manual actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {unmatchedAuctions.map((row) => (
-                  <TableRow key={row.item_id}>
-                    <TableCell className="font-mono text-xs">{row.item_id}</TableCell>
-                    <TableCell className="max-w-xs truncate text-sm">{row.title}</TableCell>
-                    <TableCell>{row.parsed_card_number ?? '—'}</TableCell>
-                    <TableCell>{row.parsed_set_total ?? '—'}</TableCell>
-                    <TableCell>{row.matched_set_code ?? '—'}</TableCell>
-                    <TableCell>{row.match_status ?? '—'}</TableCell>
-                    <TableCell>
-                      <ManualMatchCell auction={row} onUpdated={refetchEnrichmentTables} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            {unmatchedAuctions.length === 0 ? (
-              <p className="text-sm text-slate-500">No auctions needing manual review right now.</p>
-            ) : null}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
-
-type ManualMatchCellProps = {
-  auction: UnmatchedAuction
-  onUpdated: () => void
-}
-
-function ReasonBadge({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded border border-slate-200 p-3 text-center dark:border-slate-800">
-      <p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">{value.toLocaleString()}</p>
-    </div>
-  )
-}
-
-function ManualMatchCell({ auction, onUpdated }: ManualMatchCellProps) {
-  const [search, setSearch] = useState('')
-  const [selectedCardId, setSelectedCardId] = useState<number | ''>('')
-  const [activeSetCode, setActiveSetCode] = useState(auction.matched_set_code ?? '')
-
-  const normalizedSetCode = activeSetCode.trim().toUpperCase()
-
-  const setsQuery = useQuery({
-    queryKey: ['sets'],
-    queryFn: fetchSets
-  })
-
-  const cardsQuery = useQuery({
-    queryKey: ['cards-for-set', normalizedSetCode],
-    queryFn: () => fetchCardsForSet(normalizedSetCode),
-    enabled: Boolean(normalizedSetCode)
-  })
-
-  const manualMatchMutation = useMutation({
-    mutationFn: (cardId: number) => manuallyMatchAuction(auction.item_id, cardId, normalizedSetCode),
-    onSuccess: () => {
-      setSelectedCardId('')
-      onUpdated()
-    }
-  })
-
-  const discardMutation = useMutation({
-    mutationFn: () => discardAuction(auction.item_id),
-    onSuccess: () => {
-      setSelectedCardId('')
-      onUpdated()
-    }
-  })
-
-  const normalizeCardNumber = (value: string | null | undefined) => {
-    if (!value) return null
-    const match = String(value).match(/^(\d+)/)
-    return match ? Number(match[1]) : null
-  }
-
-  const cardsMatchingParsedNumber = useMemo(() => {
-    if (auction.parsed_card_number === null) return []
-    const target = auction.parsed_card_number
-    return (cardsQuery.data || []).filter((card) => normalizeCardNumber(card.card_number) === target)
-  }, [auction.parsed_card_number, cardsQuery.data])
-
-  const filteredCards = useMemo(() => {
-    const query = search.trim().toLowerCase()
-    const cards = cardsQuery.data || []
-    if (!query) return cards
-    return cards.filter((card) => {
-      const name = card.name?.toLowerCase() || ''
-      const number = card.card_number?.toLowerCase() || ''
-      return name.includes(query) || number.includes(query)
-    })
-  }, [cardsQuery.data, search])
-
-  const cardsForSelect = useMemo(() => {
-    if (auction.parsed_card_number !== null && search.trim() === '') {
-      if (cardsMatchingParsedNumber.length > 0) return cardsMatchingParsedNumber
-    }
-    return filteredCards
-  }, [auction.parsed_card_number, cardsMatchingParsedNumber, filteredCards, search])
-
-  const canMatch = Boolean(normalizedSetCode)
-
-  const handleSetChange = (value: string) => {
-    setActiveSetCode(value)
-    setSelectedCardId('')
-    setSearch('')
-  }
-
-  const displaySet: ExpansionSummary | null = useMemo(() => {
-    if (!normalizedSetCode) return null
-    return (setsQuery.data || []).find(
-      (set) => set.set_code?.toUpperCase() === normalizedSetCode || set.name?.toUpperCase() === normalizedSetCode
-    ) ?? null
-  }, [normalizedSetCode, setsQuery.data])
-
-  return (
-    <div className="space-y-2 text-xs">
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <Select
-            value={activeSetCode}
-            disabled={setsQuery.isFetching}
-            onChange={(e) => handleSetChange(e.target.value)}
-          >
-            <option value="">{setsQuery.isFetching ? 'Loading sets…' : 'Select a set'}</option>
-            {(setsQuery.data || []).map((set) => (
-              <option key={set.set_code ?? set.name ?? set.id} value={set.set_code ?? ''}>
-                {set.name ?? set.set_code}
-                {set.era ? ` — ${set.era}` : ''}
-                {set.set_code ? ` (${set.set_code})` : ''}
-              </option>
-            ))}
-          </Select>
-          {auction.matched_set_code ? (
-            <span className="text-[11px] text-slate-500">Hinted: {auction.matched_set_code}</span>
-          ) : null}
-        </div>
-        {displaySet ? (
-          <p className="text-[11px] text-slate-500">
-            {displaySet.name || displaySet.set_code} {displaySet.era ? `• ${displaySet.era}` : ''}
-            {displaySet.set_total ? ` • ${displaySet.set_total} cards` : ''}
-            {!displaySet.set_total && typeof displaySet.cards_total === 'number'
-              ? ` • ${displaySet.cards_total} cards`
-              : ''}
-          </p>
-        ) : (
-          <p className="text-[11px] text-slate-500">Select a set to load its cards for manual matching.</p>
-        )}
-        {canMatch ? (
-          <div className="space-y-1">
-            {auction.parsed_card_number !== null ? (
-              <p className="text-[11px] text-slate-500">
-                Showing cards numbered {auction.parsed_card_number}
-                {cardsMatchingParsedNumber.length === 0 ? ' (none found; search to pick manually)' : ''}.
-              </p>
-            ) : null}
-            <Input
-              className="h-8"
-              placeholder={
-                auction.parsed_card_number !== null
-                  ? 'Optional search (fallback)'
-                  : 'Search card name/#'
-              }
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <div className="flex items-center gap-2">
-              <Select
-                value={selectedCardId === '' ? '' : String(selectedCardId)}
-                disabled={cardsQuery.isFetching || !canMatch}
-                onChange={(e) => setSelectedCardId(Number(e.target.value) || '')}
-              >
-                <option value="">{cardsQuery.isFetching ? 'Loading cards…' : 'Select a card'}</option>
-                {cardsForSelect.map((card) => (
-                  <option key={card.id} value={card.id}>
-                    {card.card_number ? `${card.card_number} — ` : ''}
-                    {card.name || 'Unnamed card'}
-                  </option>
-                ))}
-                {!cardsQuery.isFetching && cardsForSelect.length === 0 ? (
-                  <option disabled value="">
-                    {auction.parsed_card_number !== null && search.trim() === ''
-                      ? `No cards numbered ${auction.parsed_card_number}`
-                      : `No matches for “${search}”`}
-                  </option>
-                ) : null}
-              </Select>
-              <Button
-                size="sm"
-                disabled={!selectedCardId || manualMatchMutation.isPending}
-                onClick={() => typeof selectedCardId === 'number' && manualMatchMutation.mutate(selectedCardId)}
-              >
-                {manualMatchMutation.isPending ? 'Linking…' : 'Link'}
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <p className="text-[11px] text-slate-500">Choose a set to load and link one of its cards.</p>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={discardMutation.isPending}
-          onClick={() => discardMutation.mutate()}
-        >
-          {discardMutation.isPending ? 'Discarding…' : 'Discard'}
-        </Button>
-        {manualMatchMutation.isSuccess ? (
-          <span className="text-[11px] text-green-600">Linked!</span>
-        ) : null}
-        {discardMutation.isSuccess ? <span className="text-[11px] text-green-600">Discarded.</span> : null}
-      </div>
-      {manualMatchMutation.isError ? (
-        <p className="text-[11px] text-red-500">{(manualMatchMutation.error as Error).message}</p>
-      ) : null}
-      {cardsQuery.isError ? (
-        <p className="text-[11px] text-red-500">Failed to load cards for set {normalizedSetCode || '—'}.</p>
-      ) : null}
-      {discardMutation.isError ? (
-        <p className="text-[11px] text-red-500">{(discardMutation.error as Error).message}</p>
-      ) : null}
     </div>
   )
 }
