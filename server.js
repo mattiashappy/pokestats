@@ -210,6 +210,7 @@ const pool = DATABASE_URL
 
 let hasCheckedSalesTable = false
 let salesTableAvailable = false
+let auctionsBaseTableExists = false
 let hasCheckedCardsTable = false
 let cardsTableAvailable = false
 let hasCheckedExpansionsTable = false
@@ -375,7 +376,8 @@ async function ensureSalesTableAvailable() {
   const { rows } = await pool.query(
     "SELECT to_regclass('public.auctions') AS auctions, to_regclass('public.tradera_sales') AS sales_view"
   )
-  salesTableAvailable = Boolean(rows?.[0]?.auctions)
+  auctionsBaseTableExists = Boolean(rows?.[0]?.auctions)
+  salesTableAvailable = Boolean(rows?.[0]?.auctions || rows?.[0]?.sales_view)
   if (!rows?.[0]?.sales_view) {
     console.warn('tradera_sales view does not exist; legacy reads may fail')
   }
@@ -511,7 +513,7 @@ async function ensureCardInfrastructure() {
 
       if (!salesReady || !expansionsReady || !cardsReady) return false
 
-      if (salesReady) {
+      if (salesReady && auctionsBaseTableExists) {
         if (!hasCheckedSalesCardColumn) {
           try {
             salesCardColumnAvailable = await ensureColumnExists('auctions', 'card_id', 'INTEGER REFERENCES public.cards(id)')
