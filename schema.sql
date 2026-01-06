@@ -1,13 +1,47 @@
+-- Canonical expansions table used by catalog + cards FK.
+CREATE TABLE IF NOT EXISTS expansions (
+    id SERIAL PRIMARY KEY,
+    set_code TEXT NOT NULL UNIQUE,
+    name TEXT,
+    era TEXT,
+    language TEXT DEFAULT 'EN',
+    set_total INTEGER,
+    release_date DATE,
+    image_url TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_expansions_era ON expansions (era);
+
 -- Core cards table kept for compatibility with import scripts.
 CREATE TABLE IF NOT EXISTS cards (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     era TEXT,
-    set_name TEXT,
+    set_name TEXT NOT NULL,
+    image_url TEXT,
+    product_details TEXT,
+    set_code TEXT,
+    set_total INTEGER,
     card_number TEXT,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    UNIQUE (name, set_name)
+    expansion_id INTEGER REFERENCES public.expansions(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT cards_expansion_card_number_key UNIQUE (expansion_id, card_number)
 );
+
+CREATE INDEX IF NOT EXISTS idx_cards_set_code ON cards (set_code);
+CREATE INDEX IF NOT EXISTS idx_cards_card_number ON cards (card_number);
+
+ALTER TABLE IF EXISTS cards DROP CONSTRAINT IF EXISTS cards_unique_name_set;
+
+-- Prevent placeholder cards from entering the catalog.
+ALTER TABLE IF EXISTS cards
+    ADD CONSTRAINT cards_no_unknown_placeholders
+    CHECK (
+        (set_name IS NULL OR lower(btrim(set_name)) <> 'unknown')
+        AND (card_number IS NULL OR lower(btrim(card_number)) <> 'unknown')
+        AND (set_code IS NULL OR (lower(btrim(set_code)) <> 'unknown' AND lower(btrim(set_code)) NOT LIKE 'unknown-%'))
+    );
 
 -- Source-of-truth auctions table.
 CREATE TABLE IF NOT EXISTS auctions (

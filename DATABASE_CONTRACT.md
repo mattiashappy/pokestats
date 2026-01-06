@@ -93,6 +93,8 @@ Read-only. Shows only auctions where `card_id IS NULL` plus enrichment fields.
 
 - It is safe to `TRUNCATE auction_enrichment` and rerun enrichment.
 - Never reintroduce "parsed_* / debug" columns into `auctions`; use `raw` or `auction_enrichment`.
+- The `cards` catalog rejects placeholder values: `set_name`, `card_number`, and `set_code` cannot be `unknown` / `unknown-*`; enrichment must never insert into `cards`.
+- Before deleting catalog cards, clear any references from legacy tables like `tradera_sales_legacy` to satisfy foreign keys.
 
 ## Queries the app relies on
 
