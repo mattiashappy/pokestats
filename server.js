@@ -540,9 +540,12 @@ async function ensureCardInfrastructure() {
       if (enrichmentReady && !hasEnsuredEnrichmentColumns) {
         const columnResults = await Promise.all([
           ensureColumnExists('auction_enrichment', 'status', 'TEXT'),
+          ensureColumnExists('auction_enrichment', 'stage', "TEXT NOT NULL DEFAULT 'era'"),
           ensureColumnExists('auction_enrichment', 'matched_era', 'TEXT'),
           ensureColumnExists('auction_enrichment', 'matched_set_code', 'TEXT'),
           ensureColumnExists('auction_enrichment', 'parsed_card_number', 'TEXT'),
+          ensureColumnExists('auction_enrichment', 'parsed_number_text', 'TEXT'),
+          ensureColumnExists('auction_enrichment', 'parsed_set_hint', 'TEXT'),
           ensureColumnExists('auction_enrichment', 'parsed_card_name', 'TEXT')
         ])
         hasEnsuredEnrichmentColumns = columnResults.every(Boolean)
@@ -552,7 +555,8 @@ async function ensureCardInfrastructure() {
         const indexResults = await Promise.all([
           ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_status', '(status)'),
           ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_matched', '(matched_era, matched_set_code)'),
-          ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_parsed_card_number', '(parsed_card_number)')
+          ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_parsed_card_number', '(parsed_card_number)'),
+          ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_stage', '(stage)')
         ])
         hasEnsuredEnrichmentIndexes = indexResults.every(Boolean)
       }
