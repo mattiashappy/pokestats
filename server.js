@@ -1282,9 +1282,17 @@ if (!ensureDashboardBuild()) {
 
 app.use(express.static(distPath))
 
-app.get('*', (_req, res) => {
-  res.sendFile(path.join(distPath, 'index.html'))
-})
+if (hasDashboardBuild) {
+  app.use(express.static(distPath))
+
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'))
+  })
+} else {
+  app.get('*', (_req, res) => {
+    res.status(503).send('Dashboard build missing. Run `npm run build --prefix dashboard` and redeploy the app.')
+  })
+}
 
 if (require.main === module) {
   app.listen(PORT, () => {
