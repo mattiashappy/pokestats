@@ -117,6 +117,7 @@ function SetCard({ expansion }: { expansion: ExpansionSummary }) {
 
   const cardsLabel = expansion.set_total ?? expansion.cards_total
   const auctionsLabel = expansion.linked_auctions ?? 0
+  const hasAuctionsLinked = auctionsLabel > 0
 
   return (
     <Link to={`/pokemon/sets/${expansion.set_code}`} className="group block h-full">
@@ -154,11 +155,15 @@ function SetCard({ expansion }: { expansion: ExpansionSummary }) {
               {cardsLabel ? `${cardsLabel} cards` : 'Cards pending'}
             </span>
 
-            <span className="text-xs text-slate-500 dark:text-slate-400">·</span>
+            {hasAuctionsLinked && (
+              <>
+                <span className="text-xs text-slate-500 dark:text-slate-400">·</span>
 
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-              {auctionsLabel.toLocaleString('sv-SE')} auctions linked
-            </span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                  {auctionsLabel.toLocaleString('sv-SE')} auctions linked
+                </span>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
