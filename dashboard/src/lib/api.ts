@@ -140,38 +140,6 @@ export type ImportRun = {
   error_stack_preview?: string | null
 }
 
-export type ImportRunResult = {
-  ok: boolean
-  newRows: number
-  durationMs: number
-  startedAt: string
-  lastFetchedAt?: string | null
-  output?: string
-  runUuid?: string
-  exitCode?: number
-  error?: string | null
-}
-
-export async function fetchImportRuns(limit = 10): Promise<ImportRun[]> {
-  const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100)
-  const params = new URLSearchParams({ limit: String(safeLimit) })
-  const res = await fetch(`/api/import/runs?${params.toString()}`)
-  if (!res.ok) throw new Error('Failed to load import runs')
-  return res.json()
-}
-
-export async function fetchImportRun(id: number): Promise<ImportRun> {
-  const res = await fetch(`/api/import/runs/${id}`)
-  if (!res.ok) throw new Error('Failed to load import run')
-  return res.json()
-}
-
-export async function runImporter(): Promise<ImportRunResult> {
-  const res = await fetch('/api/import/run', { method: 'POST' })
-  if (!res.ok) throw new Error('Failed to run importer')
-  return res.json()
-}
-
 export async function fetchSets(): Promise<ExpansionSummary[]> {
   const res = await fetch('/api/sets')
   if (!res.ok) throw new Error('Failed to load sets')
