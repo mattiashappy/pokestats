@@ -600,21 +600,24 @@ function normalizeAuctionRow(row) {
     bid_count: row.bid_count,
     end_date: row.end_date,
     seller_alias: row.seller_alias,
-    seller_dsr: row.seller_dsr,
     item_url: row.item_url,
     thumbnail_url: row.thumbnail_url,
-    attributes: row.attributes,
-    fetched_at: row.fetched_at,
+    enrich_status: row.enrich_status,
+    match_confidence_score: row.match_confidence_score,
+    match_method: row.match_method,
+    matched_set_code: row.matched_set_code,
+    matched_era: row.matched_era,
+    parsed_card_number: row.parsed_card_number,
+    parsed_number_text: row.parsed_number_text,
+    parsed_set_hint: row.parsed_set_hint,
+    suggested_cards: row.suggested_cards,
     card_id: row.card_id ?? null,
     card_name: row.card_name ?? null,
     card_era: row.card_era ?? null,
+    card_language: row.card_language ?? null,
     card_set_name: row.card_set_name ?? null,
     card_set_code: row.card_set_code ?? null,
-    card_number: row.card_number ?? null,
-    pokemon_era: row.pokemon_era ?? null,
-    pokemon_language: row.pokemon_language ?? null,
-    grading_issuer: row.grading_issuer ?? null,
-    grading_grade: row.grading_grade ?? null
+    card_number: row.card_number ?? null
   }
 }
 
@@ -623,16 +626,7 @@ async function fetchAuctionsFromDatabase(filters = {}) {
   const ok = await ensureCardInfrastructure()
   if (!ok) return []
 
-  const {
-    era = null,
-    language = null,
-    gradingIssuer = null,
-    grade = null,
-    minPrice = null,
-    maxPrice = null,
-    limit = null,
-    offset = 0
-  } = filters
+  const { era = null, language = null, minPrice = null, maxPrice = null, limit = null, offset = 0 } = filters
 
   let query = `
     SELECT
@@ -642,34 +636,35 @@ async function fetchAuctionsFromDatabase(filters = {}) {
       ts.bid_count,
       ts.end_date,
       ts.seller_alias,
-      ts.seller_dsr,
       ts.item_url,
       ts.thumbnail_url,
-      ts.attributes,
-      ts.fetched_at,
       ts.card_id,
+      ts.enrich_status,
+      ts.match_confidence_score,
+      ts.match_method,
+      ts.matched_set_code,
+      ts.matched_era,
+      ts.parsed_card_number,
+      ts.parsed_number_text,
+      ts.parsed_set_hint,
+      ts.suggested_cards,
       c.name AS card_name,
       COALESCE(e.era, c.era) AS card_era,
       COALESCE(e.name, c.set_name) AS card_set_name,
       COALESCE(e.set_code, c.set_code) AS card_set_code,
-      c.card_number AS card_number,
-      ts.attributes->'pokemon_era'->>0 AS pokemon_era,
-      ts.attributes->'pokemon_language'->>0 AS pokemon_language,
-      ts.attributes->'pokemon_grading_issuer'->>0 AS grading_issuer,
-      ts.attributes->'pokemon_grade'->>0 AS grading_grade
+      COALESCE(e.language, c.language) AS card_language,
+      c.card_number AS card_number
     FROM public.tradera_sales ts
     LEFT JOIN public.cards c ON c.id = ts.card_id
     LEFT JOIN public.expansions e ON e.id = c.expansion_id
     WHERE
-      ($1::text IS NULL OR ts.attributes->'pokemon_era' ? $1)
-      AND ($2::text IS NULL OR ts.attributes->'pokemon_language' ? $2)
-      AND ($3::text IS NULL OR ts.attributes->'pokemon_grading_issuer' ? $3)
-      AND ($4::text IS NULL OR ts.attributes->'pokemon_grade' ? $4)
-      AND ($5::int IS NULL OR ts.price >= $5)
-      AND ($6::int IS NULL OR ts.price <= $6)
+      ($1::text IS NULL OR COALESCE(e.era, c.era, ts.matched_era) = $1)
+      AND ($2::text IS NULL OR COALESCE(e.language, c.language) = $2)
+      AND ($3::int IS NULL OR ts.price >= $3)
+      AND ($4::int IS NULL OR ts.price <= $4)
     ORDER BY ts.end_date DESC
   `
-  const params = [era, language, gradingIssuer, grade, minPrice, maxPrice]
+  const params = [era, language, minPrice, maxPrice]
 
   if (typeof limit === 'number' && Number.isFinite(limit)) {
     params.push(limit)
@@ -748,12 +743,18 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
       ts.bid_count,
       ts.end_date,
       ts.seller_alias,
-      ts.seller_dsr,
       ts.item_url,
       ts.thumbnail_url,
-      ts.attributes,
-      ts.fetched_at,
       ts.card_id,
+      ts.enrich_status,
+      ts.match_confidence_score,
+      ts.match_method,
+      ts.matched_set_code,
+      ts.matched_era,
+      ts.parsed_card_number,
+      ts.parsed_number_text,
+      ts.parsed_set_hint,
+      ts.suggested_cards,
       c.name AS card_name,
       COALESCE(e.era, c.era) AS card_era,
       COALESCE(e.name, c.set_name) AS card_set_name,
