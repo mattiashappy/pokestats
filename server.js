@@ -7,7 +7,7 @@ const { spawn, spawnSync } = require('child_process')
 const { Pool } = require('pg')
 const crypto = require('crypto')
 
-const mockAuctions = require('./server/mock-auctions.json')
+const mockAuctions = require('./server/mock-auctions')
 const { createExpansionService } = require('./server/routes/expansions')
 
 const { loadCatalog } = require('./server/catalog/catalogLoader')
