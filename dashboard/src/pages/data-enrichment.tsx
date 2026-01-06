@@ -11,11 +11,15 @@ import {
   fetchSets,
   discardAuction,
   fetchEnrichmentSummary,
+  fetchPendingAuctions,
+  fetchLinkedAuctions,
   fetchUnmatchedAuctions,
   manuallyMatchAuction,
   runEnrichment,
   runUnlinkedEnrichment,
   runFullEnrichment,
+  type PendingAuction,
+  type LinkedAuction,
   type UnmatchedAuction
 } from '../lib/api'
 import type { ExpansionSummary } from '../types'
@@ -36,6 +40,10 @@ export function DataEnrichmentPage(): JSX.Element {
   const [runLimit, setRunLimit] = useState(300)
   const [unmatchedLimit, setUnmatchedLimit] = useState(50)
   const [unmatchedLimitInput, setUnmatchedLimitInput] = useState('50')
+  const [pendingLimit, setPendingLimit] = useState(50)
+  const [pendingLimitInput, setPendingLimitInput] = useState('50')
+  const [linkedLimit, setLinkedLimit] = useState(50)
+  const [linkedLimitInput, setLinkedLimitInput] = useState('50')
 
   const summaryQuery = useQuery({
     queryKey: ['enrichment-summary'],
@@ -47,11 +55,23 @@ export function DataEnrichmentPage(): JSX.Element {
     queryFn: () => fetchUnmatchedAuctions(unmatchedLimit)
   })
 
+  const pendingQuery = useQuery({
+    queryKey: ['enrichment-pending', pendingLimit],
+    queryFn: () => fetchPendingAuctions(pendingLimit)
+  })
+
+  const linkedQuery = useQuery({
+    queryKey: ['enrichment-linked', linkedLimit],
+    queryFn: () => fetchLinkedAuctions(linkedLimit)
+  })
+
   const mutation = useMutation({
     mutationFn: () => runEnrichment(runLimit),
     onSuccess: () => {
       summaryQuery.refetch()
       unmatchedQuery.refetch()
+      pendingQuery.refetch()
+      linkedQuery.refetch()
     }
   })
 
@@ -60,6 +80,8 @@ export function DataEnrichmentPage(): JSX.Element {
     onSuccess: () => {
       summaryQuery.refetch()
       unmatchedQuery.refetch()
+      pendingQuery.refetch()
+      linkedQuery.refetch()
     }
   })
 
@@ -73,6 +95,8 @@ export function DataEnrichmentPage(): JSX.Element {
     onSuccess: () => {
       summaryQuery.refetch()
       unmatchedQuery.refetch()
+      pendingQuery.refetch()
+      linkedQuery.refetch()
     }
   })
 
@@ -129,8 +153,13 @@ export function DataEnrichmentPage(): JSX.Element {
   }, [summaryQuery.data])
 
   const unmatchedAuctions = unmatchedQuery.data ?? []
+  const pendingAuctions = pendingQuery.data ?? []
+  const linkedAuctions = linkedQuery.data ?? []
   const refetchEnrichmentTables = () => {
     unmatchedQuery.refetch()
+    pendingQuery.refetch()
+    linkedQuery.refetch()
+    summaryQuery.refetch()
   }
 
   const applyUnmatchedLimit = () => {
@@ -139,6 +168,28 @@ export function DataEnrichmentPage(): JSX.Element {
     setUnmatchedLimit(nextLimit)
     setUnmatchedLimitInput(String(nextLimit))
   }
+
+  const applyPendingLimit = () => {
+    const parsed = Number(pendingLimitInput)
+    const nextLimit = Math.min(500, Math.max(10, Number.isFinite(parsed) ? parsed : pendingLimit))
+    setPendingLimit(nextLimit)
+    setPendingLimitInput(String(nextLimit))
+  }
+
+  const applyLinkedLimit = () => {
+    const parsed = Number(linkedLimitInput)
+    const nextLimit = Math.min(500, Math.max(10, Number.isFinite(parsed) ? parsed : linkedLimit))
+    setLinkedLimit(nextLimit)
+    setLinkedLimitInput(String(nextLimit))
+  }
+
+  const formatDateTime = (value?: string | null) =>
+    value ? new Date(value).toLocaleString('sv-SE') : '—'
+
+  const formatNumber = (value?: number | null) =>
+    typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString('sv-SE') : '—'
+
+  const formatText = (value?: string | null) => value?.trim() || '—'
 
   return (
     <div className="space-y-6">
@@ -160,6 +211,221 @@ export function DataEnrichmentPage(): JSX.Element {
           {mutation.isPending ? 'Running matcher…' : 'Run matcher'}
         </Button>
       </header>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle>Auctions waiting for enrichment</CardTitle>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Raw rows that have not been processed by the matcher yet. Oldest auctions are shown first.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <span>Showing {pendingAuctions.length.toLocaleString('sv-SE')} pending auctions</span>
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] uppercase tracking-wide">Rows to load</label>
+              <Input
+                className="h-8 max-w-[96px]"
+                type="number"
+                min={10}
+                max={500}
+                value={pendingLimitInput}
+                onChange={(e) => setPendingLimitInput(e.target.value)}
+              />
+              <Button size="sm" variant="outline" onClick={applyPendingLimit} disabled={pendingQuery.isFetching}>
+                {pendingQuery.isFetching ? 'Updating…' : `Load ${Number(pendingLimitInput) || pendingLimit}`}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => pendingQuery.refetch()} disabled={pendingQuery.isFetching}>
+                Refresh
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
+          <p className="text-xs text-slate-500">
+            Use this table to validate that the backlog contains the fields we expect (seller, category, parsed hints) before
+            the enrichment job runs.
+          </p>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Auction</TableHead>
+                  <TableHead>Price & bids</TableHead>
+                  <TableHead>Seller</TableHead>
+                  <TableHead>Parsed hints</TableHead>
+                  <TableHead>Matcher metadata</TableHead>
+                  <TableHead>Timing</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingAuctions.map((row: PendingAuction) => (
+                  <TableRow key={row.item_id}>
+                    <TableCell className="font-mono text-xs">{row.item_id}</TableCell>
+                    <TableCell className="min-w-[260px] space-y-1">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{row.title || '—'}</p>
+                      <p className="text-[11px] text-slate-500">Category: {row.category_id ?? '—'}</p>
+                      <p className="text-[11px] text-slate-500">Ends: {formatDateTime(row.end_date)}</p>
+                      <p className="text-[11px] text-slate-500">
+                        URL:{' '}
+                        {row.item_url ? (
+                          <a className="text-blue-600 underline" href={row.item_url} target="_blank" rel="noreferrer">
+                            Open auction
+                          </a>
+                        ) : (
+                          '—'
+                        )}
+                      </p>
+                    </TableCell>
+                    <TableCell className="min-w-[160px] space-y-1 text-xs">
+                      <p>Price: {formatNumber(row.price)}</p>
+                      <p>Bids: {formatNumber(row.bid_count)}</p>
+                    </TableCell>
+                    <TableCell className="min-w-[180px] space-y-1 text-xs">
+                      <p className="font-medium text-slate-900 dark:text-slate-100">{formatText(row.seller_alias)}</p>
+                      <p className="text-[11px] text-slate-500">Seller ID: {row.seller_id ?? '—'}</p>
+                      <p className="text-[11px] text-slate-500">DSR: {row.seller_dsr ?? '—'}</p>
+                    </TableCell>
+                    <TableCell className="min-w-[200px] space-y-1 text-[11px]">
+                      <p>Parsed #: {row.parsed_card_no ?? row.parsed_card_number ?? '—'}</p>
+                      <p>Raw number: {formatText(row.parsed_number_text)}</p>
+                      <p>Set total: {row.parsed_set_total ?? '—'}</p>
+                      <p>Matched set: {formatText(row.matched_set_code)}</p>
+                    </TableCell>
+                    <TableCell className="min-w-[220px] space-y-1 text-[11px]">
+                      <p>Status: {formatText(row.match_status)}</p>
+                      <p>Enrichment: {formatText(row.enrich_status)}</p>
+                      <p>Method: {formatText(row.match_method)}</p>
+                      <p>
+                        Confidence: {formatText(row.match_confidence)}
+                        {row.match_confidence_score ? ` (${row.match_confidence_score})` : ''}
+                      </p>
+                    </TableCell>
+                    <TableCell className="min-w-[200px] space-y-1 text-[11px]">
+                      <p>Processing started: {formatDateTime(row.processing_started_at)}</p>
+                      <p>Updated: {formatDateTime(row.updated_at)}</p>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          {pendingAuctions.length === 0 ? (
+            <p className="text-xs text-slate-500">No pending auctions found in the queue.</p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle>Processed + linked auctions</CardTitle>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Recent auctions that the enrichment pipeline linked to a card, with all available context.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <span>Showing {linkedAuctions.length.toLocaleString('sv-SE')} linked auctions</span>
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] uppercase tracking-wide">Rows to load</label>
+              <Input
+                className="h-8 max-w-[96px]"
+                type="number"
+                min={10}
+                max={500}
+                value={linkedLimitInput}
+                onChange={(e) => setLinkedLimitInput(e.target.value)}
+              />
+              <Button size="sm" variant="outline" onClick={applyLinkedLimit} disabled={linkedQuery.isFetching}>
+                {linkedQuery.isFetching ? 'Updating…' : `Load ${Number(linkedLimitInput) || linkedLimit}`}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => linkedQuery.refetch()} disabled={linkedQuery.isFetching}>
+                Refresh
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
+          <p className="text-xs text-slate-500">
+            Inspect matcher metadata alongside the linked card to verify that the enrichment rules line up with the stored
+            card information.
+          </p>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Auction</TableHead>
+                  <TableHead>Price & seller</TableHead>
+                  <TableHead>Parsed hints</TableHead>
+                  <TableHead>Matcher metadata</TableHead>
+                  <TableHead>Linked card</TableHead>
+                  <TableHead>Timing</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {linkedAuctions.map((row: LinkedAuction) => (
+                  <TableRow key={row.item_id}>
+                    <TableCell className="font-mono text-xs">{row.item_id}</TableCell>
+                    <TableCell className="min-w-[240px] space-y-1">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{row.title || '—'}</p>
+                      <p className="text-[11px] text-slate-500">Category: {row.category_id ?? '—'}</p>
+                      <p className="text-[11px] text-slate-500">Ends: {formatDateTime(row.end_date)}</p>
+                      <p className="text-[11px] text-slate-500">
+                        URL:{' '}
+                        {row.item_url ? (
+                          <a className="text-blue-600 underline" href={row.item_url} target="_blank" rel="noreferrer">
+                            Open auction
+                          </a>
+                        ) : (
+                          '—'
+                        )}
+                      </p>
+                    </TableCell>
+                    <TableCell className="min-w-[180px] space-y-1 text-xs">
+                      <p>Price: {formatNumber(row.price)}</p>
+                      <p>Bids: {formatNumber(row.bid_count)}</p>
+                      <p>Seller: {formatText(row.seller_alias)}</p>
+                      <p className="text-[11px] text-slate-500">Seller ID: {row.seller_id ?? '—'}</p>
+                      <p className="text-[11px] text-slate-500">DSR: {row.seller_dsr ?? '—'}</p>
+                    </TableCell>
+                    <TableCell className="min-w-[200px] space-y-1 text-[11px]">
+                      <p>Parsed #: {row.parsed_card_no ?? row.parsed_card_number ?? '—'}</p>
+                      <p>Raw number: {formatText(row.parsed_number_text)}</p>
+                      <p>Set total: {row.parsed_set_total ?? '—'}</p>
+                      <p>Matched set: {formatText(row.matched_set_code)}</p>
+                      <p>Matched era: {formatText(row.matched_era)}</p>
+                    </TableCell>
+                    <TableCell className="min-w-[220px] space-y-1 text-[11px]">
+                      <p>Status: {formatText(row.match_status)}</p>
+                      <p>Enrichment: {formatText(row.enrich_status)}</p>
+                      <p>Method: {formatText(row.match_method)}</p>
+                      <p>
+                        Confidence: {formatText(row.match_confidence)}
+                        {row.match_confidence_score ? ` (${row.match_confidence_score})` : ''}
+                      </p>
+                    </TableCell>
+                    <TableCell className="min-w-[220px] space-y-1 text-[11px]">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatText(row.card_name)}</p>
+                      <p>Card #: {formatText(row.card_number)}</p>
+                      <p>Set code: {formatText(row.card_set_code)}</p>
+                      <p>Linked card ID: {row.card_id ?? '—'}</p>
+                    </TableCell>
+                    <TableCell className="min-w-[200px] space-y-1 text-[11px]">
+                      <p>Processing started: {formatDateTime(row.processing_started_at)}</p>
+                      <p>Updated: {formatDateTime(row.updated_at)}</p>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          {linkedAuctions.length === 0 ? (
+            <p className="text-xs text-slate-500">No processed + linked auctions available yet.</p>
+          ) : null}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
