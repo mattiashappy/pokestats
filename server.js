@@ -1594,6 +1594,108 @@ app.get('/api/enrichment/summary', async (_req, res) => {
   }
 })
 
+app.get('/api/enrichment/pending', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return res.status(500).json({ error: 'Card infrastructure unavailable' })
+
+  await ensureSalesEnrichmentColumnsAvailable()
+
+  const limit = Math.min(Math.max(Number(req.query.limit ?? 50), 1), 500)
+
+  const { rows } = await pool.query(
+    `
+      SELECT
+        item_id,
+        end_date,
+        title,
+        category_id,
+        price,
+        bid_count,
+        seller_alias,
+        seller_id,
+        seller_dsr,
+        enrich_status,
+        match_status,
+        match_confidence,
+        match_confidence_score,
+        match_method,
+        matched_set_code,
+        matched_era,
+        parsed_card_no,
+        parsed_number_text,
+        parsed_card_number,
+        parsed_set_total,
+        processing_started_at,
+        updated_at,
+        item_url,
+        thumbnail_url
+      FROM public.tradera_sales
+      WHERE card_id IS NULL
+        AND COALESCE(match_status, '') = ''
+      ORDER BY end_date DESC
+      LIMIT $1
+    `,
+    [limit]
+  )
+
+  res.json(rows)
+})
+
+app.get('/api/enrichment/linked', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return res.status(500).json({ error: 'Card infrastructure unavailable' })
+
+  await ensureSalesEnrichmentColumnsAvailable()
+
+  const limit = Math.min(Math.max(Number(req.query.limit ?? 50), 1), 500)
+
+  const { rows } = await pool.query(
+    `
+      SELECT
+        s.item_id,
+        s.end_date,
+        s.title,
+        s.category_id,
+        s.price,
+        s.bid_count,
+        s.seller_alias,
+        s.seller_id,
+        s.seller_dsr,
+        s.enrich_status,
+        s.match_status,
+        s.match_confidence,
+        s.match_confidence_score,
+        s.match_method,
+        s.matched_set_code,
+        s.matched_era,
+        s.parsed_card_no,
+        s.parsed_number_text,
+        s.parsed_card_number,
+        s.parsed_set_total,
+        s.processing_started_at,
+        s.updated_at,
+        s.item_url,
+        s.thumbnail_url,
+        c.id AS card_id,
+        c.name AS card_name,
+        c.card_number,
+        c.set_code AS card_set_code
+      FROM public.tradera_sales s
+      LEFT JOIN public.cards c ON c.id = s.card_id
+      WHERE s.card_id IS NOT NULL
+      ORDER BY s.updated_at DESC NULLS LAST, s.end_date DESC
+      LIMIT $1
+    `,
+    [limit]
+  )
+
+  res.json(rows)
+})
+
 app.get('/api/enrichment/unmatched', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
   const limit = Number(req.query.limit ?? 25)
