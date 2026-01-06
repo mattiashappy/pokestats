@@ -198,6 +198,8 @@ let hasEnsuredSalesCardIndex = false
 let hasEnsuredEnrichmentColumns = false
 let hasEnsuredEnrichmentIndexes = false
 let hasSeededStaticCatalog = false
+let hasCheckedEnrichmentTable = false
+let enrichmentTableAvailable = false
 let seedingCatalogPromise = null
 let hasCheckedImportRunsTable = false
 let importRunsTableAvailable = false
@@ -347,12 +349,29 @@ async function ensureSalesTableAvailable() {
   if (!pool) return false
   if (hasCheckedSalesTable) return salesTableAvailable
 
-  const { rows } = await pool.query("SELECT to_regclass('public.tradera_sales') AS table_name")
-  salesTableAvailable = Boolean(rows?.[0]?.table_name)
+  const { rows } = await pool.query(
+    "SELECT to_regclass('public.auctions') AS auctions, to_regclass('public.tradera_sales') AS sales_view"
+  )
+  salesTableAvailable = Boolean(rows?.[0]?.auctions)
+  if (!rows?.[0]?.sales_view) {
+    console.warn('tradera_sales view does not exist; legacy reads may fail')
+  }
   hasCheckedSalesTable = true
 
-  if (!salesTableAvailable) console.warn('tradera_sales table does not exist')
+  if (!salesTableAvailable) console.warn('auctions table does not exist')
   return salesTableAvailable
+}
+
+async function ensureEnrichmentTableAvailable() {
+  if (!pool) return false
+  if (hasCheckedEnrichmentTable) return enrichmentTableAvailable
+
+  const { rows } = await pool.query("SELECT to_regclass('public.auction_enrichment') AS table_name")
+  enrichmentTableAvailable = Boolean(rows?.[0]?.table_name)
+  hasCheckedEnrichmentTable = true
+
+  if (!enrichmentTableAvailable) console.warn('auction_enrichment table does not exist')
+  return enrichmentTableAvailable
 }
 
 // ✅ single canonical expansions definition
@@ -597,23 +616,17 @@ async function ensureSalesCardIndexAvailable() {
 }
 
 async function ensureCardInfrastructure() {
-  const salesAvailable = await ensureSalesTableAvailable()
-  const expansionsAvailable = await ensureExpansionsTableAvailable()
-  const cardsAvailable = await ensureCardsTableAvailable()
-  if (!salesAvailable || !cardsAvailable || !expansionsAvailable) return false
+  const [salesAvailable, enrichmentAvailable, expansionsAvailable, cardsAvailable] = await Promise.all([
+    ensureSalesTableAvailable(),
+    ensureEnrichmentTableAvailable(),
+    ensureExpansionsTableAvailable(),
+    ensureCardsTableAvailable()
+  ])
 
-  // Critical columns needed for the read queries used by the API.
-  const cardColumnAvailable = await ensureSalesCardColumnAvailable()
-  const parsedSetCodeAvailable = await ensureSalesParsedSetCodeColumnAvailable()
-  if (!cardColumnAvailable || !parsedSetCodeAvailable) return false
+  if (!salesAvailable || !enrichmentAvailable || !cardsAvailable || !expansionsAvailable) return false
 
   // Best-effort helpers that improve matching performance but should not block read access.
-  const optionalTasks = [
-    ensureSalesCardIndexAvailable(),
-    ensureSalesEnrichmentColumnsAvailable(),
-    ensureSalesEnrichmentIndexes(),
-    ensureStaticCatalogSeeded()
-  ]
+  const optionalTasks = [ensureStaticCatalogSeeded()]
 
   const optionalResults = await Promise.allSettled(optionalTasks)
   const optionalFailures = optionalResults.filter((r) => r.status !== 'fulfilled')
@@ -1309,14 +1322,14 @@ app.post('/api/import/run', async (_req, res) => {
 
     const {
       rows: [before]
-    } = await pool.query('SELECT COUNT(*)::int AS count, MAX(fetched_at) AS last_fetched FROM public.tradera_sales')
+    } = await pool.query('SELECT COUNT(*)::int AS count, MAX(fetched_at) AS last_fetched FROM public.auctions')
 
     const { code, stdout, stderr } = await runImporterScript(runUuid)
     const durationMs = Date.now() - startTime
 
     const {
       rows: [after]
-    } = await pool.query('SELECT COUNT(*)::int AS count, MAX(fetched_at) AS last_fetched FROM public.tradera_sales')
+    } = await pool.query('SELECT COUNT(*)::int AS count, MAX(fetched_at) AS last_fetched FROM public.auctions')
 
     const newRows = after.count - before.count
     const output = `${stdout}${stderr}`.trim()
@@ -1410,18 +1423,21 @@ app.post('/api/enrichment/run-all', async (req, res) => {
         rows: [{ reset_count }]
       } = await pool.query(`
         WITH reset AS (
-          UPDATE public.tradera_sales
+          UPDATE public.auction_enrichment ae
           SET
             match_status = NULL,
             match_confidence = NULL,
             matched_set_code = NULL,
             matched_era = NULL,
-            parsed_card_number = NULL,
+            parsed_card_no = NULL,
+            parsed_number_text = NULL,
             parsed_set_total = NULL,
             match_debug = NULL,
             updated_at = NOW()
-          WHERE card_id IS NULL
-            AND COALESCE(match_status, '') NOT IN ('', 'Discarded (manual)')
+          FROM public.auctions a
+          WHERE a.item_id = ae.item_id
+            AND a.card_id IS NULL
+            AND COALESCE(ae.match_status, '') NOT IN ('', 'Discarded (manual)')
           RETURNING 1
         )
         SELECT COUNT(*)::int AS reset_count FROM reset
@@ -1501,7 +1517,7 @@ app.post('/api/enrichment/discard', async (req, res) => {
 
   const client = await pool.connect()
   try {
-    const { rows: saleRows } = await client.query('SELECT item_id FROM public.tradera_sales WHERE item_id = $1 LIMIT 1', [
+    const { rows: saleRows } = await client.query('SELECT item_id FROM public.auctions WHERE item_id = $1 LIMIT 1', [
       itemId
     ])
 
@@ -1509,13 +1525,29 @@ app.post('/api/enrichment/discard', async (req, res) => {
 
     await client.query(
       `
-        UPDATE public.tradera_sales
-        SET
-          card_id = NULL,
-          match_status = 'Discarded (manual)',
-          match_confidence = 'manual',
-          match_method = 'manual_discard',
+        INSERT INTO public.auction_enrichment (
+          item_id,
+          match_status,
+          match_confidence,
+          match_method,
+          processing_started_at,
+          updated_at
+        )
+        VALUES ($1, 'Discarded (manual)', 'manual', 'manual_discard', NULL, NOW())
+        ON CONFLICT (item_id) DO UPDATE SET
+          match_status = EXCLUDED.match_status,
+          match_confidence = EXCLUDED.match_confidence,
+          match_method = EXCLUDED.match_method,
+          processing_started_at = NULL,
           updated_at = NOW()
+      `,
+      [itemId]
+    )
+
+    await client.query(
+      `
+        UPDATE public.auctions
+        SET card_id = NULL, updated_at = NOW()
         WHERE item_id = $1
       `,
       [itemId]
@@ -1767,7 +1799,7 @@ app.post('/api/enrichment/manual-match', async (req, res) => {
   const client = await pool.connect()
 
   try {
-    const { rows: saleRows } = await client.query('SELECT item_id FROM public.tradera_sales WHERE item_id = $1 LIMIT 1', [
+    const { rows: saleRows } = await client.query('SELECT item_id FROM public.auctions WHERE item_id = $1 LIMIT 1', [
       itemId
     ])
 
@@ -1796,20 +1828,46 @@ app.post('/api/enrichment/manual-match', async (req, res) => {
 
     await client.query(
       `
-        UPDATE public.tradera_sales
-        SET
-          card_id = $2,
-          match_status = 'Matched (manual)',
-          match_confidence = 'manual',
-          match_method = 'manual',
-          matched_set_code = COALESCE($3, matched_set_code),
-          matched_era = COALESCE($4, matched_era),
-          parsed_card_number = COALESCE($5, parsed_card_number),
-          parsed_set_total = COALESCE($6, parsed_set_total),
+        INSERT INTO public.auction_enrichment (
+          item_id,
+          match_status,
+          match_confidence,
+          match_method,
+          matched_set_code,
+          matched_era,
+          parsed_card_no,
+          parsed_set_total,
+          processing_started_at,
+          updated_at
+        )
+        VALUES ($1, 'Matched (manual)', 'manual', 'manual', $2, $3, $4, $5, NULL, NOW())
+        ON CONFLICT (item_id) DO UPDATE SET
+          match_status = EXCLUDED.match_status,
+          match_confidence = EXCLUDED.match_confidence,
+          match_method = EXCLUDED.match_method,
+          matched_set_code = COALESCE(EXCLUDED.matched_set_code, auction_enrichment.matched_set_code),
+          matched_era = COALESCE(EXCLUDED.matched_era, auction_enrichment.matched_era),
+          parsed_card_no = COALESCE(EXCLUDED.parsed_card_no, auction_enrichment.parsed_card_no),
+          parsed_set_total = COALESCE(EXCLUDED.parsed_set_total, auction_enrichment.parsed_set_total),
+          processing_started_at = NULL,
           updated_at = NOW()
+      `,
+      [
+        itemId,
+        normalizedRequestSet || card.set_code || null,
+        card.era || null,
+        card.card_number || null,
+        setTotalValue
+      ]
+    )
+
+    await client.query(
+      `
+        UPDATE public.auctions
+        SET card_id = $2, updated_at = NOW()
         WHERE item_id = $1
       `,
-      [itemId, cardId, normalizedRequestSet || card.set_code || null, card.era || null, card.card_number || null, setTotalValue]
+      [itemId, cardId]
     )
 
     return res.json({ ok: true, itemId, cardId })

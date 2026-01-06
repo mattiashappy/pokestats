@@ -34,7 +34,7 @@
 # - TRADERA_BACKOFF (default 0.8)
 #
 # DB assumptions:
-# - tradera_sales has unique constraint on item_id
+# - auctions has unique constraint on item_id
 # - columns: item_id, category_id, end_date, price, bid_count, seller_id, seller_alias,
 #           seller_dsr, title, description, item_url, thumbnail_url, image_urls, attributes, card_id (nullable)
 # - cards deduplicate via a UNIQUE on (set_code, card_number) OR a constraint named cards_unique_setcode_number
@@ -590,7 +590,7 @@ def upsert_sales(conn, rows: List[Row]) -> None:
         r.card_id = card_cache[key]
 
     sql = (
-        "INSERT INTO tradera_sales (\n"
+        "INSERT INTO auctions (\n"
         "    item_id, category_id, end_date, price, bid_count, seller_id, seller_alias,\n"
         "    seller_dsr, title, description, item_url, thumbnail_url, image_urls, attributes, card_id\n"
         ") VALUES (\n"
@@ -699,7 +699,7 @@ def finalize_import_run(
 
 def get_db_watermark_end_date(conn) -> Optional[datetime]:
     with conn.cursor() as cur:
-        cur.execute("SELECT max(end_date) FROM tradera_sales;")
+        cur.execute("SELECT max(end_date) FROM auctions;")
         val = cur.fetchone()[0]
     return val
 

@@ -63,7 +63,8 @@ npm start            # starts Express on http://localhost:8000 serving the built
 
 - `GET /api/health` → `{ ok: true }`
 - `GET /api/sales` → Sample Tradera auction rows consumed by the `/app/sales` table via React Query. When `DATABASE_URL` is set
-  and the `tradera_sales` table contains data, the endpoint automatically serves the live rows instead of the mock payload.
+  and the `auctions` table (or `tradera_sales` compatibility view) contains data, the endpoint automatically serves the live rows
+  instead of the mock payload.
 
 Swap these mocks for production endpoints when the backend is ready and wire Stripe webhooks to update `subscriptionStatus` server-side.
 
@@ -81,7 +82,7 @@ export TRADERA_APP_ID=your_app_id
 export TRADERA_APP_KEY=your_app_key
 export DATABASE_URL=postgres://user:pass@host:5432/db
 
-psql "$DATABASE_URL" -f schema.sql   # create tradera_sales if needed
+psql "$DATABASE_URL" -f schema.sql   # create auctions + auction_enrichment if needed
 python scripts/tradera_importer.py    # imports yesterday's ended auctions
 
 npm start                             # /api/sales now returns the imported rows

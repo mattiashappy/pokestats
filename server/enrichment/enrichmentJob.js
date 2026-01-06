@@ -114,7 +114,7 @@ async function runEnrichmentJob({
   // IMPORTANT: this was previously computed but unused
   const updatedBeforeClause =
     target === 'unlinked'
-      ? `AND COALESCE(updated_at, end_date, 'epoch'::timestamp) < '${startedAt.toISOString()}'`
+      ? `AND COALESCE(ae.updated_at, a.updated_at, a.end_date, 'epoch'::timestamp) < '${startedAt.toISOString()}'`
       : ''
 
   const client = await pool.connect()
@@ -123,7 +123,7 @@ async function runEnrichmentJob({
 
     // Release stuck "processing" rows before counting/claiming
     await client.query(`
-      UPDATE public.tradera_sales
+      UPDATE public.auction_enrichment
       SET match_status = NULL, processing_started_at = NULL
       WHERE match_status = 'processing'
         AND processing_started_at < NOW() - INTERVAL '30 minutes'
@@ -132,13 +132,13 @@ async function runEnrichmentJob({
     const { expansions, cardsBySetCode } = await loadCatalog()
     const cardIndex = await buildDatabaseCardIndex(client)
 
-    const unprocessedClause = "COALESCE(match_status, '') = ''"
+    const unprocessedClause = "COALESCE(ae.match_status, '') = ''"
 
     // FIX: COALESCE(match_status,'') so NULL rows aren't excluded by <> comparison
     const unlinkedClause =
-      "card_id IS NULL " +
-      "AND COALESCE(match_status, '') <> 'Discarded (manual)' " +
-      "AND (match_status IS NULL OR match_status NOT LIKE 'Matched%')"
+      "a.card_id IS NULL " +
+      "AND COALESCE(ae.match_status, '') <> 'Discarded (manual)' " +
+      "AND (ae.match_status IS NULL OR ae.match_status NOT LIKE 'Matched%')"
 
     const baseWhereClause = target === 'unlinked' ? unlinkedClause : unprocessedClause
     const whereClause = `${baseWhereClause} ${updatedBeforeClause}`
@@ -147,7 +147,8 @@ async function runEnrichmentJob({
       rows: [before]
     } = await client.query(`
       SELECT COUNT(*)::int AS count
-      FROM public.tradera_sales
+      FROM public.auctions a
+      LEFT JOIN public.auction_enrichment ae ON ae.item_id = a.item_id
       WHERE ${whereClause}
     `)
 
@@ -159,19 +160,26 @@ async function runEnrichmentJob({
       const claimResult = await client.query(
         `
           WITH batch AS (
-            SELECT item_id
-            FROM public.tradera_sales
+            SELECT a.item_id, a.title, a.description, a.attributes, a.era, a.pokemon_era, a.updated_at, a.end_date
+            FROM public.auctions a
+            LEFT JOIN public.auction_enrichment ae ON ae.item_id = a.item_id
             WHERE ${whereClause}
-              AND COALESCE(match_status, '') <> 'processing'
-            ORDER BY updated_at ASC NULLS FIRST, end_date ASC NULLS LAST, item_id ASC
+              AND COALESCE(ae.match_status, '') <> 'processing'
+            ORDER BY COALESCE(ae.updated_at, a.updated_at, a.end_date) ASC NULLS FIRST, a.end_date ASC NULLS LAST, a.item_id ASC
             LIMIT $1
-            FOR UPDATE SKIP LOCKED
+            FOR UPDATE OF a SKIP LOCKED
+          ), upsert AS (
+            INSERT INTO public.auction_enrichment (item_id, match_status, processing_started_at, updated_at)
+            SELECT item_id, 'processing', NOW(), NOW() FROM batch
+            ON CONFLICT (item_id) DO UPDATE SET
+              match_status = EXCLUDED.match_status,
+              processing_started_at = EXCLUDED.processing_started_at,
+              updated_at = EXCLUDED.updated_at
+            RETURNING item_id
           )
-          UPDATE public.tradera_sales ts
-          SET match_status = 'processing', processing_started_at = NOW(), updated_at = NOW()
+          SELECT b.item_id, b.title, b.description, b.attributes, b.era, b.pokemon_era
           FROM batch b
-          WHERE ts.item_id = b.item_id
-          RETURNING ts.item_id, ts.title, ts.description, ts.attributes, ts.era, ts.pokemon_era
+          JOIN upsert u ON u.item_id = b.item_id
         `,
         [safeLimit]
       )
@@ -255,22 +263,35 @@ async function runEnrichmentJob({
 
       await client.query(
         `
-          UPDATE public.tradera_sales
-          SET
-            match_status = $2,
-            enrich_status = $3,
-            match_confidence = $4,
-            match_confidence_score = $5,
-            matched_set_code = $6,
-            matched_era = $7,
-            parsed_card_no = $8,
-            parsed_number_text = $9,
-            parsed_set_total = $10,
-            card_id = $11,
-            match_debug = $12,
+          INSERT INTO public.auction_enrichment (
+            item_id,
+            match_status,
+            enrich_status,
+            match_confidence,
+            match_confidence_score,
+            matched_set_code,
+            matched_era,
+            parsed_card_no,
+            parsed_number_text,
+            parsed_set_total,
+            match_debug,
+            processing_started_at,
+            updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL, NOW())
+          ON CONFLICT (item_id) DO UPDATE SET
+            match_status = EXCLUDED.match_status,
+            enrich_status = EXCLUDED.enrich_status,
+            match_confidence = EXCLUDED.match_confidence,
+            match_confidence_score = EXCLUDED.match_confidence_score,
+            matched_set_code = EXCLUDED.matched_set_code,
+            matched_era = EXCLUDED.matched_era,
+            parsed_card_no = EXCLUDED.parsed_card_no,
+            parsed_number_text = EXCLUDED.parsed_number_text,
+            parsed_set_total = EXCLUDED.parsed_set_total,
+            match_debug = EXCLUDED.match_debug,
             processing_started_at = NULL,
             updated_at = NOW()
-          WHERE item_id = $1
         `,
         [
           row.item_id,
@@ -287,10 +308,20 @@ async function runEnrichmentJob({
           parsedCardNo,
           match.parsed_number_text || null,
           match.parsed_total_in_set || match.parsed_set_total || null,
-          matchedCardId,
           JSON.stringify(debugPayload)
         ]
       )
+
+      if (matchedCardId) {
+        await client.query(
+          `
+            UPDATE public.auctions
+            SET card_id = $1, updated_at = NOW()
+            WHERE item_id = $2
+          `,
+          [matchedCardId, row.item_id]
+        )
+      }
 
       statusCounts.set(derivedStatus || 'unknown', (statusCounts.get(derivedStatus || 'unknown') || 0) + 1)
 
@@ -304,7 +335,8 @@ async function runEnrichmentJob({
       rows: [after]
     } = await client.query(`
       SELECT COUNT(*)::int AS count
-      FROM public.tradera_sales
+      FROM public.auctions a
+      LEFT JOIN public.auction_enrichment ae ON ae.item_id = a.item_id
       WHERE ${whereClause}
     `)
 

@@ -280,7 +280,7 @@ def upsert_sales(conn, rows: List[Row]) -> None:
         return
 
     sql = """
-    INSERT INTO tradera_sales (
+    INSERT INTO auctions (
         item_id, category_id, end_date, price, bid_count,
         seller_id, seller_alias, title, description,
         item_url, thumbnail_url, image_urls, attributes
