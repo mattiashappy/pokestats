@@ -1276,10 +1276,11 @@ if (pool) {
 // --------------------
 // Frontend
 // --------------------
-const hasDashboardBuild = ensureDashboardBuild()
-if (!hasDashboardBuild) {
-  console.warn('Dashboard build unavailable; frontend responses will show an error until a build succeeds')
+if (!ensureDashboardBuild()) {
+  console.warn('Dashboard build unavailable; frontend responses may be blank until a build succeeds')
 }
+
+app.use(express.static(distPath))
 
 if (hasDashboardBuild) {
   app.use(express.static(distPath))
