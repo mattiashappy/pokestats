@@ -1632,150 +1632,183 @@ app.get('/api/enrichment/summary', async (_req, res) => {
 app.get('/api/enrichment/pending', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
 
-  const ok = await ensureCardInfrastructure()
-  if (!ok) return res.status(500).json({ error: 'Card infrastructure unavailable' })
+  try {
+    const ok = await ensureCardInfrastructure()
+    if (!ok) return res.status(500).json({ error: 'Card infrastructure unavailable' })
 
-  const limit = Math.min(Math.max(Number(req.query.limit ?? 50), 1), 500)
+    await ensureSalesEnrichmentColumnsAvailable()
 
-  const { rows } = await pool.query(
-    `
-      SELECT
-        item_id,
-        end_date,
-        title,
-        category_id,
-        price,
-        bid_count,
-        seller_alias,
-        seller_id,
-        seller_dsr,
-        status,
-        confidence,
-        confidence_score,
-        method,
-        matched_set_code,
-        matched_era,
-        parsed_card_no,
-        parsed_number_text,
-        parsed_card_number,
-        parsed_set_total,
-        processing_started_at,
-        updated_at,
-        item_url,
-        thumbnail_url
-      FROM public.tradera_sales
-      WHERE card_id IS NULL
-        AND COALESCE(status, 'unmatched') = 'unmatched'
-      ORDER BY end_date DESC
-      LIMIT $1
-    `,
-    [limit]
-  )
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 50), 1), 500)
 
-  res.json(rows)
+    const { rows } = await pool.query(
+      `
+        SELECT
+          item_id,
+          end_date,
+          title,
+          category_id,
+          price,
+          bid_count,
+          seller_alias,
+          seller_id,
+          seller_dsr,
+          status,
+          confidence,
+          confidence_score,
+          method,
+          matched_set_code,
+          matched_era,
+          parsed_card_no,
+          parsed_number_text,
+          parsed_card_number,
+          parsed_set_total,
+          processing_started_at,
+          updated_at,
+          item_url,
+          thumbnail_url
+        FROM public.tradera_sales
+        WHERE card_id IS NULL
+          AND COALESCE(status, 'unmatched') = 'unmatched'
+        ORDER BY end_date DESC
+        LIMIT $1
+      `,
+      [limit]
+    )
+
+    res.json(rows)
+  } catch (error) {
+    console.error('Failed to load pending enrichment rows', error)
+    res.status(500).json({ error: 'Failed to load pending enrichment rows' })
+  }
 })
 
 app.get('/api/enrichment/linked', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
 
-  const ok = await ensureCardInfrastructure()
-  if (!ok) return res.status(500).json({ error: 'Card infrastructure unavailable' })
+  try {
+    const ok = await ensureCardInfrastructure()
+    if (!ok) return res.status(500).json({ error: 'Card infrastructure unavailable' })
 
-  await ensureSalesEnrichmentColumnsAvailable()
+    await ensureSalesEnrichmentColumnsAvailable()
 
-  const limit = Math.min(Math.max(Number(req.query.limit ?? 50), 1), 500)
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 50), 1), 500)
 
-  const { rows } = await pool.query(
-    `
-      SELECT
-        s.item_id,
-        s.end_date,
-        s.title,
-        s.category_id,
-        s.price,
-        s.bid_count,
-        s.seller_alias,
-        s.seller_id,
-        s.seller_dsr,
-        s.status,
-        s.confidence,
-        s.confidence_score,
-        s.method,
-        s.matched_set_code,
-        s.matched_era,
-        s.parsed_card_no,
-        s.parsed_number_text,
-        s.parsed_card_number,
-        s.parsed_set_total,
-        s.processing_started_at,
-        s.updated_at,
-        s.item_url,
-        s.thumbnail_url,
-        c.id AS card_id,
-        c.name AS card_name,
-        c.card_number,
-        c.set_code AS card_set_code
-      FROM public.tradera_sales s
-      LEFT JOIN public.cards c ON c.id = s.card_id
-      WHERE s.card_id IS NOT NULL
-      ORDER BY s.updated_at DESC NULLS LAST, s.end_date DESC
-      LIMIT $1
-    `,
-    [limit]
-  )
+    const { rows } = await pool.query(
+      `
+        SELECT
+          s.item_id,
+          s.end_date,
+          s.title,
+          s.category_id,
+          s.price,
+          s.bid_count,
+          s.seller_alias,
+          s.seller_id,
+          s.seller_dsr,
+          s.status,
+          s.confidence,
+          s.confidence_score,
+          s.method,
+          s.matched_set_code,
+          s.matched_era,
+          s.parsed_card_no,
+          s.parsed_number_text,
+          s.parsed_card_number,
+          s.parsed_set_total,
+          s.processing_started_at,
+          s.updated_at,
+          s.item_url,
+          s.thumbnail_url,
+          c.id AS card_id,
+          c.name AS card_name,
+          c.card_number,
+          c.set_code AS card_set_code
+        FROM public.tradera_sales s
+        LEFT JOIN public.cards c ON c.id = s.card_id
+        WHERE s.card_id IS NOT NULL
+        ORDER BY s.updated_at DESC NULLS LAST, s.end_date DESC
+        LIMIT $1
+      `,
+      [limit]
+    )
 
-  res.json(rows)
+    res.json(rows)
+  } catch (error) {
+    console.error('Failed to load linked enrichment rows', error)
+    res.status(500).json({ error: 'Failed to load linked enrichment rows' })
+  }
 })
 
 app.get('/api/enrichment/unmatched', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
-  const limit = Number(req.query.limit ?? 25)
 
-  const { rows } = await pool.query(
-    `
-      SELECT item_id, end_date, title, status, parsed_card_number, parsed_set_total, matched_set_code
-      FROM public.tradera_sales
-      WHERE COALESCE(status, 'unmatched') <> 'matched'
-        AND status <> 'discarded'
-      ORDER BY
-        (matched_set_code IS NOT NULL) DESC,
-        (parsed_card_number IS NOT NULL) DESC,
-        end_date DESC
-      LIMIT $1
-    `,
-    [limit]
-  )
-  res.json(rows)
+  try {
+    const ok = await ensureCardInfrastructure()
+    if (!ok) return res.status(500).json({ error: 'Card infrastructure unavailable' })
+
+    await ensureSalesEnrichmentColumnsAvailable()
+
+    const limit = Number(req.query.limit ?? 25)
+
+    const { rows } = await pool.query(
+      `
+        SELECT item_id, end_date, title, status, parsed_card_number, parsed_set_total, matched_set_code
+        FROM public.tradera_sales
+        WHERE COALESCE(status, 'unmatched') <> 'matched'
+          AND status <> 'discarded'
+        ORDER BY
+          (matched_set_code IS NOT NULL) DESC,
+          (parsed_card_number IS NOT NULL) DESC,
+          end_date DESC
+        LIMIT $1
+      `,
+      [limit]
+    )
+    res.json(rows)
+  } catch (error) {
+    console.error('Failed to load unmatched enrichment rows', error)
+    res.status(500).json({ error: 'Failed to load unmatched enrichment rows' })
+  }
 })
 
 app.get('/api/enrichment/recent', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
-  const limit = Math.min(Math.max(Number(req.query.limit ?? 25), 1), 200)
+  try {
+    const ok = await ensureCardInfrastructure()
+    if (!ok) return res.status(500).json({ error: 'Card infrastructure unavailable' })
 
-  const { rows } = await pool.query(
-    `
-      SELECT
-        s.item_id,
-        s.end_date,
-        s.title,
-        s.status,
-        s.parsed_card_number,
-        s.parsed_set_total,
-        s.matched_set_code,
-        s.card_id,
-        c.name AS card_name,
-        c.card_number,
-        c.set_code AS card_set_code
-      FROM public.tradera_sales s
-      LEFT JOIN public.cards c ON c.id = s.card_id
-      WHERE s.status IS NOT NULL
-      ORDER BY s.updated_at DESC NULLS LAST, s.end_date DESC
-      LIMIT $1
-    `,
-    [limit]
-  )
+    await ensureSalesEnrichmentColumnsAvailable()
 
-  res.json(rows)
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 25), 1), 200)
+
+    const { rows } = await pool.query(
+      `
+        SELECT
+          s.item_id,
+          s.end_date,
+          s.title,
+          s.status,
+          s.parsed_card_number,
+          s.parsed_set_total,
+          s.matched_set_code,
+          s.card_id,
+          c.name AS card_name,
+          c.card_number,
+          c.set_code AS card_set_code
+        FROM public.tradera_sales s
+        LEFT JOIN public.cards c ON c.id = s.card_id
+        WHERE s.status IS NOT NULL
+        ORDER BY s.updated_at DESC NULLS LAST, s.end_date DESC
+        LIMIT $1
+      `,
+      [limit]
+    )
+
+    res.json(rows)
+  } catch (error) {
+    console.error('Failed to load recent enrichment rows', error)
+    res.status(500).json({ error: 'Failed to load recent enrichment rows' })
+  }
 })
 
 app.post('/api/enrichment/manual-match', async (req, res) => {
