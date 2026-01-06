@@ -203,6 +203,7 @@ let enrichmentTableAvailable = false
 let seedingCatalogPromise = null
 let hasCheckedImportRunsTable = false
 let importRunsTableAvailable = false
+let ensureCardInfrastructurePromise = null
 
 async function ensureColumnExists(tableName, columnName, definition) {
   const { rows } = await pool.query(
@@ -465,6 +466,89 @@ async function ensureCardsTableAvailable() {
 
   hasCheckedCardsTable = true
   return cardsTableAvailable
+}
+
+async function ensureCardInfrastructure() {
+  if (!pool) return false
+  if (ensureCardInfrastructurePromise) return ensureCardInfrastructurePromise
+
+  ensureCardInfrastructurePromise = (async () => {
+    try {
+      const [salesReady, expansionsReady, cardsReady] = await Promise.all([
+        ensureSalesTableAvailable(),
+        ensureExpansionsTableAvailable(),
+        ensureCardsTableAvailable()
+      ])
+
+      if (!salesReady || !expansionsReady || !cardsReady) return false
+
+      if (salesReady) {
+        if (!hasCheckedSalesCardColumn) {
+          try {
+            salesCardColumnAvailable = await ensureColumnExists(
+              'auctions',
+              'card_id',
+              'INTEGER REFERENCES public.cards(id)'
+            )
+          } catch (error) {
+            console.error('Failed to ensure auctions.card_id column exists', error)
+            salesCardColumnAvailable = false
+          }
+          hasCheckedSalesCardColumn = true
+        }
+
+        if (!hasCheckedSalesParsedSetCodeColumn) {
+          try {
+            salesParsedSetCodeColumnAvailable = await ensureColumnExists('auctions', 'parsed_set_code', 'TEXT')
+          } catch (error) {
+            console.error('Failed to ensure auctions.parsed_set_code column exists', error)
+            salesParsedSetCodeColumnAvailable = false
+          }
+          hasCheckedSalesParsedSetCodeColumn = true
+        }
+
+        if (salesCardColumnAvailable && !hasEnsuredSalesCardIndex) {
+          try {
+            hasEnsuredSalesCardIndex = await ensureIndexExists('auctions', 'idx_auctions_card_id', '(card_id)')
+          } catch (error) {
+            console.error('Failed to ensure auctions.card_id index exists', error)
+            hasEnsuredSalesCardIndex = false
+          }
+        }
+      }
+
+      const enrichmentReady = await ensureEnrichmentTableAvailable()
+
+      if (enrichmentReady && !hasEnsuredEnrichmentColumns) {
+        const columnResults = await Promise.all([
+          ensureColumnExists('auction_enrichment', 'status', 'TEXT'),
+          ensureColumnExists('auction_enrichment', 'matched_era', 'TEXT'),
+          ensureColumnExists('auction_enrichment', 'matched_set_code', 'TEXT'),
+          ensureColumnExists('auction_enrichment', 'parsed_card_number', 'TEXT'),
+          ensureColumnExists('auction_enrichment', 'parsed_card_name', 'TEXT')
+        ])
+
+        hasEnsuredEnrichmentColumns = columnResults.every(Boolean)
+      }
+
+      if (enrichmentReady && !hasEnsuredEnrichmentIndexes) {
+        const indexResults = await Promise.all([
+          ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_status', '(status)'),
+          ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_matched', '(matched_era, matched_set_code)'),
+          ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_parsed_card_number', '(parsed_card_number)')
+        ])
+
+        hasEnsuredEnrichmentIndexes = indexResults.every(Boolean)
+      }
+
+      return true
+    } catch (error) {
+      console.error('Failed to ensure card infrastructure', error)
+      return false
+    }
+  })()
+
+  return ensureCardInfrastructurePromise
 }
 
 async function fetchAuctionsFromDatabase(filters = {}) {
