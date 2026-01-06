@@ -18,6 +18,27 @@ const app = express()
 const PORT = process.env.PORT || 8000
 const distPath = path.join(__dirname, 'dashboard', 'dist')
 
+function ensureDashboardBuild() {
+  const hasBuildOutput = existsSync(path.join(distPath, 'index.html'))
+  if (hasBuildOutput) return true
+
+  console.warn('Dashboard build output missing; running npm run build --prefix dashboard')
+
+  const { status, error } = spawnSync('npm', ['run', 'build', '--prefix', 'dashboard'], {
+    stdio: 'inherit',
+    env: process.env
+  })
+
+  if (error) {
+    console.error('Failed to execute dashboard build', error)
+    return false
+  }
+
+  const ok = status === 0 && existsSync(path.join(distPath, 'index.html'))
+  if (!ok) console.error('Dashboard build did not produce dist/index.html')
+  return ok
+}
+
 app.use(compression())
 app.use(express.json())
 
@@ -1255,6 +1276,10 @@ if (pool) {
 // --------------------
 // Frontend
 // --------------------
+if (!ensureDashboardBuild()) {
+  console.warn('Dashboard build unavailable; frontend responses may be blank until a build succeeds')
+}
+
 app.use(express.static(distPath))
 
 app.get('*', (_req, res) => {
