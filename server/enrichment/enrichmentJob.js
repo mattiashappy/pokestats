@@ -48,7 +48,7 @@ function deriveParsedName(match) {
   return match?.parsed_name || match?.parsed_card_name || null
 }
 
-async function selectQueue(client, stage, limit) {
+async function selectQueue(client, stage, limit, itemId) {
   const whereByStage = {
     era: `a.card_id IS NULL AND e.status <> 'discarded' AND e.matched_era IS NULL`,
     set: `a.card_id IS NULL AND e.status <> 'discarded' AND e.matched_era IS NOT NULL AND e.matched_set_code IS NULL`,
@@ -64,16 +64,20 @@ async function selectQueue(client, stage, limit) {
   const where = whereByStage[stage]
   if (!where) return []
 
+  const itemFilter = Number.isFinite(itemId) ? ' AND a.item_id = $2' : ''
+  const params = [limit]
+  if (Number.isFinite(itemId)) params.push(itemId)
+
   const { rows } = await client.query(
     `
       SELECT a.item_id, a.title, a.raw, a.card_id, a.end_date, e.*
       FROM public.auctions a
       JOIN public.auction_enrichment e ON e.item_id = a.item_id
-      WHERE ${where}
+      WHERE ${where}${itemFilter}
       ORDER BY a.end_date DESC
       LIMIT $1
     `,
-    [limit]
+    params
   )
 
   return rows
@@ -85,8 +89,8 @@ async function ensureStageDefaults(client) {
   )
 }
 
-async function enrichEra(client, catalog, limit) {
-  const queue = await selectQueue(client, 'era', limit)
+async function enrichEra(client, catalog, limit, itemId) {
+  const queue = await selectQueue(client, 'era', limit, itemId)
   let updated = 0
   let needsReview = 0
 
@@ -117,8 +121,8 @@ async function enrichEra(client, catalog, limit) {
   return { attempted: queue.length, updated, needs_review: needsReview }
 }
 
-async function enrichSet(client, catalog, limit) {
-  const queue = await selectQueue(client, 'set', limit)
+async function enrichSet(client, catalog, limit, itemId) {
+  const queue = await selectQueue(client, 'set', limit, itemId)
   let updated = 0
   let needsReview = 0
 
@@ -150,8 +154,8 @@ async function enrichSet(client, catalog, limit) {
   return { attempted: queue.length, updated, needs_review: needsReview }
 }
 
-async function enrichNumber(client, catalog, limit) {
-  const queue = await selectQueue(client, 'number', limit)
+async function enrichNumber(client, catalog, limit, itemId) {
+  const queue = await selectQueue(client, 'number', limit, itemId)
   let updated = 0
   let needsReview = 0
 
@@ -192,8 +196,8 @@ async function enrichNumber(client, catalog, limit) {
   return { attempted: queue.length, updated, needs_review: needsReview }
 }
 
-async function enrichName(client, catalog, limit) {
-  const queue = await selectQueue(client, 'name', limit)
+async function enrichName(client, catalog, limit, itemId) {
+  const queue = await selectQueue(client, 'name', limit, itemId)
   let updated = 0
   let needsReview = 0
 
@@ -225,8 +229,8 @@ async function enrichName(client, catalog, limit) {
   return { attempted: queue.length, updated, needs_review: needsReview }
 }
 
-async function linkReady(client, catalog, limit) {
-  const queue = await selectQueue(client, 'ready_to_link', limit)
+async function linkReady(client, catalog, limit, itemId) {
+  const queue = await selectQueue(client, 'ready_to_link', limit, itemId)
   let linked = 0
   let needsReview = 0
 
@@ -284,7 +288,7 @@ async function linkReady(client, catalog, limit) {
   return { attempted: queue.length, linked, needs_review: needsReview }
 }
 
-async function runStage(pool, stage, limit = 100) {
+async function runStage(pool, stage, limit = 100, itemId) {
   if (!pool) throw new Error('DATABASE_URL not set')
 
   const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 1000)
@@ -296,16 +300,16 @@ async function runStage(pool, stage, limit = 100) {
 
     switch (stage) {
       case 'era':
-        return { stage, ...(await enrichEra(client, catalog, safeLimit)) }
+        return { stage, ...(await enrichEra(client, catalog, safeLimit, itemId)) }
       case 'set':
-        return { stage, ...(await enrichSet(client, catalog, safeLimit)) }
+        return { stage, ...(await enrichSet(client, catalog, safeLimit, itemId)) }
       case 'number':
-        return { stage, ...(await enrichNumber(client, catalog, safeLimit)) }
+        return { stage, ...(await enrichNumber(client, catalog, safeLimit, itemId)) }
       case 'name':
-        return { stage, ...(await enrichName(client, catalog, safeLimit)) }
+        return { stage, ...(await enrichName(client, catalog, safeLimit, itemId)) }
       case 'link':
       case 'ready_to_link':
-        return { stage: 'link', ...(await linkReady(client, catalog, safeLimit)) }
+        return { stage: 'link', ...(await linkReady(client, catalog, safeLimit, itemId)) }
       default:
         throw new Error(`Unknown stage: ${stage}`)
     }
@@ -314,12 +318,12 @@ async function runStage(pool, stage, limit = 100) {
   }
 }
 
-async function runFullPipeline(pool, limitPerStage = 100) {
+async function runFullPipeline(pool, limitPerStage = 100, itemId) {
   const stages = ['era', 'set', 'number', 'name', 'link']
   const results = []
 
   for (const stage of stages) {
-    const result = await runStage(pool, stage, limitPerStage)
+    const result = await runStage(pool, stage, limitPerStage, itemId)
     results.push(result)
   }
 

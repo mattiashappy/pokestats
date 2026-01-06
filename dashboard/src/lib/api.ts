@@ -74,6 +74,19 @@ export async function runFullPipeline(limitPerStage = 100): Promise<{ ok: boolea
   return res.json()
 }
 
+export async function runEnrichmentForItem(
+  itemId: number
+): Promise<{ ok: boolean; stages: EnrichmentRunResult[]; itemId: number }> {
+  const res = await fetch('/api/enrichment/run-item', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ itemId })
+  })
+
+  if (!res.ok) throw new Error('Failed to run enrichment for item')
+  return res.json()
+}
+
 export type EnrichmentStats = {
   unlinked_total: number
   linked_total: number
@@ -100,6 +113,7 @@ export async function fetchEnrichmentStats(): Promise<EnrichmentStats> {
 export type EnrichmentQueueRow = {
   item_id: number
   title: string | null
+  card_id: number | null
   end_date: string | null
   status: string | null
   stage: string | null

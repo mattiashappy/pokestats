@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { AlertCircle, RefreshCcw, Rocket } from 'lucide-react'
+import { AlertCircle, RefreshCcw } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
@@ -9,15 +9,22 @@ import {
   fetchEnrichmentAudit,
   fetchEnrichmentQueue,
   fetchEnrichmentStats,
-  runEnrichmentStage,
+  runEnrichmentForItem,
   runFullPipeline,
   type EnrichmentQueueRow,
   type EnrichmentStats
 } from '../lib/api'
 
-const STAGES = ['era', 'set', 'number', 'name', 'ready_to_link'] as const
+const STAGE_FILTERS = [
+  { label: 'ERA MISSING', value: 'era' },
+  { label: 'SET MISSING', value: 'set' },
+  { label: 'NUMBER MISSING', value: 'number' },
+  { label: 'NAME MISSING', value: 'name' },
+  { label: 'READY TO LINK', value: 'ready_to_link' },
+  { label: 'LINK', value: 'link' }
+] as const
 
-type StageKey = (typeof STAGES)[number]
+type StageKey = (typeof STAGE_FILTERS)[number]['value']
 
 export function DataEnrichmentPage(): JSX.Element {
   const [stage, setStage] = useState<StageKey>('era')
@@ -30,19 +37,42 @@ export function DataEnrichmentPage(): JSX.Element {
     queryFn: () => fetchEnrichmentQueue(stage, limit)
   })
 
-  const runStageMutation = useMutation({
-    mutationFn: () => runEnrichmentStage(stage, limit),
+  const runAllMutation = useMutation({
+    mutationFn: () => runFullPipeline(limit),
     onSuccess: () => {
       statsQuery.refetch()
       queueQuery.refetch()
     }
   })
 
-  const runAllMutation = useMutation({
-    mutationFn: () => runFullPipeline(limit),
-    onSuccess: () => {
+  const [activeItemId, setActiveItemId] = useState<number | null>(null)
+
+  const runItemMutation = useMutation({
+    mutationFn: (itemId: number) => runEnrichmentForItem(itemId),
+    onMutate: (itemId) => {
+      setActiveItemId(itemId)
+    },
+    onSuccess: (result) => {
       statsQuery.refetch()
       queueQuery.refetch()
+
+      const summary = result?.stages
+        ?.map((stageResult) => {
+          const completed = stageResult.linked ?? stageResult.updated ?? 0
+          const reviewed = stageResult.needs_review ?? 0
+          return `${stageResult.stage}: ${completed} updated, ${reviewed} needs review`
+        })
+        ?.join('\n')
+
+      if (summary) {
+        alert(`Enrichment run for item ${result.itemId} completed:\n${summary}`)
+      }
+    },
+    onError: (error) => {
+      alert(`Failed to enrich item: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    },
+    onSettled: () => {
+      setActiveItemId(null)
     }
   })
 
@@ -85,17 +115,14 @@ export function DataEnrichmentPage(): JSX.Element {
           <p className="text-xs uppercase text-slate-500">Data Enrichment</p>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Staged auction pipeline</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Run ERA → SET → NUMBER → NAME before linking. Rows only advance when their stage succeeds.
+            Enrichment runs ERA → SET → NUMBER → NAME before linking. Rows only advance when their stage succeeds.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button onClick={() => runStageMutation.mutate()} disabled={runStageMutation.isPending}>
-            {runStageMutation.isPending ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
-            {runStageMutation.isPending ? 'Running…' : `Run ${stage.toUpperCase()}`}
-          </Button>
-          <Button variant="outline" onClick={() => runAllMutation.mutate()} disabled={runAllMutation.isPending}>
-            {runAllMutation.isPending ? 'Running full pipeline…' : 'Run full pipeline'}
+          <Button onClick={() => runAllMutation.mutate()} disabled={runAllMutation.isPending}>
+            {runAllMutation.isPending ? <RefreshCcw className="h-4 w-4 animate-spin" /> : null}
+            {runAllMutation.isPending ? 'Running…' : 'Run enrichment'}
           </Button>
         </div>
       </header>
@@ -152,9 +179,9 @@ export function DataEnrichmentPage(): JSX.Element {
               value={stage}
               onChange={(e) => setStage(e.target.value as StageKey)}
             >
-              {STAGES.map((key) => (
-                <option key={key} value={key}>
-                  {key}
+              {STAGE_FILTERS.map((entry) => (
+                <option key={entry.value} value={entry.value}>
+                  {entry.label}
                 </option>
               ))}
             </select>
@@ -182,12 +209,7 @@ export function DataEnrichmentPage(): JSX.Element {
                 <TableRow>
                   <TableHead>ID</TableHead>
                   <TableHead>Title</TableHead>
-                  <TableHead>Stage</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Matched era</TableHead>
-                  <TableHead>Matched set</TableHead>
-                  <TableHead>Number</TableHead>
-                  <TableHead>Name</TableHead>
                   <TableHead>Updated</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -197,17 +219,33 @@ export function DataEnrichmentPage(): JSX.Element {
                   <TableRow key={row.item_id}>
                     <TableCell className="font-mono text-xs">{row.item_id}</TableCell>
                     <TableCell className="min-w-[220px]">{formatText(row.title)}</TableCell>
-                    <TableCell>{formatText(row.stage)}</TableCell>
-                    <TableCell>{formatText(row.status)}</TableCell>
-                    <TableCell>{formatText(row.matched_era)}</TableCell>
-                    <TableCell>{formatText(row.matched_set_code)}</TableCell>
-                    <TableCell>{formatText(row.parsed_card_number)}</TableCell>
-                    <TableCell>{formatText(row.parsed_card_name)}</TableCell>
+                    <TableCell>
+                      <StatusStack
+                        stage={formatText(row.stage)}
+                        status={formatText(row.status)}
+                        steps={[
+                          { label: 'Era', value: formatText(row.matched_era) },
+                          { label: 'Set', value: formatText(row.matched_set_code) },
+                          { label: 'Number', value: formatText(row.parsed_card_number) },
+                          { label: 'Name', value: formatText(row.parsed_card_name) },
+                          { label: 'Card', value: formatCardLink(row) }
+                        ]}
+                      />
+                    </TableCell>
                     <TableCell>{formatDateTime(row.updated_at)}</TableCell>
                     <TableCell>
-                      <Button size="sm" variant="outline" onClick={() => loadAudit(row.item_id)}>
-                        Audit
-                      </Button>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Button
+                          size="sm"
+                          onClick={() => runItemMutation.mutate(row.item_id)}
+                          disabled={runItemMutation.isPending && activeItemId === row.item_id}
+                        >
+                          {runItemMutation.isPending && activeItemId === row.item_id ? 'Enriching…' : 'Enrich'}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => loadAudit(row.item_id)}>
+                          Audit
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -227,4 +265,56 @@ function StageCount({ label, value }: { label: string; value: number }) {
       <p className="text-xl font-semibold text-slate-900 dark:text-slate-50">{value.toLocaleString('sv-SE')}</p>
     </div>
   )
+}
+
+function StatusStack({
+  stage,
+  status,
+  steps
+}: {
+  stage: string
+  status: string
+  steps: { label: string; value: ReactNode }[]
+}) {
+  return (
+    <div className="flex flex-col gap-2 text-xs">
+      <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-slate-500">
+        <span>Stage</span>
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700 dark:bg-slate-800 dark:text-slate-100">
+          {stage}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 gap-1">
+        {steps.map((step) => (
+          <div
+            key={step.label}
+            className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 px-2 py-1 text-slate-700 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-200"
+          >
+            <span className="font-medium text-slate-600 dark:text-slate-300">{step.label}</span>
+            <span className="truncate text-right text-slate-800 dark:text-slate-50">{step.value}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-slate-500">
+        <span>Status</span>
+        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-blue-900/40 dark:text-blue-100">
+          {status}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function formatCardLink(row: { card_id: number | null }) {
+  if (row.card_id) {
+    return (
+      <a href={`/pokemon/cards/${row.card_id}`} className="text-blue-600 hover:underline dark:text-blue-300">
+        View card #{row.card_id}
+      </a>
+    )
+  }
+
+  return '—'
 }
