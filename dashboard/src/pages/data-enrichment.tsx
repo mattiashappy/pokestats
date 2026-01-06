@@ -1,6 +1,6 @@
 import { type ReactNode, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { AlertCircle, RefreshCcw } from 'lucide-react'
+import { AlertCircle, RefreshCcw, Rocket, TestTube } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
@@ -30,6 +30,7 @@ export function DataEnrichmentPage(): JSX.Element {
   const [stage, setStage] = useState<StageKey>('era')
   const [limit, setLimit] = useState(50)
   const [limitInput, setLimitInput] = useState('50')
+  const [activeItemId, setActiveItemId] = useState<number | null>(null)
 
   const statsQuery = useQuery({ queryKey: ['enrichment-stats'], queryFn: fetchEnrichmentStats })
   const queueQuery = useQuery({
@@ -37,16 +38,43 @@ export function DataEnrichmentPage(): JSX.Element {
     queryFn: () => fetchEnrichmentQueue(stage, limit)
   })
 
+  // Run the full pipeline for `limit` items (your backend run-all endpoint processes stages internally)
   const runAllMutation = useMutation({
     mutationFn: () => runFullPipeline(limit),
     onSuccess: () => {
       statsQuery.refetch()
       queueQuery.refetch()
+    },
+    onError: (error) => {
+      alert(`Failed to run full pipeline: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   })
 
-  const [activeItemId, setActiveItemId] = useState<number | null>(null)
+  // Run the full pipeline but only for 1 item (useful for testing)
+  const runSingleMutation = useMutation({
+    mutationFn: () => runFullPipeline(1),
+    onSuccess: (result) => {
+      statsQuery.refetch()
+      queueQuery.refetch()
 
+      const summary = result?.stages
+        ?.map((stageResult) => {
+          const completed = stageResult.linked ?? stageResult.updated ?? 0
+          const reviewed = stageResult.needs_review ?? 0
+          return `${stageResult.stage}: ${completed} updated, ${reviewed} needs review`
+        })
+        ?.join('\n')
+
+      if (summary) {
+        alert(`Single-item enrichment run completed:\n${summary}`)
+      }
+    },
+    onError: (error) => {
+      alert(`Failed to run single-item pipeline: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  })
+
+  // Run enrichment for a specific queue row (item)
   const runItemMutation = useMutation({
     mutationFn: (itemId: number) => runEnrichmentForItem(itemId),
     onMutate: (itemId) => {
@@ -76,9 +104,7 @@ export function DataEnrichmentPage(): JSX.Element {
     }
   })
 
-  const formatDateTime = (value?: string | null) =>
-    value ? new Date(value).toLocaleString('sv-SE') : '—'
-
+  const formatDateTime = (value?: string | null) => (value ? new Date(value).toLocaleString('sv-SE') : '—')
   const formatText = (value?: string | null) => value?.toString().trim() || '—'
 
   const appliedLimit = useMemo(() => {
@@ -115,14 +141,30 @@ export function DataEnrichmentPage(): JSX.Element {
           <p className="text-xs uppercase text-slate-500">Data Enrichment</p>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Staged auction pipeline</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Enrichment runs ERA → SET → NUMBER → NAME before linking. Rows only advance when their stage succeeds.
+            Single enrichment pass runs ERA → SET → NUMBER → NAME before linking. Rows only advance when their stage
+            succeeds.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Keep the stage button for UI context, but it currently runs the full pipeline with the configured limit.
+              If you later add a "run stage" endpoint, you can swap mutationFn here. */}
           <Button onClick={() => runAllMutation.mutate()} disabled={runAllMutation.isPending}>
-            {runAllMutation.isPending ? <RefreshCcw className="h-4 w-4 animate-spin" /> : null}
-            {runAllMutation.isPending ? 'Running…' : 'Run enrichment'}
+            {runAllMutation.isPending ? (
+              <RefreshCcw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Rocket className="h-4 w-4" />
+            )}
+            {runAllMutation.isPending ? 'Running…' : `Run ${stage.toUpperCase()} (${limit})`}
+          </Button>
+
+          <Button variant="secondary" onClick={() => runSingleMutation.mutate()} disabled={runSingleMutation.isPending}>
+            {runSingleMutation.isPending ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <TestTube className="h-4 w-4" />}
+            {runSingleMutation.isPending ? 'Running one…' : 'Run one item'}
+          </Button>
+
+          <Button variant="outline" onClick={() => runAllMutation.mutate()} disabled={runAllMutation.isPending}>
+            {runAllMutation.isPending ? 'Running full pipeline…' : 'Run full pipeline'}
           </Button>
         </div>
       </header>
@@ -168,10 +210,9 @@ export function DataEnrichmentPage(): JSX.Element {
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
             <CardTitle>Stage queue</CardTitle>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              View and audit rows currently eligible for a given stage.
-            </p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">View and audit rows currently eligible for a given stage.</p>
           </div>
+
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <label className="text-[11px] uppercase tracking-wide text-slate-500">Stage</label>
             <select
@@ -185,6 +226,7 @@ export function DataEnrichmentPage(): JSX.Element {
                 </option>
               ))}
             </select>
+
             <label className="text-[11px] uppercase tracking-wide text-slate-500">Limit</label>
             <Input
               className="h-9 w-24"
@@ -194,14 +236,17 @@ export function DataEnrichmentPage(): JSX.Element {
               value={limitInput}
               onChange={(e) => setLimitInput(e.target.value)}
             />
+
             <Button size="sm" variant="outline" onClick={applyLimit}>
               Apply
             </Button>
+
             <Button size="sm" variant="ghost" onClick={() => queueQuery.refetch()} disabled={queueQuery.isFetching}>
               Refresh
             </Button>
           </div>
         </CardHeader>
+
         <CardContent className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
           <div className="overflow-x-auto">
             <Table>
@@ -214,6 +259,7 @@ export function DataEnrichmentPage(): JSX.Element {
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
+
               <TableBody>
                 {queueRows.map((row) => (
                   <TableRow key={row.item_id}>
@@ -249,6 +295,14 @@ export function DataEnrichmentPage(): JSX.Element {
                     </TableCell>
                   </TableRow>
                 ))}
+
+                {queueRows.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-8 text-center text-sm text-slate-500">
+                      No rows available for this stage.
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>
