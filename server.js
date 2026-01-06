@@ -2,7 +2,8 @@
 const express = require('express')
 const compression = require('compression')
 const path = require('path')
-const { spawn } = require('child_process')
+const { existsSync } = require('fs')
+const { spawn, spawnSync } = require('child_process')
 const { Pool } = require('pg')
 const crypto = require('crypto')
 const mockAuctions = require('./server/mock-auctions.json')
@@ -22,6 +23,7 @@ app.use(express.json())
 
 const DATABASE_URL = process.env.DATABASE_URL
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
+const PYTHON_BIN = process.env.PYTHON_BIN || 'python'
 
 // --------------------
 // Card metadata overrides
@@ -975,9 +977,29 @@ function extractImporterError(stdout, stderr) {
   return null
 }
 
+function ensureImporterRuntime() {
+  const scriptPath = path.join(__dirname, 'scripts', 'tradera_importer.py')
+
+  if (!existsSync(scriptPath)) {
+    throw new Error(`Importer script missing at ${scriptPath}`)
+  }
+
+  const { error } = spawnSync(PYTHON_BIN, ['--version'], {
+    cwd: __dirname,
+    env: process.env
+  })
+
+  if (error) {
+    throw new Error(`Python runtime not available (tried "${PYTHON_BIN}")`)
+  }
+
+  return scriptPath
+}
+
 function runImporterScript(runUuid) {
   return new Promise((resolve, reject) => {
-    const child = spawn('python', ['scripts/tradera_importer.py'], {
+    const scriptPath = ensureImporterRuntime()
+    const child = spawn(PYTHON_BIN, [scriptPath], {
       cwd: __dirname,
       env: { ...process.env, IMPORT_RUN_UUID: runUuid },
       shell: false

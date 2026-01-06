@@ -70,7 +70,7 @@ Swap these mocks for production endpoints when the backend is ready and wire Str
 ## Importing real Tradera data
 
 The repo includes `scripts/tradera_importer.py`, a Python job that pulls ended auctions from Tradera’s SOAP API into PostgreSQL.
-You can run it locally to validate credentials and exercise the UI with live rows:
+The Express API now checks for the Python runtime before spawning the job, so set `PYTHON_BIN` if your environment uses a non-default interpreter (for example, `python3`). You can run it locally to validate credentials and exercise the UI with live rows:
 
 ```bash
 python -m venv .venv
