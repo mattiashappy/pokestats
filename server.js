@@ -18,6 +18,42 @@ const app = express()
 const PORT = process.env.PORT || 8000
 const distPath = path.join(__dirname, 'dashboard', 'dist')
 
+let ensureDashboardBuildResult = null
+
+function ensureDashboardBuild() {
+  if (ensureDashboardBuildResult !== null) return ensureDashboardBuildResult
+
+  const hasBuildOutput = existsSync(path.join(distPath, 'index.html'))
+  if (hasBuildOutput) {
+    ensureDashboardBuildResult = true
+    return true
+  }
+
+  console.warn('Dashboard build output missing. Attempting a one-time runtime build so dist assets are available.')
+
+  try {
+    const { status } = spawnSync('npm', ['run', 'build', '--prefix', 'dashboard'], {
+      cwd: __dirname,
+      stdio: 'inherit',
+      env: process.env
+    })
+
+    ensureDashboardBuildResult = status === 0 && existsSync(path.join(distPath, 'index.html'))
+
+    if (ensureDashboardBuildResult) {
+      console.info('Dashboard build completed at runtime.')
+      return true
+    }
+
+    console.error('Runtime dashboard build failed or did not produce dist/index.html')
+    return false
+  } catch (error) {
+    console.error('Dashboard runtime build threw an error', error)
+    ensureDashboardBuildResult = false
+    return false
+  }
+}
+
 app.use(compression())
 app.use(express.json())
 
@@ -203,6 +239,7 @@ let enrichmentTableAvailable = false
 let seedingCatalogPromise = null
 let hasCheckedImportRunsTable = false
 let importRunsTableAvailable = false
+let ensureCardInfrastructurePromise = null
 
 async function ensureColumnExists(tableName, columnName, definition) {
   const { rows } = await pool.query(
@@ -465,6 +502,89 @@ async function ensureCardsTableAvailable() {
 
   hasCheckedCardsTable = true
   return cardsTableAvailable
+}
+
+async function ensureCardInfrastructure() {
+  if (!pool) return false
+  if (ensureCardInfrastructurePromise) return ensureCardInfrastructurePromise
+
+  ensureCardInfrastructurePromise = (async () => {
+    try {
+      const [salesReady, expansionsReady, cardsReady] = await Promise.all([
+        ensureSalesTableAvailable(),
+        ensureExpansionsTableAvailable(),
+        ensureCardsTableAvailable()
+      ])
+
+      if (!salesReady || !expansionsReady || !cardsReady) return false
+
+      if (salesReady) {
+        if (!hasCheckedSalesCardColumn) {
+          try {
+            salesCardColumnAvailable = await ensureColumnExists(
+              'auctions',
+              'card_id',
+              'INTEGER REFERENCES public.cards(id)'
+            )
+          } catch (error) {
+            console.error('Failed to ensure auctions.card_id column exists', error)
+            salesCardColumnAvailable = false
+          }
+          hasCheckedSalesCardColumn = true
+        }
+
+        if (!hasCheckedSalesParsedSetCodeColumn) {
+          try {
+            salesParsedSetCodeColumnAvailable = await ensureColumnExists('auctions', 'parsed_set_code', 'TEXT')
+          } catch (error) {
+            console.error('Failed to ensure auctions.parsed_set_code column exists', error)
+            salesParsedSetCodeColumnAvailable = false
+          }
+          hasCheckedSalesParsedSetCodeColumn = true
+        }
+
+        if (salesCardColumnAvailable && !hasEnsuredSalesCardIndex) {
+          try {
+            hasEnsuredSalesCardIndex = await ensureIndexExists('auctions', 'idx_auctions_card_id', '(card_id)')
+          } catch (error) {
+            console.error('Failed to ensure auctions.card_id index exists', error)
+            hasEnsuredSalesCardIndex = false
+          }
+        }
+      }
+
+      const enrichmentReady = await ensureEnrichmentTableAvailable()
+
+      if (enrichmentReady && !hasEnsuredEnrichmentColumns) {
+        const columnResults = await Promise.all([
+          ensureColumnExists('auction_enrichment', 'status', 'TEXT'),
+          ensureColumnExists('auction_enrichment', 'matched_era', 'TEXT'),
+          ensureColumnExists('auction_enrichment', 'matched_set_code', 'TEXT'),
+          ensureColumnExists('auction_enrichment', 'parsed_card_number', 'TEXT'),
+          ensureColumnExists('auction_enrichment', 'parsed_card_name', 'TEXT')
+        ])
+
+        hasEnsuredEnrichmentColumns = columnResults.every(Boolean)
+      }
+
+      if (enrichmentReady && !hasEnsuredEnrichmentIndexes) {
+        const indexResults = await Promise.all([
+          ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_status', '(status)'),
+          ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_matched', '(matched_era, matched_set_code)'),
+          ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_parsed_card_number', '(parsed_card_number)')
+        ])
+
+        hasEnsuredEnrichmentIndexes = indexResults.every(Boolean)
+      }
+
+      return true
+    } catch (error) {
+      console.error('Failed to ensure card infrastructure', error)
+      return false
+    }
+  })()
+
+  return ensureCardInfrastructurePromise
 }
 
 async function fetchAuctionsFromDatabase(filters = {}) {
@@ -1171,11 +1291,22 @@ if (pool) {
 // --------------------
 // Frontend
 // --------------------
-app.use(express.static(distPath))
+const hasDashboardBuild = ensureDashboardBuild()
+if (!hasDashboardBuild) {
+  console.warn('Dashboard build unavailable; frontend responses will show an error until a build succeeds')
+}
 
-app.get('*', (_req, res) => {
-  res.sendFile(path.join(distPath, 'index.html'))
-})
+if (hasDashboardBuild) {
+  app.use(express.static(distPath))
+
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'))
+  })
+} else {
+  app.get('*', (_req, res) => {
+    res.status(503).send('Dashboard build missing. Run `npm run build --prefix dashboard` and redeploy the app.')
+  })
+}
 
 if (require.main === module) {
   app.listen(PORT, () => {

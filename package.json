@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "postinstall": "npm install --prefix dashboard --include=dev",
+    "heroku-postbuild": "npm run build --prefix dashboard",
     "build": "npm run build --prefix dashboard",
     "start": "node server.js",
     "enrich": "node scripts/run_enrichment_job.js",
