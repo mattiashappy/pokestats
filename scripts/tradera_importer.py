@@ -470,6 +470,14 @@ def normalize_card_value(value: Optional[str]) -> str:
     return " ".join(value.strip().lower().split()) or "unknown"
 
 
+def is_unknown(value: Optional[str]) -> bool:
+    if value is None:
+        return True
+
+    lowered = str(value).strip().lower()
+    return not lowered or lowered == "unknown" or lowered.startswith("unknown-")
+
+
 def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
     """
     Pulls card-ish metadata out of attributes when present.
@@ -517,55 +525,29 @@ def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
     }
 
 
-def ensure_card(conn, payload: Dict[str, Optional[str]]) -> int:
+def lookup_card_id(conn, payload: Dict[str, Optional[str]]) -> Optional[int]:
     """
-    Upsert a card and return id.
-    Tries ON CONFLICT (set_code, card_number). If constraint/index missing, fallback.
+    Match an auction payload to an existing catalog card.
+    Unknown placeholders should never create new cards.
     """
+    set_code = payload.get("set_code")
+    card_number = payload.get("card_number")
+
+    if is_unknown(set_code) or is_unknown(card_number):
+        return None
+
     with conn.cursor() as cur:
-        try:
-            cur.execute(
-                """
-                INSERT INTO cards (name, era, set_name, set_code, card_number, expansion_id)
-                VALUES (%(name)s, %(era)s, %(set_name)s, %(set_code)s, %(card_number)s, NULL)
-                ON CONFLICT (set_code, card_number) DO UPDATE SET
-                    name        = COALESCE(cards.name, EXCLUDED.name),
-                    era         = COALESCE(cards.era, EXCLUDED.era),
-                    set_name    = COALESCE(cards.set_name, EXCLUDED.set_name),
-                    set_code    = COALESCE(cards.set_code, EXCLUDED.set_code),
-                    card_number = COALESCE(cards.card_number, EXCLUDED.card_number)
-                RETURNING id;
-                """,
-                payload,
-            )
-            row = cur.fetchone()
-            return int(row[0])
-
-        except psycopg2.Error:
-            # Fallback: select then insert (no ON CONFLICT target)
-            cur.execute(
-                """
-                SELECT id
-                FROM cards
-                WHERE set_code = %(set_code)s AND card_number = %(card_number)s
-                LIMIT 1;
-                """,
-                payload,
-            )
-            found = cur.fetchone()
-            if found:
-                return int(found[0])
-
-            cur.execute(
-                """
-                INSERT INTO cards (name, era, set_name, set_code, card_number, expansion_id)
-                VALUES (%(name)s, %(era)s, %(set_name)s, %(set_code)s, %(card_number)s, NULL)
-                RETURNING id;
-                """,
-                payload,
-            )
-            row = cur.fetchone()
-            return int(row[0])
+        cur.execute(
+            """
+            SELECT id
+            FROM cards
+            WHERE LOWER(set_code) = LOWER(%(set_code)s) AND card_number = %(card_number)s
+            LIMIT 1;
+            """,
+            payload,
+        )
+        found = cur.fetchone()
+        return int(found[0]) if found else None
 
 
 # -----------------------------
@@ -576,8 +558,8 @@ def upsert_sales(conn, rows: List[Row]) -> None:
     if not rows:
         return
 
-    # Cache by the SAME uniqueness used by ensure_card: (set_code, card_number)
-    card_cache: Dict[Tuple[str, str], int] = {}
+    # Cache lookups by the SAME uniqueness as the catalog: (set_code, card_number)
+    card_cache: Dict[Tuple[str, str], Optional[int]] = {}
 
     for r in rows:
         payload = extract_card_payload(r)
@@ -586,7 +568,7 @@ def upsert_sales(conn, rows: List[Row]) -> None:
         key = (set_code, card_number)
 
         if key not in card_cache:
-            card_cache[key] = ensure_card(conn, payload)
+            card_cache[key] = lookup_card_id(conn, payload)
         r.card_id = card_cache[key]
 
     sql = (
