@@ -13,14 +13,6 @@ const { seedCatalog } = require('./server/catalog/catalogSeeder')
 
 const { runEnrichmentJob: runEnrichmentJobCore } = require('./server/enrichment/enrichmentJob')
 
-// ✅ Needed by tryAutoMatchAuction (even if currently unused elsewhere)
-const {
-  resolveAuctionMatch,
-  parseCardNumber,
-  parseSetHint,
-  parseCardName
-} = require('./server/enrichment/numberFirstMatcher')
-
 const app = express()
 const PORT = process.env.PORT || 8000
 const distPath = path.join(__dirname, 'dashboard', 'dist')
@@ -190,17 +182,6 @@ const { registerRoutes: registerExpansionRoutes } = createExpansionService({
   getStaticExpansionSummaries
 })
 
-const MATCH_CONFIDENCE_LEVELS = ['high', 'medium', 'low']
-const MATCH_METHODS = [
-  'number_first',
-  'number_first_tiebreak',
-  'auto:number+set',
-  'auto:number+name+era',
-  'manual',
-  'image_only',
-  'unmatched'
-]
-
 let hasCheckedSalesTable = false
 let salesTableAvailable = false
 let hasCheckedCardsTable = false
@@ -211,7 +192,6 @@ let hasCheckedSalesCardColumn = false
 let salesCardColumnAvailable = false
 let hasCheckedSalesParsedSetCodeColumn = false
 let salesParsedSetCodeColumnAvailable = false
-let hasBackfilledSalesCards = false
 let hasEnsuredSalesCardIndex = false
 let hasEnsuredEnrichmentColumns = false
 let hasEnsuredEnrichmentIndexes = false
@@ -219,19 +199,6 @@ let hasSeededStaticCatalog = false
 let seedingCatalogPromise = null
 let hasCheckedImportRunsTable = false
 let importRunsTableAvailable = false
-
-async function findExpansionByCode(setCode) {
-  if (!pool) return null
-  if (!setCode) return null
-
-  const trimmed = String(setCode || '').trim()
-  if (!trimmed) return null
-
-  const { rows } = await pool.query('SELECT id, name, era, set_code FROM public.expansions WHERE set_code = $1', [
-    trimmed
-  ])
-  return rows[0] || null
-}
 
 async function ensureColumnExists(tableName, columnName, definition) {
   const { rows } = await pool.query(
@@ -655,30 +622,6 @@ async function ensureCardInfrastructure() {
   return true
 }
 
-// --------------------
-// Linking helpers
-// --------------------
-function normalizeEra(value) {
-  if (!value) return null
-  return value
-    .toString()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-}
-
-function extractEraHint(row) {
-  const directEra = row?.pokemon_era || row?.era
-  const attributeEra = row?.attributes?.pokemon_era
-
-  if (Array.isArray(attributeEra) && attributeEra.length > 0) return attributeEra[0]
-  if (typeof attributeEra === 'string') return attributeEra
-  return directEra || null
-}
-
-let cachedExpansions = null
-let lastExpansionFetch = 0
-
 async function ensureStaticCatalogSeeded() {
   if (!pool) return false
   if (hasSeededStaticCatalog) return true
@@ -775,8 +718,6 @@ async function ensureStaticCatalogSeeded() {
       }
 
       await client.query('COMMIT')
-      cachedExpansions = null
-      lastExpansionFetch = 0
       hasSeededStaticCatalog = true
       return true
     } catch (error) {
@@ -791,85 +732,6 @@ async function ensureStaticCatalogSeeded() {
   })()
 
   return seedingCatalogPromise
-}
-
-async function fetchCachedExpansions(_db) {
-  const now = Date.now()
-  if (cachedExpansions && now - lastExpansionFetch < 60_000) return cachedExpansions
-
-  cachedExpansions = await loadCatalog()
-  lastExpansionFetch = now
-  return cachedExpansions
-}
-
-function filterCandidateExpansions(expansions, { eraHint = null, setHint = null } = {}) {
-  const eraNorm = normalizeEra(eraHint)
-  const setNorm = normalizeEra(setHint)
-
-  return expansions.filter((expansion) => {
-    const expansionEra = normalizeEra(expansion.era)
-    const expansionName = normalizeEra(expansion.name)
-    const expansionCode = normalizeEra(expansion.set_code)
-
-    const eraMatches = !eraNorm || (expansionEra && expansionEra.includes(eraNorm))
-    const setMatches =
-      !setNorm ||
-      (expansionCode && expansionCode.includes(setNorm)) ||
-      (expansionName && expansionName.includes(setNorm))
-
-    return eraMatches && setMatches
-  })
-}
-
-// NOTE: intentionally no-op now (avoid noisy "unknown" cards)
-async function ensureMissingSalesAreLinkedToCards() {
-  hasBackfilledSalesCards = true
-}
-
-// --------------------
-// Query helpers
-// --------------------
-function normalizeMatchConfidence(value) {
-  if (!value) return null
-  const v = String(value).toLowerCase()
-  if (MATCH_CONFIDENCE_LEVELS.includes(v)) return v
-  if (v === 'unmatched') return 'unmatched'
-  return null
-}
-
-function normalizeMatchMethod(value) {
-  if (!value) return null
-  const v = String(value).toLowerCase()
-  const found = MATCH_METHODS.find((m) => m.toLowerCase() === v)
-  return found ?? null
-}
-
-function buildCardPreview(row) {
-  if (!row.card_id) return null
-  return {
-    id: row.card_id,
-    name: row.card_name,
-    set_code: row.card_set_code,
-    set_name: row.card_set_name,
-    card_number: row.card_number,
-    image_url: row.card_image_url
-  }
-}
-
-function buildAuctionWithCard(row) {
-  const card = buildCardPreview(row)
-  const { card_name, card_set_code, card_set_name, card_number, card_image_url, ...rest } = row
-
-  return {
-    ...rest,
-    parsed_set_candidates: row.parsed_set_candidates || [],
-    parsed_set_guess: row.parsed_set_guess || null,
-    parsed_set_confidence: row.parsed_set_confidence || null,
-    parsed_total_in_set: row.parsed_total_in_set ?? rest.parsed_total_in_set ?? null,
-    suggested_cards: row.suggested_cards || [],
-    enrich_notes: row.enrich_notes || null,
-    card
-  }
 }
 
 function normalizeAuctionRow(row) {
@@ -940,8 +802,6 @@ async function fetchAuctionsFromDatabase(filters = {}) {
   if (!pool) return []
   const ok = await ensureCardInfrastructure()
   if (!ok) return []
-
-  await ensureMissingSalesAreLinkedToCards()
 
   const {
     era = null,
@@ -1055,42 +915,6 @@ async function fetchCard(cardId) {
   return applyCardOverrides(result.rows[0])
 }
 
-async function createCard({ name, set_name, set_code = null, card_number = null, image_url = null, era = null }) {
-  if (!pool) return null
-  const ok = await ensureCardInfrastructure()
-  if (!ok) return null
-
-  const trimmedName = String(name || '').trim()
-  const trimmedSetName = String(set_name || '').trim()
-  const trimmedSetCode = set_code ? String(set_code).trim() : null
-  const trimmedCardNumber = card_number ? String(card_number).trim() : null
-  const trimmedEra = era ? String(era).trim() : null
-  const safeImageUrl = image_url ? String(image_url).trim() : null
-
-  if (!trimmedName || !trimmedSetName) throw new Error('name and set_name are required')
-
-  const expansion = trimmedSetCode ? await findExpansionByCode(trimmedSetCode) : null
-
-  const insertSql = `
-    INSERT INTO public.cards (name, set_name, set_code, card_number, image_url, era, expansion_id)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
-    RETURNING id
-  `
-
-  const { rows } = await pool.query(insertSql, [
-    trimmedName,
-    trimmedSetName,
-    trimmedSetCode,
-    trimmedCardNumber,
-    safeImageUrl,
-    trimmedEra || expansion?.era || null,
-    expansion?.id || null
-  ])
-
-  if (!rows.length) return null
-  return fetchCard(rows[0].id)
-}
-
 async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
   if (!pool) return []
   const ok = await ensureCardInfrastructure()
@@ -1126,184 +950,6 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
   return result.rows.map(normalizeAuctionRow)
 }
 
-async function fetchEnrichmentAuctions({
-  linkedOnly = null,
-  confidence = null,
-  q = null,
-  hasImage = null,
-  page = 1,
-  pageSize = 50,
-  startDate = null,
-  endDate = null
-} = {}) {
-  if (!pool) return { items: [], total: 0, page: 1, pageSize: 50 }
-  const ok = await ensureCardInfrastructure()
-  if (!ok) return { items: [], total: 0, page: 1, pageSize: 50 }
-
-  const where = []
-  const params = []
-
-  if (linkedOnly === true) where.push('ts.card_id IS NOT NULL')
-  else if (linkedOnly === false) where.push('ts.card_id IS NULL')
-
-  const normalizedConfidence = normalizeMatchConfidence(confidence)
-  if (normalizedConfidence === 'unmatched') {
-    where.push(`(ts.match_method = $1 OR (ts.card_id IS NULL AND ts.match_confidence IS NULL))`)
-    params.push('unmatched')
-  } else if (normalizedConfidence) {
-    params.push(normalizedConfidence)
-    where.push(`ts.match_confidence = $${params.length}`)
-  }
-
-  if (q) {
-    params.push(`%${q}%`)
-    const idx = params.length
-    where.push(
-      `(ts.title ILIKE $${idx} OR ts.description ILIKE $${idx} OR ts.item_url ILIKE $${idx} OR ts.seller_alias ILIKE $${idx})`
-    )
-  }
-
-  if (hasImage === true) {
-    where.push('(ts.thumbnail_url IS NOT NULL OR (ts.image_urls IS NOT NULL AND jsonb_array_length(ts.image_urls) > 0))')
-  }
-
-  if (startDate) {
-    params.push(startDate)
-    where.push(`ts.end_date >= $${params.length}`)
-  }
-
-  if (endDate) {
-    params.push(endDate)
-    where.push(`ts.end_date <= $${params.length}`)
-  }
-
-  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  const limit = Math.max(1, Math.min(Number(pageSize) || 50, 200))
-  const offset = Math.max(0, (Number(page) - 1 || 0) * limit)
-
-  const baseSelect = `
-    FROM public.tradera_sales ts
-    LEFT JOIN public.cards c ON c.id = ts.card_id
-    LEFT JOIN public.expansions e ON e.id = c.expansion_id
-    ${whereClause}
-  `
-
-  const { rows: countRows } = await pool.query(`SELECT COUNT(*)::int AS total ${baseSelect}`, params)
-  const total = countRows[0]?.total ?? 0
-
-  params.push(limit)
-  params.push(offset)
-
-  const itemsQuery = `
-    SELECT
-      ts.*,
-      c.name AS card_name,
-      c.card_number AS card_number,
-      c.image_url AS card_image_url,
-      COALESCE(e.set_code, c.set_code) AS card_set_code,
-      COALESCE(e.name, c.set_name) AS card_set_name
-    ${baseSelect}
-    ORDER BY ts.end_date DESC, ts.updated_at DESC
-    LIMIT $${params.length - 1}
-    OFFSET $${params.length}
-  `
-
-  const { rows } = await pool.query(itemsQuery, params)
-  return { items: rows.map(buildAuctionWithCard), total, page: Number(page) || 1, pageSize: limit }
-}
-
-async function fetchEnrichmentAuctionById(id) {
-  if (!pool) return null
-  const ok = await ensureCardInfrastructure()
-  if (!ok) return null
-
-  const { rows } = await pool.query(
-    `
-      SELECT
-        ts.*,
-        c.name AS card_name,
-        c.card_number AS card_number,
-        c.image_url AS card_image_url,
-        COALESCE(e.set_code, c.set_code) AS card_set_code,
-        COALESCE(e.name, c.set_name) AS card_set_name
-      FROM public.tradera_sales ts
-      LEFT JOIN public.cards c ON c.id = ts.card_id
-      LEFT JOIN public.expansions e ON e.id = c.expansion_id
-      WHERE ts.item_id = $1
-      LIMIT 1
-    `,
-    [id]
-  )
-
-  if (!rows.length) return null
-  return buildAuctionWithCard(rows[0])
-}
-
-async function searchCards(q, expansionId = null) {
-  if (!pool) return []
-  const ok = await ensureCardInfrastructure()
-  if (!ok) return []
-
-  const term = `%${q}%`
-  const params = [term, term, term, term]
-  const clauses = [
-    '(c.name ILIKE $1 OR c.card_number ILIKE $2 OR COALESCE(e.name, c.set_name) ILIKE $3 OR COALESCE(e.set_code, c.set_code) ILIKE $4)'
-  ]
-
-  if (expansionId) {
-    params.push(expansionId)
-    clauses.push(`c.expansion_id = $${params.length}`)
-  }
-
-  const { rows } = await pool.query(
-    `
-      SELECT
-        c.id,
-        c.name,
-        COALESCE(e.set_code, c.set_code) AS set_code,
-        COALESCE(e.name, c.set_name) AS set_name,
-        c.card_number,
-        c.image_url
-      FROM public.cards c
-      LEFT JOIN public.expansions e ON e.id = c.expansion_id
-      WHERE ${clauses.join(' AND ')}
-      ORDER BY c.name ASC
-      LIMIT 50
-    `,
-    params
-  )
-
-  return rows
-}
-
-async function tryAutoMatchAuction(client, row, parsedOverride = null) {
-  const text = `${row.title || ''} ${row.description || ''}`
-  const { expansions, cardsBySetCode } = await fetchCachedExpansions(client)
-  const updateFields = await resolveAuctionMatch(client, row, expansions, cardsBySetCode)
-
-  return {
-    parsed_name: updateFields.parsed_name ?? parsedOverride?.parsed_name ?? parseCardName(text),
-    parsed_card_number:
-      updateFields.parsed_card_number ??
-      parsedOverride?.parsed_card_number ??
-      parseCardNumber(text).cardNumber,
-    parsed_total_in_set:
-      updateFields.parsed_total_in_set ??
-      parsedOverride?.parsed_total_in_set ??
-      parseCardNumber(text).denominator,
-    parsed_set_hint: updateFields.parsed_set_hint ?? parsedOverride?.parsed_set_hint ?? parseSetHint(text),
-    parsed_set_guess: updateFields.parsed_set_guess ?? null,
-    parsed_set_confidence: updateFields.parsed_set_confidence ?? null,
-    parsed_set_candidates: updateFields.parsed_set_candidates ?? [],
-    suggested_cards: updateFields.suggested_cards ?? [],
-    enrich_notes: updateFields.enrich_notes ?? null,
-    match_method: updateFields.match_method,
-    match_confidence: updateFields.match_confidence,
-    card_id: updateFields.card_id,
-    collision_candidates: updateFields.collision_candidates || []
-  }
-}
-
 function extractImporterError(stdout, stderr) {
   const lines = `${stdout}\n${stderr}`
     .split('\n')
@@ -1316,7 +962,7 @@ function extractImporterError(stdout, stderr) {
       const parsed = JSON.parse(line)
       if (parsed?.error) return parsed.error
       if (parsed?.message) return parsed.message
-    } catch (_err) {
+    } catch {
       // not JSON
     }
 
