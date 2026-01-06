@@ -13,6 +13,34 @@ Enrichment status is derived/computed and stored in `auction_enrichment.status`.
 
 ## Tables
 
+### `cards` (catalog)
+Purpose: canonical card metadata.
+
+Columns:
+
+- `id SERIAL PRIMARY KEY`
+- `name TEXT NOT NULL`
+- `era TEXT NULL`
+- `set_name TEXT NOT NULL`
+- `set_code TEXT NOT NULL`
+- `set_total INT NULL`
+- `card_number TEXT NOT NULL`
+- `source TEXT DEFAULT 'enrichment'`
+- `image_url TEXT NULL`
+- `product_details TEXT NULL`
+- `expansion_id INT NULL REFERENCES expansions(id)`
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`
+
+Constraints and indexes:
+
+- Unique pairs on `(expansion_id, card_number)` and `(set_code, card_number)` (plus partial unique indexes to enforce the same when values are present)
+- `idx_cards_set_code`, `idx_cards_card_number`, `idx_cards_name`, `idx_cards_set_name`, `idx_cards_set_cardnumber`
+- `cards_no_unknown_placeholders` prevents `set_name`, `card_number`, and `set_code` from being `unknown` / `unknown-*`
+
+Write rules:
+
+- Enrichment/importers own writes; app treats this as read-mostly metadata.
+
 ### `auctions` (source of truth)
 Purpose: store auction records; minimal stable schema.
 
@@ -29,6 +57,7 @@ Columns:
 - `item_url TEXT NULL`
 - `thumbnail_url TEXT NULL`
 - `card_id INT NULL REFERENCES cards(id)`
+- `parsed_set_code TEXT NULL`
 - `raw JSONB NULL` (misc extra payload; do not add columns unless truly needed)
 - `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`
 - `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`
@@ -40,6 +69,7 @@ Indexes:
 - `idx_auctions_end_date_desc (end_date DESC)`
 - `idx_auctions_updated_at_desc (updated_at DESC)`
 - `idx_auctions_unlinked_end_date (end_date DESC) WHERE card_id IS NULL`
+- `idx_auctions_unlinked_recent (end_date DESC) WHERE card_id IS NULL`
 
 Write rules:
 
@@ -61,12 +91,17 @@ Columns:
 - `parsed_card_number TEXT NULL`
 - `parsed_number_text TEXT NULL`
 - `parsed_set_hint TEXT NULL`
+- `parsed_card_name TEXT NULL`
 - `suggested_cards JSONB NULL` (optional UI helper)
 - `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`
+- `stage TEXT NOT NULL DEFAULT 'era'`
 
-Index:
+Indexes:
 
 - `idx_auction_enrichment_status (status)`
+- `idx_auction_enrichment_stage (stage)`
+- `idx_auction_enrichment_matched (matched_era, matched_set_code)`
+- `idx_auction_enrichment_parsed_card_number (parsed_card_number)`
 
 Write rules:
 
@@ -80,19 +115,19 @@ Read-only. Do not write.
 
 Definition (must match DB): joins `auctions` + `auction_enrichment` and exposes selected columns used by the app.
 
-Columns exposed: `item_id, category_id, end_date, price, bid_count, seller_id, seller_alias, title, item_url, thumbnail_url, card_id, enrich_status, match_confidence_score, match_method, matched_set_code, matched_era, parsed_card_number, parsed_number_text, parsed_set_hint, suggested_cards, updated_at`.
+Columns exposed: `item_id, category_id, end_date, price, bid_count, seller_id, seller_alias, title, item_url, thumbnail_url, card_id, enrich_status, match_confidence_score, match_method, matched_set_code, matched_era, parsed_card_number, parsed_number_text, parsed_set_hint, parsed_set_code, suggested_cards, updated_at`.
 
 ### `auction_claim_queue`
 Read-only. Shows only auctions where `card_id IS NULL` plus enrichment fields.
 
 ### Legacy
 
-`tradera_sales_legacy` exists only for rollback/history and should not be used by new code.
+`tradera_sales_legacy` exists only for rollback/history and should not be used by new code. It mirrors most auction + enrichment fields (including parsed/name/set metadata), keeps `card_id` as a foreign key to `cards(id)`, and indexes end_date, status, card_id, and enrichment status for claim-queue style filters.
 
 ## Operational notes
 
 - It is safe to `TRUNCATE auction_enrichment` and rerun enrichment.
-- Never reintroduce "parsed_* / debug" columns into `auctions`; use `raw` or `auction_enrichment`.
+- Keep `auctions` minimal: aside from `parsed_set_code`, avoid new parsed/debug columns and prefer `raw` or `auction_enrichment`.
 - The `cards` catalog rejects placeholder values: `set_name`, `card_number`, and `set_code` cannot be `unknown` / `unknown-*`; enrichment must never insert into `cards`.
 - Before deleting catalog cards, clear any references from legacy tables like `tradera_sales_legacy` to satisfy foreign keys.
 
