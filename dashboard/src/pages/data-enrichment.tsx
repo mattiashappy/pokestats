@@ -100,6 +100,9 @@ export function DataEnrichmentPage(): JSX.Element {
 
   const formatText = (value?: string | null) => value?.trim() || '—'
 
+  const formatMatchedSet = (row: { matched_set_code?: string | null; card_set_code?: string | null }) =>
+    formatText(row.matched_set_code || row.card_set_code)
+
   const safeNumber = (value?: number | null) => (typeof value === 'number' ? value : 0)
 
   const applyUnmatchedLimit = () => {
@@ -222,7 +225,7 @@ export function DataEnrichmentPage(): JSX.Element {
                       <p>Parsed #: {row.parsed_card_no ?? row.parsed_card_number ?? '—'}</p>
                       <p>Raw number: {formatText(row.parsed_number_text)}</p>
                       <p>Set total: {row.parsed_set_total ?? '—'}</p>
-                      <p>Matched set: {formatText(row.matched_set_code)}</p>
+                      <p>Matched set: {formatMatchedSet(row)}</p>
                       <p>Matched era: {formatText(row.matched_era)}</p>
                     </TableCell>
                     <TableCell className="min-w-[220px] space-y-1 text-[11px]">
@@ -356,7 +359,7 @@ export function DataEnrichmentPage(): JSX.Element {
                       <p>Parsed #: {row.parsed_card_no ?? row.parsed_card_number ?? '—'}</p>
                       <p>Raw number: {formatText(row.parsed_number_text)}</p>
                       <p>Set total: {row.parsed_set_total ?? '—'}</p>
-                      <p>Matched set: {formatText(row.matched_set_code)}</p>
+                      <p>Matched set: {formatMatchedSet(row)}</p>
                     </TableCell>
                     <TableCell className="min-w-[220px] space-y-1 text-[11px]">
                       <p>Status: {formatText(row.match_status)}</p>
@@ -463,7 +466,7 @@ export function DataEnrichmentPage(): JSX.Element {
                       <p>Parsed #: {row.parsed_card_no ?? row.parsed_card_number ?? '—'}</p>
                       <p>Raw number: {formatText(row.parsed_number_text)}</p>
                       <p>Set total: {row.parsed_set_total ?? '—'}</p>
-                      <p>Matched set: {formatText(row.matched_set_code)}</p>
+                      <p>Matched set: {formatMatchedSet(row)}</p>
                       <p>Matched era: {formatText(row.matched_era)}</p>
                     </TableCell>
                     <TableCell className="min-w-[220px] space-y-1 text-[11px]">
@@ -478,7 +481,6 @@ export function DataEnrichmentPage(): JSX.Element {
                     <TableCell className="min-w-[220px] space-y-1 text-[11px]">
                       <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatText(row.card_name)}</p>
                       <p>Card #: {formatText(row.card_number)}</p>
-                      <p>Set code: {formatText(row.card_set_code)}</p>
                       <p>Linked card ID: {row.card_id ?? '—'}</p>
                     </TableCell>
                     <TableCell className="min-w-[200px] space-y-1 text-[11px]">
