@@ -199,7 +199,7 @@ export type UnmatchedAuction = {
   item_id: number
   end_date: string
   title: string
-  match_status: string | null
+  status: string | null
   parsed_card_number: number | null
   parsed_set_total: number | null
   matched_set_code: string | null
@@ -209,7 +209,7 @@ export type EnrichedAuction = {
   item_id: number
   end_date: string
   title: string
-  match_status: string | null
+  status: string | null
   parsed_card_number: number | null
   parsed_set_total: number | null
   matched_set_code: string | null
@@ -229,11 +229,10 @@ export type PendingAuction = {
   seller_alias: string | null
   seller_id: number | null
   seller_dsr: number | null
-  enrich_status: string | null
-  match_status: string | null
-  match_confidence: string | null
-  match_confidence_score: number | null
-  match_method: string | null
+  status: string | null
+  confidence: string | null
+  confidence_score: number | null
+  method: string | null
   matched_set_code: string | null
   matched_era: string | null
   parsed_card_no: number | null

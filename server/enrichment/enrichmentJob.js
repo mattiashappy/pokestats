@@ -124,21 +124,20 @@ async function runEnrichmentJob({
     // Release stuck "processing" rows before counting/claiming
     await client.query(`
       UPDATE public.auction_enrichment
-      SET match_status = NULL, processing_started_at = NULL
-      WHERE match_status = 'processing'
+      SET status = 'unmatched', processing_started_at = NULL
+      WHERE status = 'processing'
         AND processing_started_at < NOW() - INTERVAL '30 minutes'
     `)
 
     const { expansions, cardsBySetCode } = await loadCatalog()
     const cardIndex = await buildDatabaseCardIndex(client)
 
-    const unprocessedClause = "COALESCE(ae.match_status, '') = ''"
+    const unprocessedClause = "COALESCE(ae.status, 'unmatched') = 'unmatched'"
 
-    // FIX: COALESCE(match_status,'') so NULL rows aren't excluded by <> comparison
     const unlinkedClause =
       "a.card_id IS NULL " +
-      "AND COALESCE(ae.match_status, '') <> 'Discarded (manual)' " +
-      "AND (ae.match_status IS NULL OR ae.match_status NOT LIKE 'Matched%')"
+      "AND COALESCE(ae.status, '') <> 'discarded' " +
+      "AND (ae.status IS NULL OR ae.status <> 'matched')"
 
     const baseWhereClause = target === 'unlinked' ? unlinkedClause : unprocessedClause
     const whereClause = `${baseWhereClause} ${updatedBeforeClause}`
@@ -164,15 +163,15 @@ async function runEnrichmentJob({
             FROM public.auctions a
             LEFT JOIN public.auction_enrichment ae ON ae.item_id = a.item_id
             WHERE ${whereClause}
-              AND COALESCE(ae.match_status, '') <> 'processing'
+              AND COALESCE(ae.status, '') <> 'processing'
             ORDER BY COALESCE(ae.updated_at, a.updated_at, a.end_date) ASC NULLS FIRST, a.end_date ASC NULLS LAST, a.item_id ASC
             LIMIT $1
             FOR UPDATE OF a SKIP LOCKED
           ), upsert AS (
-            INSERT INTO public.auction_enrichment (item_id, match_status, processing_started_at, updated_at)
+            INSERT INTO public.auction_enrichment (item_id, status, processing_started_at, updated_at)
             SELECT item_id, 'processing', NOW(), NOW() FROM batch
             ON CONFLICT (item_id) DO UPDATE SET
-              match_status = EXCLUDED.match_status,
+              status = EXCLUDED.status,
               processing_started_at = EXCLUDED.processing_started_at,
               updated_at = EXCLUDED.updated_at
             RETURNING item_id
@@ -223,17 +222,18 @@ async function runEnrichmentJob({
 
       if (matchedCardId) linked++
 
-      const confidenceText = match.match_confidence || (matchedCardId ? 'medium' : null)
+      const confidenceText = match.confidence || match.match_confidence || (matchedCardId ? 'medium' : null)
 
       const derivedStatus = matchedCardId ? 'matched' : chosenSetCode ? 'needs_review' : 'unmatched'
 
       const matchConfidenceScore = normalizeConfidenceScore(
-        match.match_confidence_score ?? confidenceText,
+        match.confidence_score ?? match.match_confidence_score ?? confidenceText,
         derivedStatus,
         matchedCardId
       )
 
       const matchConfidenceLabel =
+        match.confidence ||
         match.match_confidence ||
         (matchConfidenceScore != null
           ? matchConfidenceScore >= 80
@@ -245,60 +245,57 @@ async function runEnrichmentJob({
 
       const debugPayload = { ...match, matched_card_id: matchedCardId, selected_set_code: chosenSetCode }
 
-      const matchStatus =
-        match.match_status ||
-        (derivedStatus === 'matched'
-          ? 'Matched (Auto)'
-          : derivedStatus === 'needs_review'
-            ? 'Needs review'
-            : 'Unmatched')
-
       if (!matchedCardId) {
         console.warn(
-          `${logLabel} No card linked for item ${row.item_id} (${matchStatus}). Parsed card: ${match.parsed_card_no ||
+          `${logLabel} No card linked for item ${row.item_id} (${derivedStatus}). Parsed card: ${match.parsed_card_no ||
             match.parsed_card_number || 'n/a'}, set guess: ${chosenSetCode || match.parsed_set_guess || 'n/a'}, ` +
             `title: ${row.title?.slice(0, 140) || 'n/a'}`
         )
       }
 
+      const candidatesPayload =
+        match.parsed_set_candidates || match.set_candidates || match.candidates || match.parsed_set_guess || null
+
       await client.query(
         `
           INSERT INTO public.auction_enrichment (
             item_id,
-            match_status,
-            enrich_status,
-            match_confidence,
-            match_confidence_score,
+            status,
+            confidence,
+            confidence_score,
+            method,
             matched_set_code,
             matched_era,
             parsed_card_no,
             parsed_number_text,
             parsed_set_total,
-            match_debug,
+            candidates,
+            debug,
             processing_started_at,
             updated_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL, NOW())
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULL, NOW())
           ON CONFLICT (item_id) DO UPDATE SET
-            match_status = EXCLUDED.match_status,
-            enrich_status = EXCLUDED.enrich_status,
-            match_confidence = EXCLUDED.match_confidence,
-            match_confidence_score = EXCLUDED.match_confidence_score,
+            status = EXCLUDED.status,
+            confidence = EXCLUDED.confidence,
+            confidence_score = EXCLUDED.confidence_score,
+            method = EXCLUDED.method,
             matched_set_code = EXCLUDED.matched_set_code,
             matched_era = EXCLUDED.matched_era,
             parsed_card_no = EXCLUDED.parsed_card_no,
             parsed_number_text = EXCLUDED.parsed_number_text,
             parsed_set_total = EXCLUDED.parsed_set_total,
-            match_debug = EXCLUDED.match_debug,
+            candidates = EXCLUDED.candidates,
+            debug = EXCLUDED.debug,
             processing_started_at = NULL,
             updated_at = NOW()
         `,
         [
           row.item_id,
-          matchStatus,
           derivedStatus,
           matchConfidenceLabel,
           matchConfidenceScore,
+          match.match_method || match.method || null,
           chosenSetCode || null,
           match.matched_era ||
             row.era ||
@@ -308,6 +305,7 @@ async function runEnrichmentJob({
           parsedCardNo,
           match.parsed_number_text || null,
           match.parsed_total_in_set || match.parsed_set_total || null,
+          candidatesPayload ? JSON.stringify(candidatesPayload) : null,
           JSON.stringify(debugPayload)
         ]
       )

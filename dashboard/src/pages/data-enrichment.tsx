@@ -229,8 +229,8 @@ export function DataEnrichmentPage(): JSX.Element {
                       <p>Matched era: {formatText(row.matched_era)}</p>
                     </TableCell>
                     <TableCell className="min-w-[220px] space-y-1 text-[11px]">
-                      <p>Status: {formatText(row.match_status)}</p>
-                      <p>Method: {formatText(row.match_method)}</p>
+                      <p>Status: {formatText(row.status)}</p>
+                      <p>Method: {formatText(row.method)}</p>
                       <p>Reason: {formatText(row.match_reason)}</p>
                     </TableCell>
                     <TableCell className="min-w-[220px] space-y-2 text-xs">
@@ -362,12 +362,11 @@ export function DataEnrichmentPage(): JSX.Element {
                       <p>Matched set: {formatMatchedSet(row)}</p>
                     </TableCell>
                     <TableCell className="min-w-[220px] space-y-1 text-[11px]">
-                      <p>Status: {formatText(row.match_status)}</p>
-                      <p>Enrichment: {formatText(row.enrich_status)}</p>
-                      <p>Method: {formatText(row.match_method)}</p>
+                      <p>Status: {formatText(row.status)}</p>
+                      <p>Method: {formatText(row.method)}</p>
                       <p>
-                        Confidence: {formatText(row.match_confidence)}
-                        {row.match_confidence_score ? ` (${row.match_confidence_score})` : ''}
+                        Confidence: {formatText(row.confidence)}
+                        {row.confidence_score ? ` (${row.confidence_score})` : ''}
                       </p>
                     </TableCell>
                     <TableCell className="min-w-[200px] space-y-1 text-[11px]">
@@ -470,12 +469,11 @@ export function DataEnrichmentPage(): JSX.Element {
                       <p>Matched era: {formatText(row.matched_era)}</p>
                     </TableCell>
                     <TableCell className="min-w-[220px] space-y-1 text-[11px]">
-                      <p>Status: {formatText(row.match_status)}</p>
-                      <p>Enrichment: {formatText(row.enrich_status)}</p>
-                      <p>Method: {formatText(row.match_method)}</p>
+                      <p>Status: {formatText(row.status)}</p>
+                      <p>Method: {formatText(row.method)}</p>
                       <p>
-                        Confidence: {formatText(row.match_confidence)}
-                        {row.match_confidence_score ? ` (${row.match_confidence_score})` : ''}
+                        Confidence: {formatText(row.confidence)}
+                        {row.confidence_score ? ` (${row.confidence_score})` : ''}
                       </p>
                     </TableCell>
                     <TableCell className="min-w-[220px] space-y-1 text-[11px]">

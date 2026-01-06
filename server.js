@@ -1425,19 +1425,22 @@ app.post('/api/enrichment/run-all', async (req, res) => {
         WITH reset AS (
           UPDATE public.auction_enrichment ae
           SET
-            match_status = NULL,
-            match_confidence = NULL,
+            status = 'unmatched',
+            confidence = NULL,
+            confidence_score = NULL,
+            method = NULL,
             matched_set_code = NULL,
             matched_era = NULL,
             parsed_card_no = NULL,
             parsed_number_text = NULL,
             parsed_set_total = NULL,
-            match_debug = NULL,
+            candidates = NULL,
+            debug = NULL,
             updated_at = NOW()
           FROM public.auctions a
           WHERE a.item_id = ae.item_id
             AND a.card_id IS NULL
-            AND COALESCE(ae.match_status, '') NOT IN ('', 'Discarded (manual)')
+            AND COALESCE(ae.status, '') NOT IN ('', 'discarded')
           RETURNING 1
         )
         SELECT COUNT(*)::int AS reset_count FROM reset
@@ -1527,17 +1530,17 @@ app.post('/api/enrichment/discard', async (req, res) => {
       `
         INSERT INTO public.auction_enrichment (
           item_id,
-          match_status,
-          match_confidence,
-          match_method,
+          status,
+          confidence,
+          method,
           processing_started_at,
           updated_at
         )
-        VALUES ($1, 'Discarded (manual)', 'manual', 'manual_discard', NULL, NOW())
+        VALUES ($1, 'discarded', 'manual', 'manual_discard', NULL, NOW())
         ON CONFLICT (item_id) DO UPDATE SET
-          match_status = EXCLUDED.match_status,
-          match_confidence = EXCLUDED.match_confidence,
-          match_method = EXCLUDED.match_method,
+          status = EXCLUDED.status,
+          confidence = EXCLUDED.confidence,
+          method = EXCLUDED.method,
           processing_started_at = NULL,
           updated_at = NOW()
       `,
@@ -1569,14 +1572,14 @@ app.get('/api/enrichment/summary', async (_req, res) => {
     const { rows } = await pool.query(`
       SELECT
         COUNT(*)::int AS total,
-        COUNT(*) FILTER (WHERE match_status LIKE 'Matched%')::int AS matched,
-        COUNT(*) FILTER (WHERE match_status = 'Needs review')::int AS needs_review,
-        COUNT(*) FILTER (WHERE match_status = 'Mismatched')::int AS mismatched,
+        COUNT(*) FILTER (WHERE COALESCE(status, 'unmatched') = 'matched')::int AS matched,
+        COUNT(*) FILTER (WHERE COALESCE(status, 'unmatched') = 'needs_review')::int AS needs_review,
+        COUNT(*) FILTER (WHERE COALESCE(status, 'unmatched') = 'unmatched')::int AS unmatched,
         COUNT(*) FILTER (
-          WHERE card_id IS NULL AND COALESCE(NULLIF(match_status, ''), NULL) IS NULL
+          WHERE card_id IS NULL AND COALESCE(status, 'unmatched') = 'unmatched'
         )::int AS unprocessed,
-        COUNT(*) FILTER (WHERE match_status = 'Unmatched')::int AS unmatched,
         COUNT(*) FILTER (WHERE card_id IS NOT NULL)::int AS linked,
+        COUNT(*) FILTER (WHERE card_id IS NULL)::int AS unlinked,
         COUNT(*) FILTER (
           WHERE card_id IS NULL AND parsed_card_number IS NULL
         )::int AS reason_no_card_number,
@@ -1584,7 +1587,7 @@ app.get('/api/enrichment/summary', async (_req, res) => {
           WHERE card_id IS NULL AND parsed_card_number IS NOT NULL AND matched_set_code IS NULL
         )::int AS reason_has_number_no_set,
         COUNT(*) FILTER (
-          WHERE card_id IS NULL AND match_status = 'Needs review'
+          WHERE card_id IS NULL AND COALESCE(status, 'unmatched') = 'needs_review'
         )::int AS reason_ambiguous,
         COUNT(*) FILTER (
           WHERE card_id IS NULL AND (
@@ -1606,7 +1609,7 @@ app.get('/api/enrichment/summary', async (_req, res) => {
       totalAuctions: total,
       matched: rows[0].matched,
       needsReview: rows[0].needs_review,
-      mismatched: rows[0].mismatched,
+      mismatched: rows[0].mismatched ?? 0,
       unprocessed,
       unmatched: rows[0].unmatched,
       linkedAuctions: rows[0].linked,
@@ -1632,8 +1635,6 @@ app.get('/api/enrichment/pending', async (req, res) => {
   const ok = await ensureCardInfrastructure()
   if (!ok) return res.status(500).json({ error: 'Card infrastructure unavailable' })
 
-  await ensureSalesEnrichmentColumnsAvailable()
-
   const limit = Math.min(Math.max(Number(req.query.limit ?? 50), 1), 500)
 
   const { rows } = await pool.query(
@@ -1648,11 +1649,10 @@ app.get('/api/enrichment/pending', async (req, res) => {
         seller_alias,
         seller_id,
         seller_dsr,
-        enrich_status,
-        match_status,
-        match_confidence,
-        match_confidence_score,
-        match_method,
+        status,
+        confidence,
+        confidence_score,
+        method,
         matched_set_code,
         matched_era,
         parsed_card_no,
@@ -1665,7 +1665,7 @@ app.get('/api/enrichment/pending', async (req, res) => {
         thumbnail_url
       FROM public.tradera_sales
       WHERE card_id IS NULL
-        AND COALESCE(match_status, '') = ''
+        AND COALESCE(status, 'unmatched') = 'unmatched'
       ORDER BY end_date DESC
       LIMIT $1
     `,
@@ -1697,11 +1697,10 @@ app.get('/api/enrichment/linked', async (req, res) => {
         s.seller_alias,
         s.seller_id,
         s.seller_dsr,
-        s.enrich_status,
-        s.match_status,
-        s.match_confidence,
-        s.match_confidence_score,
-        s.match_method,
+        s.status,
+        s.confidence,
+        s.confidence_score,
+        s.method,
         s.matched_set_code,
         s.matched_era,
         s.parsed_card_no,
@@ -1734,10 +1733,10 @@ app.get('/api/enrichment/unmatched', async (req, res) => {
 
   const { rows } = await pool.query(
     `
-      SELECT item_id, end_date, title, match_status, parsed_card_number, parsed_set_total, matched_set_code
+      SELECT item_id, end_date, title, status, parsed_card_number, parsed_set_total, matched_set_code
       FROM public.tradera_sales
-      WHERE (match_status IS NULL OR match_status NOT LIKE 'Matched%')
-        AND match_status <> 'Discarded (manual)'
+      WHERE COALESCE(status, 'unmatched') <> 'matched'
+        AND status <> 'discarded'
       ORDER BY
         (matched_set_code IS NOT NULL) DESC,
         (parsed_card_number IS NOT NULL) DESC,
@@ -1759,7 +1758,7 @@ app.get('/api/enrichment/recent', async (req, res) => {
         s.item_id,
         s.end_date,
         s.title,
-        s.match_status,
+        s.status,
         s.parsed_card_number,
         s.parsed_set_total,
         s.matched_set_code,
@@ -1769,7 +1768,7 @@ app.get('/api/enrichment/recent', async (req, res) => {
         c.set_code AS card_set_code
       FROM public.tradera_sales s
       LEFT JOIN public.cards c ON c.id = s.card_id
-      WHERE s.match_status IS NOT NULL
+      WHERE s.status IS NOT NULL
       ORDER BY s.updated_at DESC NULLS LAST, s.end_date DESC
       LIMIT $1
     `,
@@ -1830,9 +1829,9 @@ app.post('/api/enrichment/manual-match', async (req, res) => {
       `
         INSERT INTO public.auction_enrichment (
           item_id,
-          match_status,
-          match_confidence,
-          match_method,
+          status,
+          confidence,
+          method,
           matched_set_code,
           matched_era,
           parsed_card_no,
@@ -1840,11 +1839,11 @@ app.post('/api/enrichment/manual-match', async (req, res) => {
           processing_started_at,
           updated_at
         )
-        VALUES ($1, 'Matched (manual)', 'manual', 'manual', $2, $3, $4, $5, NULL, NOW())
+        VALUES ($1, 'matched', 'manual', 'manual', $2, $3, $4, $5, NULL, NOW())
         ON CONFLICT (item_id) DO UPDATE SET
-          match_status = EXCLUDED.match_status,
-          match_confidence = EXCLUDED.match_confidence,
-          match_method = EXCLUDED.match_method,
+          status = EXCLUDED.status,
+          confidence = EXCLUDED.confidence,
+          method = EXCLUDED.method,
           matched_set_code = COALESCE(EXCLUDED.matched_set_code, auction_enrichment.matched_set_code),
           matched_era = COALESCE(EXCLUDED.matched_era, auction_enrichment.matched_era),
           parsed_card_no = COALESCE(EXCLUDED.parsed_card_no, auction_enrichment.parsed_card_no),
