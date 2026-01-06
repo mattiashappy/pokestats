@@ -19,20 +19,6 @@ import {
   type UnmatchedAuction
 } from '../lib/api'
 
-// If these come from another module in your repo, keep importing them instead of defining here.
-// They were referenced later in your JSX, so we keep them as-is.
-declare const matchingSteps: string[]
-declare const summaryStats: Array<{ label: string; value: any }>
-declare const coverageStats:
-  | {
-      total: number
-      processed: number
-      classified: number
-      linked: number
-    }
-  | null
-declare function ReasonBadge(props: { label: string; value: number }): JSX.Element
-
 const FULL_RUN_BATCH_SIZE = 500
 const FULL_RUN_MAX_RUNTIME_MS = 55_000
 
@@ -145,6 +131,62 @@ export function DataEnrichmentPage(): JSX.Element {
   // Optional: if you want summaryStats to be computed from summaryQuery.data instead,
   // keep your existing logic. Here we keep the referenced variables as-is.
   const summaryData = summaryQuery.data
+
+  const safeNumber = (value?: number | null) => (typeof value === 'number' ? value : 0)
+
+  const summaryStats = useMemo(
+    () => {
+      if (!summaryData) return []
+
+      return [
+        { label: 'Total auctions', value: safeNumber(summaryData.totalAuctions) },
+        { label: 'Processed', value: safeNumber(summaryData.processed) },
+        { label: 'Linked auctions', value: safeNumber(summaryData.linkedAuctions ?? summaryData.matched) },
+        { label: 'Matched', value: safeNumber(summaryData.matched) },
+        { label: 'Needs review', value: safeNumber(summaryData.needsReview) },
+        { label: 'Unmatched', value: safeNumber(summaryData.unmatched) }
+      ]
+    },
+    [summaryData]
+  )
+
+  const coverageStats = useMemo(() => {
+    if (!summaryData) return null
+
+    const total = safeNumber(summaryData.totalAuctions)
+    const processed = safeNumber(summaryData.processed)
+    const linked = safeNumber(summaryData.linkedAuctions ?? summaryData.matched)
+    const classified =
+      safeNumber(summaryData.matched) +
+      safeNumber(summaryData.needsReview) +
+      safeNumber(summaryData.mismatched) +
+      safeNumber(summaryData.unmatched)
+
+    return { total, processed, classified, linked }
+  }, [summaryData])
+
+  const matchingSteps = useMemo(
+    () => [
+      'Fetch the oldest auctions without enrichment metadata.',
+      'Parse candidate card numbers and set totals from the listing title.',
+      'Infer the most likely era + set from parsed hints and card totals.',
+      'Filter out noisy listings (sealed products, boxes, accessories, etc.).',
+      'Score potential matches; select a single card when the match is deterministic.',
+      'Record debug metadata and write the linked card ID back to the auction row.'
+    ],
+    []
+  )
+
+  function ReasonBadge({ label, value }: { label: string; value: number }) {
+    const displayValue = safeNumber(value)
+
+    return (
+      <div className="rounded border border-slate-200 p-3 text-center dark:border-slate-800">
+        <p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p>
+        <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">{displayValue.toLocaleString('sv-SE')}</p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
