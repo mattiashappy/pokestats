@@ -1158,7 +1158,8 @@ const STAGE_QUEUE_WHERE = {
     "a.card_id IS NULL AND e.status <> 'discarded' AND e.parsed_card_number IS NOT NULL AND e.parsed_card_name IS NULL",
   ready_to_link:
     "a.card_id IS NULL AND e.status <> 'discarded' AND e.matched_era IS NOT NULL AND e.matched_set_code IS NOT NULL " +
-    "AND e.parsed_card_number IS NOT NULL AND e.parsed_card_name IS NOT NULL"
+    "AND e.parsed_card_number IS NOT NULL AND e.parsed_card_name IS NOT NULL",
+  link: 'a.card_id IS NOT NULL'
 }
 
 async function loadQueue(stage, limit = 100) {
@@ -1199,6 +1200,21 @@ app.post('/api/enrichment/run-all', async (req, res) => {
     res.json(payload)
   } catch (error) {
     console.error('Failed to run full enrichment pipeline', error)
+    res.status(500).json({ ok: false, error: String(error) })
+  }
+})
+
+app.post('/api/enrichment/run-item', async (req, res) => {
+  if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
+
+  try {
+    const itemId = Number(req.body?.itemId)
+    if (!Number.isFinite(itemId)) return res.status(400).json({ ok: false, error: 'Invalid itemId' })
+
+    const payload = await runFullPipeline(pool, 1, itemId)
+    res.json({ itemId, ...payload })
+  } catch (error) {
+    console.error('Failed to run enrichment for item', error)
     res.status(500).json({ ok: false, error: String(error) })
   }
 })
