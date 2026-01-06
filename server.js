@@ -734,6 +734,9 @@ async function ensureStaticCatalogSeeded() {
   return seedingCatalogPromise
 }
 
+// NOTE: intentionally no-op now (avoid noisy "unknown" cards)
+async function ensureMissingSalesAreLinkedToCards() {}
+
 function normalizeAuctionRow(row) {
   const attributes = row.attributes || {}
 
