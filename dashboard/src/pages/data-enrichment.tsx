@@ -100,6 +100,8 @@ export function DataEnrichmentPage(): JSX.Element {
 
   const formatText = (value?: string | null) => value?.trim() || '—'
 
+  const safeNumber = (value?: number | null) => (typeof value === 'number' ? value : 0)
+
   const applyUnmatchedLimit = () => {
     const parsed = Number(unmatchedLimitInput)
     const nextLimit = Math.min(500, Math.max(10, Number.isFinite(parsed) ? parsed : unmatchedLimit))
@@ -120,55 +122,6 @@ export function DataEnrichmentPage(): JSX.Element {
     setLinkedLimit(nextLimit)
     setLinkedLimitInput(String(nextLimit))
   }
-
-  // Optional: if you want summaryStats to be computed from summaryQuery.data instead,
-  // keep your existing logic. Here we keep the referenced variables as-is.
-  const summaryData = summaryQuery.data
-
-  const safeNumber = (value?: number | null) => (typeof value === 'number' ? value : 0)
-
-  const summaryStats = useMemo(
-    () => {
-      if (!summaryData) return []
-
-      return [
-        { label: 'Total auctions', value: safeNumber(summaryData.totalAuctions) },
-        { label: 'Processed', value: safeNumber(summaryData.processed) },
-        { label: 'Linked auctions', value: safeNumber(summaryData.linkedAuctions ?? summaryData.matched) },
-        { label: 'Matched', value: safeNumber(summaryData.matched) },
-        { label: 'Needs review', value: safeNumber(summaryData.needsReview) },
-        { label: 'Unmatched', value: safeNumber(summaryData.unmatched) }
-      ]
-    },
-    [summaryData]
-  )
-
-  const coverageStats = useMemo(() => {
-    if (!summaryData) return null
-
-    const total = safeNumber(summaryData.totalAuctions)
-    const processed = safeNumber(summaryData.processed)
-    const linked = safeNumber(summaryData.linkedAuctions ?? summaryData.matched)
-    const classified =
-      safeNumber(summaryData.matched) +
-      safeNumber(summaryData.needsReview) +
-      safeNumber(summaryData.mismatched) +
-      safeNumber(summaryData.unmatched)
-
-    return { total, processed, classified, linked }
-  }, [summaryData])
-
-  const matchingSteps = useMemo(
-    () => [
-      'Fetch the oldest auctions without enrichment metadata.',
-      'Parse candidate card numbers and set totals from the listing title.',
-      'Infer the most likely era + set from parsed hints and card totals.',
-      'Filter out noisy listings (sealed products, boxes, accessories, etc.).',
-      'Score potential matches; select a single card when the match is deterministic.',
-      'Record debug metadata and write the linked card ID back to the auction row.'
-    ],
-    []
-  )
 
   function ReasonBadge({ label, value }: { label: string; value: number }) {
     const displayValue = safeNumber(value)
