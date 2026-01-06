@@ -200,4 +200,3 @@ export async function fetchSets(): Promise<ExpansionSummary[]> {
 // Explicit re-exports to guard against tree-shaking regressions in build tooling.
 // These named exports are relied upon by the auction imports page.
 export { fetchImportRuns, fetchImportRun, runImporter }
-main
