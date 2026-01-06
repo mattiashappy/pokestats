@@ -1,12 +1,6 @@
 // src/lib/api.ts
 import type { AuctionRecord, CardListItem, CardResponse, ExpansionSummary } from '../types'
 
-export interface AuctionDiagnosticResult {
-  auctions: AuctionRecord[]
-  source: 'database' | 'mock'
-  error: string | null
-}
-
 export async function fetchAuctions(): Promise<AuctionRecord[]> {
   const response = await fetch('/api/sales')
   if (!response.ok) throw new Error('Failed to fetch auctions')
