@@ -469,6 +469,12 @@ async function ensureCardsTableAvailable() {
     const setCodeIdx = await ensureIndexExists('cards', 'idx_cards_set_code', '(set_code)')
     const numberIdx = await ensureIndexExists('cards', 'idx_cards_card_number', '(card_number)')
 
+    const forbidUnknownPlaceholders = await ensureConstraintExists(
+      'cards',
+      'cards_no_unknown_placeholders',
+      "CHECK ((set_name IS NULL OR lower(btrim(set_name)) <> 'unknown') AND (card_number IS NULL OR lower(btrim(card_number)) <> 'unknown') AND (set_code IS NULL OR (lower(btrim(set_code)) <> 'unknown' AND lower(btrim(set_code)) NOT LIKE 'unknown-%')))"
+    )
+
     cardsTableAvailable = Boolean(
       setCodeOk &&
         setTotalOk &&
@@ -479,7 +485,8 @@ async function ensureCardsTableAvailable() {
         removedNameSetConstraint &&
         uniqueByExpansionNumber &&
         setCodeIdx &&
-        numberIdx
+        numberIdx &&
+        forbidUnknownPlaceholders
     )
   } catch (error) {
     console.error('Failed to ensure cards table exists', error)
