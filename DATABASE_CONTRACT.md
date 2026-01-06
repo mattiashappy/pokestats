@@ -115,7 +115,7 @@ Read-only. Do not write.
 
 Definition (must match DB): joins `auctions` + `auction_enrichment` and exposes selected columns used by the app.
 
-Columns exposed: `item_id, category_id, end_date, price, bid_count, seller_id, seller_alias, title, item_url, thumbnail_url, card_id, enrich_status, match_confidence_score, match_method, matched_set_code, matched_era, parsed_card_number, parsed_number_text, parsed_set_hint, parsed_set_code, suggested_cards, updated_at`.
+Columns exposed: `item_id, category_id, end_date, price, bid_count, seller_id, seller_alias, title, item_url, thumbnail_url, card_id, enrich_status, match_confidence_score, match_method, matched_set_code, matched_era, parsed_card_number, parsed_number_text, parsed_set_hint, suggested_cards, updated_at`.
 
 ### `auction_claim_queue`
 Read-only. Shows only auctions where `card_id IS NULL` plus enrichment fields.

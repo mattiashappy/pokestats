@@ -189,9 +189,8 @@ SELECT
     ae.parsed_card_number,
     ae.parsed_number_text,
     ae.parsed_set_hint,
-    a.parsed_set_code,
     ae.suggested_cards,
-    COALESCE(ae.updated_at, a.updated_at) AS updated_at
+    a.updated_at
 FROM auctions a
 LEFT JOIN auction_enrichment ae ON ae.item_id = a.item_id;
 
@@ -199,16 +198,11 @@ LEFT JOIN auction_enrichment ae ON ae.item_id = a.item_id;
 CREATE OR REPLACE VIEW auction_claim_queue AS
 SELECT
     a.item_id,
-    a.category_id,
     a.end_date,
     a.price,
     a.bid_count,
-    a.seller_id,
     a.seller_alias,
     a.title,
-    a.item_url,
-    a.thumbnail_url,
-    a.card_id,
     ae.status AS enrich_status,
     ae.confidence_score AS match_confidence_score,
     ae.method AS match_method,
@@ -218,7 +212,7 @@ SELECT
     ae.parsed_number_text,
     ae.parsed_set_hint,
     ae.suggested_cards,
-    COALESCE(ae.updated_at, a.updated_at) AS updated_at
+    a.updated_at
 FROM auctions a
 LEFT JOIN auction_enrichment ae ON ae.item_id = a.item_id
 WHERE a.card_id IS NULL;
