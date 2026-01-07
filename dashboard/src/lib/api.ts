@@ -198,6 +198,23 @@ export async function fetchEnrichmentAudit(itemId: number) {
   return res.json() as Promise<{ auction: any; enrichment: any }>
 }
 
+export async function updateEnrichmentItem(payload: {
+  itemId: number
+  matched_era?: string | null
+  matched_set_code?: string | null
+  parsed_card_number?: string | null
+  parsed_card_name?: string | null
+}) {
+  const res = await fetch('/api/enrichment/update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+
+  if (!res.ok) throw new Error('Failed to update enrichment fields')
+  return res.json() as Promise<{ ok: boolean }>
+}
+
 export type ImportRun = {
   id: number
   source: string
