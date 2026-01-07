@@ -592,8 +592,6 @@ const { registerRoutes: registerExpansionRoutes } = createExpansionService({
 })
 
 function normalizeAuctionRow(row) {
-  // Keep this mapping loose: your dashboard/types can shape it on the client.
-  // If you already have a stricter normalizeAuctionRow elsewhere, replace this.
   return {
     item_id: row.item_id,
     title: row.title,
@@ -622,14 +620,56 @@ function normalizeAuctionRow(row) {
   }
 }
 
+/**
+ * ✅ Conflict-free + robust:
+ * Always returns a source that matches the downstream SELECT shape
+ * (so ts.enrich_status / ts.match_confidence_score / etc always exist).
+ */
 function buildSalesSourceQuery() {
-  if (salesViewAvailable) {
+  // Use the view only when both the view exists and enrichment table exists.
+  // (Because downstream SELECT expects enrichment-related columns to be present.)
+  if (salesViewAvailable && enrichmentTableAvailable) {
     return {
       cte: '',
       source: 'public.tradera_sales ts'
     }
   }
 
+  // If enrichment table is missing, still provide the same column shape via NULLs.
+  if (!enrichmentTableAvailable) {
+    return {
+      cte: `
+        WITH sales_source AS (
+          SELECT
+            a.item_id,
+            a.category_id,
+            a.end_date,
+            a.price,
+            a.bid_count,
+            a.seller_id,
+            a.seller_alias,
+            a.title,
+            a.item_url,
+            a.thumbnail_url,
+            a.card_id,
+            NULL::text AS enrich_status,
+            NULL::int AS match_confidence_score,
+            NULL::text AS match_method,
+            NULL::text AS matched_set_code,
+            NULL::text AS matched_era,
+            NULL::text AS parsed_card_number,
+            NULL::text AS parsed_number_text,
+            NULL::text AS parsed_set_hint,
+            NULL::jsonb AS suggested_cards,
+            a.updated_at
+          FROM public.auctions a
+        )
+      `,
+      source: 'sales_source ts'
+    }
+  }
+
+  // Enrichment exists, but view doesn't: build from auctions + left join enrichment.
   return {
     cte: `
       WITH sales_source AS (
@@ -697,14 +737,14 @@ async function fetchAuctionsFromDatabase(filters = {}) {
       COALESCE(e.era, c.era) AS card_era,
       COALESCE(e.name, c.set_name) AS card_set_name,
       COALESCE(e.set_code, c.set_code) AS card_set_code,
-      COALESCE(e.language, c.language) AS card_language,
+      e.language AS card_language,
       c.card_number AS card_number
     FROM ${source}
     LEFT JOIN public.cards c ON c.id = ts.card_id
     LEFT JOIN public.expansions e ON e.id = c.expansion_id
     WHERE
       ($1::text IS NULL OR COALESCE(e.era, c.era, ts.matched_era) = $1)
-      AND ($2::text IS NULL OR COALESCE(e.language, c.language) = $2)
+      AND ($2::text IS NULL OR e.language = $2)
       AND ($3::int IS NULL OR ts.price >= $3)
       AND ($4::int IS NULL OR ts.price <= $4)
     ORDER BY ts.end_date DESC
@@ -1301,8 +1341,7 @@ app.get('/api/enrichment/stats', async (_req, res) => {
           SUM(CASE WHEN a.card_id IS NOT NULL AND (e.matched_era IS NULL OR e.matched_set_code IS NULL OR e.parsed_card_number IS NULL OR e.parsed_card_name IS NULL) THEN 1 ELSE 0 END) AS linked_but_missing_fields,
           SUM(CASE WHEN a.card_id IS NULL AND e.status = 'matched' THEN 1 ELSE 0 END) AS matched_status_but_unlinked
         FROM public.auctions a
-        LEFT JOIN public.auction_enrichment
-          e ON e.item_id = a.item_id
+        LEFT JOIN public.auction_enrichment e ON e.item_id = a.item_id
       `
     )
 
