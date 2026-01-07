@@ -1320,13 +1320,17 @@ app.get('/api/enrichment/stats', async (_req, res) => {
     const { rows: funnelRows } = await pool.query(
       `
         SELECT
-          SUM(CASE WHEN a.card_id IS NULL AND e.matched_era IS NULL THEN 1 ELSE 0 END) AS era_missing,
-          SUM(CASE WHEN a.card_id IS NULL AND e.matched_era IS NOT NULL AND e.matched_set_code IS NULL THEN 1 ELSE 0 END) AS set_missing,
-          SUM(CASE WHEN a.card_id IS NULL AND e.matched_set_code IS NOT NULL AND e.parsed_card_number IS NULL THEN 1 ELSE 0 END) AS number_missing,
-          SUM(CASE WHEN a.card_id IS NULL AND e.parsed_card_number IS NOT NULL AND e.parsed_card_name IS NULL THEN 1 ELSE 0 END) AS name_missing,
+          SUM(CASE WHEN e.matched_era IS NOT NULL THEN 1 ELSE 0 END) AS era_reached,
+          SUM(CASE WHEN e.matched_era IS NOT NULL AND e.matched_set_code IS NOT NULL THEN 1 ELSE 0 END) AS set_reached,
+          SUM(CASE WHEN e.matched_set_code IS NOT NULL AND e.parsed_card_number IS NOT NULL THEN 1 ELSE 0 END) AS number_reached,
+          SUM(CASE WHEN e.parsed_card_number IS NOT NULL AND e.parsed_card_name IS NOT NULL THEN 1 ELSE 0 END) AS name_reached,
           SUM(CASE WHEN a.card_id IS NULL AND e.matched_era IS NOT NULL AND e.matched_set_code IS NOT NULL AND e.parsed_card_number IS NOT NULL AND e.parsed_card_name IS NOT NULL THEN 1 ELSE 0 END) AS ready_to_link,
           SUM(CASE WHEN a.card_id IS NOT NULL THEN 1 ELSE 0 END) AS linked_total,
-          SUM(CASE WHEN a.card_id IS NULL THEN 1 ELSE 0 END) AS unlinked_total
+          SUM(CASE WHEN a.card_id IS NULL THEN 1 ELSE 0 END) AS unlinked_total,
+          SUM(CASE WHEN a.card_id IS NULL AND e.matched_era IS NULL THEN 1 ELSE 0 END) AS needs_era,
+          SUM(CASE WHEN a.card_id IS NULL AND e.matched_era IS NOT NULL AND e.matched_set_code IS NULL THEN 1 ELSE 0 END) AS needs_set,
+          SUM(CASE WHEN a.card_id IS NULL AND e.matched_set_code IS NOT NULL AND e.parsed_card_number IS NULL THEN 1 ELSE 0 END) AS needs_number,
+          SUM(CASE WHEN a.card_id IS NULL AND e.parsed_card_number IS NOT NULL AND e.parsed_card_name IS NULL THEN 1 ELSE 0 END) AS needs_name
         FROM public.auctions a
         LEFT JOIN public.auction_enrichment e ON e.item_id = a.item_id
       `
@@ -1349,10 +1353,17 @@ app.get('/api/enrichment/stats', async (_req, res) => {
       unlinked_total: Number(funnel.unlinked_total) || 0,
       linked_total: Number(funnel.linked_total) || 0,
       stages: {
-        era_missing: Number(funnel.era_missing) || 0,
-        set_missing: Number(funnel.set_missing) || 0,
-        number_missing: Number(funnel.number_missing) || 0,
-        name_missing: Number(funnel.name_missing) || 0,
+        era_reached: Number(funnel.era_reached) || 0,
+        set_reached: Number(funnel.set_reached) || 0,
+        number_reached: Number(funnel.number_reached) || 0,
+        name_reached: Number(funnel.name_reached) || 0,
+        ready_to_link: Number(funnel.ready_to_link) || 0
+      },
+      bottlenecks: {
+        needs_era: Number(funnel.needs_era) || 0,
+        needs_set: Number(funnel.needs_set) || 0,
+        needs_number: Number(funnel.needs_number) || 0,
+        needs_name: Number(funnel.needs_name) || 0,
         ready_to_link: Number(funnel.ready_to_link) || 0
       },
       invariants: {

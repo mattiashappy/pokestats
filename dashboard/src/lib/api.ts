@@ -143,10 +143,17 @@ export type EnrichmentStats = {
   unlinked_total: number
   linked_total: number
   stages: {
-    era_missing: number
-    set_missing: number
-    number_missing: number
-    name_missing: number
+    era_reached: number
+    set_reached: number
+    number_reached: number
+    name_reached: number
+    ready_to_link: number
+  }
+  bottlenecks: {
+    needs_era: number
+    needs_set: number
+    needs_number: number
+    needs_name: number
     ready_to_link: number
   }
   invariants: {
