@@ -630,39 +630,6 @@ function buildSalesSourceQuery() {
     }
   }
 
-  if (!enrichmentTableAvailable) {
-    return {
-      cte: `
-        WITH sales_source AS (
-          SELECT
-            a.item_id,
-            a.category_id,
-            a.end_date,
-            a.price,
-            a.bid_count,
-            a.seller_id,
-            a.seller_alias,
-            a.title,
-            a.item_url,
-            a.thumbnail_url,
-            a.card_id,
-            NULL::text AS enrich_status,
-            NULL::int AS match_confidence_score,
-            NULL::text AS match_method,
-            NULL::text AS matched_set_code,
-            NULL::text AS matched_era,
-            NULL::text AS parsed_card_number,
-            NULL::text AS parsed_number_text,
-            NULL::text AS parsed_set_hint,
-            NULL::jsonb AS suggested_cards,
-            a.updated_at
-          FROM public.auctions a
-        )
-      `,
-      source: 'sales_source ts'
-    }
-  }
-
   return {
     cte: `
       WITH sales_source AS (
