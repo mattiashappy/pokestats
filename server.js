@@ -626,8 +626,7 @@ function normalizeAuctionRow(row) {
  * (so ts.enrich_status / ts.match_confidence_score / etc always exist).
  */
 function buildSalesSourceQuery() {
-  // Use the view only when both the view exists and enrichment table exists.
-  // (Because downstream SELECT expects enrichment-related columns to be present.)
+  // Use the view only when BOTH the view and enrichment table exist
   if (salesViewAvailable && enrichmentTableAvailable) {
     return {
       cte: '',
@@ -635,7 +634,7 @@ function buildSalesSourceQuery() {
     }
   }
 
-  // If enrichment table is missing, still provide the same column shape via NULLs.
+  // If enrichment table is missing, provide NULL placeholders
   if (!enrichmentTableAvailable) {
     return {
       cte: `
@@ -669,7 +668,41 @@ function buildSalesSourceQuery() {
     }
   }
 
-  // Enrichment exists, but view doesn't: build from auctions + left join enrichment.
+  // Enrichment exists, but view doesn't
+  return {
+    cte: `
+      WITH sales_source AS (
+        SELECT
+          a.item_id,
+          a.category_id,
+          a.end_date,
+          a.price,
+          a.bid_count,
+          a.seller_id,
+          a.seller_alias,
+          a.title,
+          a.item_url,
+          a.thumbnail_url,
+          a.card_id,
+          ae.status AS enrich_status,
+          ae.confidence_score AS match_confidence_score,
+          ae.method AS match_method,
+          ae.matched_set_code,
+          ae.matched_era,
+          ae.parsed_card_number,
+          ae.parsed_number_text,
+          ae.parsed_set_hint,
+          ae.suggested_cards,
+          a.updated_at
+        FROM public.auctions a
+        LEFT JOIN public.auction_enrichment ae
+          ON ae.item_id = a.item_id
+      )
+    `,
+    source: 'sales_source ts'
+  }
+}
+main
   return {
     cte: `
       WITH sales_source AS (
