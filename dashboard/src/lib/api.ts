@@ -143,10 +143,17 @@ export type EnrichmentStats = {
   unlinked_total: number
   linked_total: number
   stages: {
-    era_missing: number
-    set_missing: number
-    number_missing: number
-    name_missing: number
+    era_reached: number
+    set_reached: number
+    number_reached: number
+    name_reached: number
+    ready_to_link: number
+  }
+  bottlenecks: {
+    needs_era: number
+    needs_set: number
+    needs_number: number
+    needs_name: number
     ready_to_link: number
   }
   invariants: {
@@ -189,6 +196,23 @@ export async function fetchEnrichmentAudit(itemId: number) {
   const res = await fetch(`/api/enrichment/audit?itemId=${itemId}`)
   if (!res.ok) throw new Error('Failed to load audit row')
   return res.json() as Promise<{ auction: any; enrichment: any }>
+}
+
+export async function updateEnrichmentItem(payload: {
+  itemId: number
+  matched_era?: string | null
+  matched_set_code?: string | null
+  parsed_card_number?: string | null
+  parsed_card_name?: string | null
+}) {
+  const res = await fetch('/api/enrichment/update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+
+  if (!res.ok) throw new Error('Failed to update enrichment fields')
+  return res.json() as Promise<{ ok: boolean }>
 }
 
 export type ImportRun = {

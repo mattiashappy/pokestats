@@ -1279,6 +1279,86 @@ app.post('/api/enrichment/run-item', async (req, res) => {
   }
 })
 
+app.post('/api/enrichment/update', async (req, res) => {
+  if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
+
+  try {
+    const itemId = Number(req.body?.itemId)
+    if (!Number.isFinite(itemId)) return res.status(400).json({ ok: false, error: 'Invalid itemId' })
+
+    const normalize = (value) => {
+      if (value === undefined) return undefined
+      if (value === null) return null
+      const trimmed = String(value).trim()
+      return trimmed.length ? trimmed : null
+    }
+
+    const matchedEra = normalize(req.body?.matched_era)
+    const matchedSetCode = normalize(req.body?.matched_set_code)
+    const parsedCardNumber = normalize(req.body?.parsed_card_number)
+    const parsedCardName = normalize(req.body?.parsed_card_name)
+
+    const fields = [
+      { column: 'matched_era', value: matchedEra },
+      { column: 'matched_set_code', value: matchedSetCode },
+      { column: 'parsed_card_number', value: parsedCardNumber },
+      { column: 'parsed_card_name', value: parsedCardName }
+    ].filter((entry) => entry.value !== undefined)
+
+    if (!fields.length) return res.status(400).json({ ok: false, error: 'No fields provided' })
+
+    const { rows } = await pool.query(
+      `
+        SELECT matched_era, matched_set_code, parsed_card_number, parsed_card_name
+        FROM public.auction_enrichment
+        WHERE item_id = $1
+        LIMIT 1
+      `,
+      [itemId]
+    )
+
+    if (!rows.length) return res.status(404).json({ ok: false, error: 'Enrichment row not found' })
+
+    const current = rows[0]
+    const effective = {
+      matched_era: matchedEra !== undefined ? matchedEra : current.matched_era,
+      matched_set_code: matchedSetCode !== undefined ? matchedSetCode : current.matched_set_code,
+      parsed_card_number: parsedCardNumber !== undefined ? parsedCardNumber : current.parsed_card_number,
+      parsed_card_name: parsedCardName !== undefined ? parsedCardName : current.parsed_card_name
+    }
+
+    const nextStage = !effective.matched_era
+      ? 'era'
+      : !effective.matched_set_code
+        ? 'set'
+        : !effective.parsed_card_number
+          ? 'number'
+          : !effective.parsed_card_name
+            ? 'name'
+            : 'ready_to_link'
+
+    const setClauses = fields.map((entry, index) => `${entry.column} = $${index + 2}`)
+    const values = fields.map((entry) => entry.value)
+
+    setClauses.push('stage = $' + (values.length + 2), 'updated_at = NOW()')
+    values.push(nextStage)
+
+    await pool.query(
+      `
+        UPDATE public.auction_enrichment
+        SET ${setClauses.join(', ')}
+        WHERE item_id = $1
+      `,
+      [itemId, ...values]
+    )
+
+    res.json({ ok: true })
+  } catch (error) {
+    console.error('Failed to update enrichment fields', error)
+    res.status(500).json({ ok: false, error: String(error) })
+  }
+})
+
 app.get('/api/enrichment/queue', async (req, res) => {
   if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
   try {
@@ -1320,13 +1400,17 @@ app.get('/api/enrichment/stats', async (_req, res) => {
     const { rows: funnelRows } = await pool.query(
       `
         SELECT
-          SUM(CASE WHEN a.card_id IS NULL AND e.matched_era IS NULL THEN 1 ELSE 0 END) AS era_missing,
-          SUM(CASE WHEN a.card_id IS NULL AND e.matched_era IS NOT NULL AND e.matched_set_code IS NULL THEN 1 ELSE 0 END) AS set_missing,
-          SUM(CASE WHEN a.card_id IS NULL AND e.matched_set_code IS NOT NULL AND e.parsed_card_number IS NULL THEN 1 ELSE 0 END) AS number_missing,
-          SUM(CASE WHEN a.card_id IS NULL AND e.parsed_card_number IS NOT NULL AND e.parsed_card_name IS NULL THEN 1 ELSE 0 END) AS name_missing,
+          SUM(CASE WHEN e.matched_era IS NOT NULL THEN 1 ELSE 0 END) AS era_reached,
+          SUM(CASE WHEN e.matched_era IS NOT NULL AND e.matched_set_code IS NOT NULL THEN 1 ELSE 0 END) AS set_reached,
+          SUM(CASE WHEN e.matched_set_code IS NOT NULL AND e.parsed_card_number IS NOT NULL THEN 1 ELSE 0 END) AS number_reached,
+          SUM(CASE WHEN e.parsed_card_number IS NOT NULL AND e.parsed_card_name IS NOT NULL THEN 1 ELSE 0 END) AS name_reached,
           SUM(CASE WHEN a.card_id IS NULL AND e.matched_era IS NOT NULL AND e.matched_set_code IS NOT NULL AND e.parsed_card_number IS NOT NULL AND e.parsed_card_name IS NOT NULL THEN 1 ELSE 0 END) AS ready_to_link,
           SUM(CASE WHEN a.card_id IS NOT NULL THEN 1 ELSE 0 END) AS linked_total,
-          SUM(CASE WHEN a.card_id IS NULL THEN 1 ELSE 0 END) AS unlinked_total
+          SUM(CASE WHEN a.card_id IS NULL THEN 1 ELSE 0 END) AS unlinked_total,
+          SUM(CASE WHEN a.card_id IS NULL AND e.matched_era IS NULL THEN 1 ELSE 0 END) AS needs_era,
+          SUM(CASE WHEN a.card_id IS NULL AND e.matched_era IS NOT NULL AND e.matched_set_code IS NULL THEN 1 ELSE 0 END) AS needs_set,
+          SUM(CASE WHEN a.card_id IS NULL AND e.matched_set_code IS NOT NULL AND e.parsed_card_number IS NULL THEN 1 ELSE 0 END) AS needs_number,
+          SUM(CASE WHEN a.card_id IS NULL AND e.parsed_card_number IS NOT NULL AND e.parsed_card_name IS NULL THEN 1 ELSE 0 END) AS needs_name
         FROM public.auctions a
         LEFT JOIN public.auction_enrichment e ON e.item_id = a.item_id
       `
@@ -1349,10 +1433,17 @@ app.get('/api/enrichment/stats', async (_req, res) => {
       unlinked_total: Number(funnel.unlinked_total) || 0,
       linked_total: Number(funnel.linked_total) || 0,
       stages: {
-        era_missing: Number(funnel.era_missing) || 0,
-        set_missing: Number(funnel.set_missing) || 0,
-        number_missing: Number(funnel.number_missing) || 0,
-        name_missing: Number(funnel.name_missing) || 0,
+        era_reached: Number(funnel.era_reached) || 0,
+        set_reached: Number(funnel.set_reached) || 0,
+        number_reached: Number(funnel.number_reached) || 0,
+        name_reached: Number(funnel.name_reached) || 0,
+        ready_to_link: Number(funnel.ready_to_link) || 0
+      },
+      bottlenecks: {
+        needs_era: Number(funnel.needs_era) || 0,
+        needs_set: Number(funnel.needs_set) || 0,
+        needs_number: Number(funnel.needs_number) || 0,
+        needs_name: Number(funnel.needs_name) || 0,
         ready_to_link: Number(funnel.ready_to_link) || 0
       },
       invariants: {
