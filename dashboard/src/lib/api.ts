@@ -1,10 +1,67 @@
 // src/lib/api.ts
 import type { AuctionRecord, CardListItem, CardResponse, ExpansionSummary } from '../types'
 
+type AuctionApiRow = {
+  item_id?: number | string | null
+  title?: string | null
+  price?: number | null
+  bid_count?: number | null
+  end_date?: string | null
+  seller_alias?: string | null
+  item_url?: string | null
+  thumbnail_url?: string | null
+  card_id?: number | null
+  card_name?: string | null
+  card_era?: string | null
+  card_set_name?: string | null
+  card_set_code?: string | null
+  card_number?: string | null
+  card_language?: string | null
+  matched_set_code?: string | null
+  matched_era?: string | null
+  enrich_status?: string | null
+  match_confidence_score?: number | null
+  match_method?: string | null
+  parsed_card_number?: string | null
+  parsed_number_text?: string | null
+  parsed_set_hint?: string | null
+  suggested_cards?: Record<string, unknown> | null
+}
+
+function mapAuctionRecord(row: AuctionApiRow): AuctionRecord {
+  return {
+    id: row.item_id != null ? String(row.item_id) : '',
+    title: row.title ?? 'Untitled auction',
+    cardId: row.card_id ?? null,
+    cardName: row.card_name ?? row.title ?? 'Unknown card',
+    cardEra: row.card_era ?? row.matched_era ?? 'Unknown era',
+    cardSetName: row.card_set_name ?? 'Unknown set',
+    cardSetCode: row.card_set_code ?? row.matched_set_code ?? null,
+    cardNumber: row.card_number ?? null,
+    seller: row.seller_alias ?? 'Unknown seller',
+    sellerType: 'new',
+    finalPrice: row.price ?? 0,
+    currency: 'SEK',
+    bids: row.bid_count ?? 0,
+    endTime: row.end_date ?? new Date(0).toISOString(),
+    condition: row.enrich_status ?? 'Unknown',
+    category: 'Auction',
+    location: 'Unknown',
+    url: row.item_url ?? '#',
+    addedAt: row.end_date ?? new Date(0).toISOString(),
+    thumbnail: row.thumbnail_url ?? null,
+    language: row.card_language ?? null,
+    gradingCompany: null,
+    grade: null,
+    rawAttributes: row.suggested_cards ?? undefined
+  }
+}
+
 export async function fetchAuctions(): Promise<AuctionRecord[]> {
   const response = await fetch('/api/sales')
   if (!response.ok) throw new Error('Failed to fetch auctions')
-  return response.json()
+  const rows = (await response.json()) as AuctionApiRow[]
+  return rows.map(mapAuctionRecord)
 }
 
 export async function fetchCardDetails(cardId: number): Promise<CardResponse> {
@@ -16,7 +73,8 @@ export async function fetchCardDetails(cardId: number): Promise<CardResponse> {
 export async function fetchCardAuctions(cardId: number): Promise<AuctionRecord[]> {
   const response = await fetch(`/api/cards/${cardId}/auctions`)
   if (!response.ok) throw new Error('Failed to fetch card auctions')
-  return response.json()
+  const rows = (await response.json()) as AuctionApiRow[]
+  return rows.map(mapAuctionRecord)
 }
 
 export async function fetchExpansions(): Promise<ExpansionSummary[]> {
