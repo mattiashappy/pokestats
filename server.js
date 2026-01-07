@@ -210,6 +210,7 @@ const pool = DATABASE_URL
 let hasCheckedSalesTable = false
 let salesTableAvailable = false
 let auctionsBaseTableExists = false
+let salesViewAvailable = false
 let hasCheckedCardsTable = false
 let cardsTableAvailable = false
 let hasCheckedExpansionsTable = false
@@ -376,8 +377,9 @@ async function ensureSalesTableAvailable() {
     "SELECT to_regclass('public.auctions') AS auctions, to_regclass('public.tradera_sales') AS sales_view"
   )
   auctionsBaseTableExists = Boolean(rows?.[0]?.auctions)
+  salesViewAvailable = Boolean(rows?.[0]?.sales_view)
   salesTableAvailable = Boolean(rows?.[0]?.auctions || rows?.[0]?.sales_view)
-  if (!rows?.[0]?.sales_view) {
+  if (!salesViewAvailable) {
     console.warn('tradera_sales view does not exist; legacy reads may fail')
   }
   hasCheckedSalesTable = true
@@ -620,6 +622,47 @@ function normalizeAuctionRow(row) {
   }
 }
 
+function buildSalesSourceQuery() {
+  if (salesViewAvailable) {
+    return {
+      cte: '',
+      source: 'public.tradera_sales ts'
+    }
+  }
+
+  return {
+    cte: `
+      WITH sales_source AS (
+        SELECT
+          a.item_id,
+          a.category_id,
+          a.end_date,
+          a.price,
+          a.bid_count,
+          a.seller_id,
+          a.seller_alias,
+          a.title,
+          a.item_url,
+          a.thumbnail_url,
+          a.card_id,
+          ae.status AS enrich_status,
+          ae.confidence_score AS match_confidence_score,
+          ae.method AS match_method,
+          ae.matched_set_code,
+          ae.matched_era,
+          ae.parsed_card_number,
+          ae.parsed_number_text,
+          ae.parsed_set_hint,
+          ae.suggested_cards,
+          a.updated_at
+        FROM public.auctions a
+        LEFT JOIN public.auction_enrichment ae ON ae.item_id = a.item_id
+      )
+    `,
+    source: 'sales_source ts'
+  }
+}
+
 async function fetchAuctionsFromDatabase(filters = {}) {
   if (!pool) return []
   const ok = await ensureCardInfrastructure()
@@ -627,7 +670,10 @@ async function fetchAuctionsFromDatabase(filters = {}) {
 
   const { era = null, language = null, minPrice = null, maxPrice = null, limit = null, offset = 0 } = filters
 
+  const { cte, source } = buildSalesSourceQuery()
+
   let query = `
+    ${cte}
     SELECT
       ts.item_id,
       ts.title,
@@ -653,7 +699,7 @@ async function fetchAuctionsFromDatabase(filters = {}) {
       COALESCE(e.set_code, c.set_code) AS card_set_code,
       COALESCE(e.language, c.language) AS card_language,
       c.card_number AS card_number
-    FROM public.tradera_sales ts
+    FROM ${source}
     LEFT JOIN public.cards c ON c.id = ts.card_id
     LEFT JOIN public.expansions e ON e.id = c.expansion_id
     WHERE
@@ -713,7 +759,9 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
   const ok = await ensureCardInfrastructure()
   if (!ok) return []
 
+  const { cte, source } = buildSalesSourceQuery()
   const query = `
+    ${cte}
     SELECT
       ts.item_id,
       ts.title,
@@ -738,7 +786,7 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
       COALESCE(e.name, c.set_name) AS card_set_name,
       COALESCE(e.set_code, c.set_code) AS card_set_code,
       c.card_number AS card_number
-    FROM public.tradera_sales ts
+    FROM ${source}
     JOIN public.cards c ON c.id = ts.card_id
     LEFT JOIN public.expansions e ON e.id = c.expansion_id
     WHERE ts.card_id = $1
