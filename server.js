@@ -592,8 +592,6 @@ const { registerRoutes: registerExpansionRoutes } = createExpansionService({
 })
 
 function normalizeAuctionRow(row) {
-  // Keep this mapping loose: your dashboard/types can shape it on the client.
-  // If you already have a stricter normalizeAuctionRow elsewhere, replace this.
   return {
     item_id: row.item_id,
     title: row.title,
@@ -622,7 +620,14 @@ function normalizeAuctionRow(row) {
   }
 }
 
+/**
+ * ✅ Conflict-free + robust:
+ * Always returns a source that matches the downstream SELECT shape
+ * (so ts.enrich_status / ts.match_confidence_score / etc always exist).
+ */
 function buildSalesSourceQuery() {
+  // Use the view only when both the view exists and enrichment table exists.
+  // (Because downstream SELECT expects enrichment-related columns to be present.)
   if (salesViewAvailable && enrichmentTableAvailable) {
     return {
       cte: '',
@@ -630,6 +635,7 @@ function buildSalesSourceQuery() {
     }
   }
 
+  // If enrichment table is missing, still provide the same column shape via NULLs.
   if (!enrichmentTableAvailable) {
     return {
       cte: `
@@ -663,6 +669,7 @@ function buildSalesSourceQuery() {
     }
   }
 
+  // Enrichment exists, but view doesn't: build from auctions + left join enrichment.
   return {
     cte: `
       WITH sales_source AS (
@@ -1334,8 +1341,7 @@ app.get('/api/enrichment/stats', async (_req, res) => {
           SUM(CASE WHEN a.card_id IS NOT NULL AND (e.matched_era IS NULL OR e.matched_set_code IS NULL OR e.parsed_card_number IS NULL OR e.parsed_card_name IS NULL) THEN 1 ELSE 0 END) AS linked_but_missing_fields,
           SUM(CASE WHEN a.card_id IS NULL AND e.status = 'matched' THEN 1 ELSE 0 END) AS matched_status_but_unlinked
         FROM public.auctions a
-        LEFT JOIN public.auction_enrichment
-          e ON e.item_id = a.item_id
+        LEFT JOIN public.auction_enrichment e ON e.item_id = a.item_id
       `
     )
 
