@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { AlertCircle, RefreshCcw, Rocket, TestTube } from 'lucide-react'
 import { Button } from '../components/ui/button'
@@ -16,12 +16,12 @@ import {
 } from '../lib/api'
 
 const STAGE_FILTERS = [
-  { label: 'ERA MISSING', value: 'era' },
-  { label: 'SET MISSING', value: 'set' },
-  { label: 'NUMBER MISSING', value: 'number' },
-  { label: 'NAME MISSING', value: 'name' },
-  { label: 'READY TO LINK', value: 'ready_to_link' },
-  { label: 'LINK', value: 'link' }
+  { label: 'Needs ERA', value: 'era' },
+  { label: 'Needs SET', value: 'set' },
+  { label: 'Needs NUMBER', value: 'number' },
+  { label: 'Needs NAME', value: 'name' },
+  { label: 'Ready to link', value: 'ready_to_link' },
+  { label: 'Linked (read-only)', value: 'link' }
 ] as const
 
 type StageKey = (typeof STAGE_FILTERS)[number]['value']
@@ -134,15 +134,47 @@ export function DataEnrichmentPage(): JSX.Element {
     alert(JSON.stringify(data, null, 2))
   }
 
+  const funnelSteps = stats
+    ? [
+        { key: 'era', label: 'Era found', value: stats.stages.era_reached },
+        { key: 'set', label: 'Set found', value: stats.stages.set_reached },
+        { key: 'number', label: 'Number found', value: stats.stages.number_reached },
+        { key: 'name', label: 'Name verified', value: stats.stages.name_reached },
+        { key: 'ready', label: 'Ready to link', value: stats.stages.ready_to_link },
+        { key: 'linked', label: 'Linked', value: stats.linked_total }
+      ]
+    : []
+
+  const bottlenecks = stats?.bottlenecks
+
+  const stageActionLabel = (value: StageKey) => {
+    switch (value) {
+      case 'era':
+        return 'Detect era'
+      case 'set':
+        return 'Detect set'
+      case 'number':
+        return 'Extract number'
+      case 'name':
+        return 'Verify card'
+      case 'ready_to_link':
+        return 'Link card'
+      case 'link':
+        return 'Linked'
+      default:
+        return 'Run stage'
+    }
+  }
+
   return (
     <div className="space-y-6">
       <header className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase text-slate-500">Data Enrichment</p>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Staged auction pipeline</h1>
+          <p className="text-xs uppercase text-slate-500">Card Matching Funnel</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Staged card matching funnel</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Single enrichment pass runs ERA → SET → NUMBER → NAME before linking. Rows only advance when their stage
-            succeeds.
+            Track how auctions progress from raw data to linked Pokémon cards. Each stage only advances once the prior
+            gates are complete.
           </p>
         </div>
 
@@ -155,7 +187,7 @@ export function DataEnrichmentPage(): JSX.Element {
             ) : (
               <Rocket className="h-4 w-4" />
             )}
-            {runAllMutation.isPending ? 'Running…' : `Run ${stage.toUpperCase()} (${limit})`}
+            {runAllMutation.isPending ? 'Running…' : `${stageActionLabel(stage)} (${limit})`}
           </Button>
 
           <Button variant="secondary" onClick={() => runSingleMutation.mutate()} disabled={runSingleMutation.isPending}>
@@ -172,21 +204,24 @@ export function DataEnrichmentPage(): JSX.Element {
       <Card>
         <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
-            <CardTitle>Pipeline overview</CardTitle>
+            <CardTitle>Funnel progress</CardTitle>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Counts per stage plus invariant checks to ensure card links only happen after all gates are met.
+              Counts show how many auctions have reached at least each milestone, turning enrichment into visible
+              momentum.
             </p>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {stats && (
-            <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
-              <StageCount label="ERA missing" value={stats.stages.era_missing} />
-              <StageCount label="SET missing" value={stats.stages.set_missing} />
-              <StageCount label="NUMBER missing" value={stats.stages.number_missing} />
-              <StageCount label="NAME missing" value={stats.stages.name_missing} />
-              <StageCount label="Ready to link" value={stats.stages.ready_to_link} />
-              <StageCount label="Linked" value={stats.linked_total} />
+            <div className="grid gap-3 lg:grid-cols-6">
+              {funnelSteps.map((step, index) => (
+                <FunnelStepCard
+                  key={step.key}
+                  label={step.label}
+                  value={step.value}
+                  showArrow={index < funnelSteps.length - 1}
+                />
+              ))}
             </div>
           )}
 
@@ -207,14 +242,36 @@ export function DataEnrichmentPage(): JSX.Element {
       </Card>
 
       <Card>
+        <CardHeader>
+          <CardTitle>Current bottlenecks</CardTitle>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Focus on the stages that are actively blocking progress toward linking.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
+          {bottlenecks ? (
+            <div className="grid gap-3 md:grid-cols-3">
+              <BottleneckCard label="Card number unresolved" value={bottlenecks.needs_number} tone="warning" />
+              <BottleneckCard label="Card name unresolved" value={bottlenecks.needs_name} tone="info" />
+              <BottleneckCard label="Ready to link" value={bottlenecks.ready_to_link} tone="success" />
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">Loading bottleneck data…</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
             <CardTitle>Stage queue</CardTitle>
-            <p className="text-sm text-slate-600 dark:text-slate-400">View and audit rows currently eligible for a given stage.</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Review auctions by their next required step to keep the funnel moving.
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-sm">
-            <label className="text-[11px] uppercase tracking-wide text-slate-500">Stage</label>
+            <label className="text-[11px] uppercase tracking-wide text-slate-500">Next step</label>
             <select
               className="rounded border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm"
               value={stage}
@@ -254,7 +311,7 @@ export function DataEnrichmentPage(): JSX.Element {
                 <TableRow>
                   <TableHead>ID</TableHead>
                   <TableHead>Title</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Progress</TableHead>
                   <TableHead>Updated</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -266,17 +323,7 @@ export function DataEnrichmentPage(): JSX.Element {
                     <TableCell className="font-mono text-xs">{row.item_id}</TableCell>
                     <TableCell className="min-w-[220px]">{formatText(row.title)}</TableCell>
                     <TableCell>
-                      <StatusStack
-                        stage={formatText(row.stage)}
-                        status={formatText(row.status)}
-                        steps={[
-                          { label: 'Era', value: formatText(row.matched_era) },
-                          { label: 'Set', value: formatText(row.matched_set_code) },
-                          { label: 'Number', value: formatText(row.parsed_card_number) },
-                          { label: 'Name', value: formatText(row.parsed_card_name) },
-                          { label: 'Card', value: formatCardLink(row) }
-                        ]}
-                      />
+                      <ProgressStack row={row} />
                     </TableCell>
                     <TableCell>{formatDateTime(row.updated_at)}</TableCell>
                     <TableCell>
@@ -286,7 +333,9 @@ export function DataEnrichmentPage(): JSX.Element {
                           onClick={() => runItemMutation.mutate(row.item_id)}
                           disabled={runItemMutation.isPending && activeItemId === row.item_id}
                         >
-                          {runItemMutation.isPending && activeItemId === row.item_id ? 'Enriching…' : 'Enrich'}
+                          {runItemMutation.isPending && activeItemId === row.item_id
+                            ? 'Enriching…'
+                            : stageActionLabel(getNextRequiredStep(row))}
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => loadAudit(row.item_id)}>
                           Audit
@@ -312,63 +361,112 @@ export function DataEnrichmentPage(): JSX.Element {
   )
 }
 
-function StageCount({ label, value }: { label: string; value: number }) {
+function FunnelStepCard({ label, value, showArrow }: { label: string; value: number; showArrow?: boolean }) {
   return (
-    <div className="rounded border border-slate-200 bg-white p-3 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div className="relative rounded border border-slate-200 bg-white p-3 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p>
       <p className="text-xl font-semibold text-slate-900 dark:text-slate-50">{value.toLocaleString('sv-SE')}</p>
+      {showArrow && (
+        <span className="absolute -right-2 top-1/2 hidden h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-[10px] text-slate-400 md:flex">
+          →
+        </span>
+      )}
     </div>
   )
 }
 
-function StatusStack({
-  stage,
-  status,
-  steps
+function BottleneckCard({
+  label,
+  value,
+  tone
 }: {
-  stage: string
-  status: string
-  steps: { label: string; value: ReactNode }[]
+  label: string
+  value: number
+  tone: 'warning' | 'info' | 'success'
 }) {
+  const toneClasses =
+    tone === 'warning'
+      ? 'border-amber-200 bg-amber-50 text-amber-900'
+      : tone === 'success'
+        ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+        : 'border-blue-200 bg-blue-50 text-blue-900'
+
+  return (
+    <div className={`rounded border p-3 shadow-sm ${toneClasses}`}>
+      <p className="text-[11px] uppercase tracking-wide">{label}</p>
+      <p className="text-2xl font-semibold">{value.toLocaleString('sv-SE')}</p>
+    </div>
+  )
+}
+
+const STEP_LABELS = {
+  era: 'Era',
+  set: 'Set',
+  number: 'Card number',
+  name: 'Card name',
+  ready_to_link: 'Link card',
+  link: 'Linked'
+} as const
+
+function getNextRequiredStep(row: EnrichmentQueueRow): StageKey {
+  if (!row.matched_era) return 'era'
+  if (!row.matched_set_code) return 'set'
+  if (!row.parsed_card_number) return 'number'
+  if (!row.parsed_card_name) return 'name'
+  if (!row.card_id) return 'ready_to_link'
+  return 'link'
+}
+
+function ProgressStack({ row }: { row: EnrichmentQueueRow }) {
+  const steps = [
+    { key: 'era', label: 'ERA', complete: Boolean(row.matched_era) },
+    { key: 'set', label: 'SET', complete: Boolean(row.matched_set_code) },
+    { key: 'number', label: 'NUMBER', complete: Boolean(row.parsed_card_number) },
+    { key: 'name', label: 'NAME', complete: Boolean(row.parsed_card_name) },
+    { key: 'link', label: 'LINK', complete: Boolean(row.card_id) }
+  ]
+
+  const nextStep = getNextRequiredStep(row)
+  const nextLabel = STEP_LABELS[nextStep] ?? 'Next step'
+
   return (
     <div className="flex flex-col gap-2 text-xs">
-      <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-slate-500">
+      <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide text-slate-500">
         <span>Stage</span>
         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700 dark:bg-slate-800 dark:text-slate-100">
-          {stage}
+          {row.stage || '—'}
         </span>
-      </div>
-
-      <div className="grid grid-cols-1 gap-1">
-        {steps.map((step) => (
-          <div
-            key={step.label}
-            className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 px-2 py-1 text-slate-700 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-200"
-          >
-            <span className="font-medium text-slate-600 dark:text-slate-300">{step.label}</span>
-            <span className="truncate text-right text-slate-800 dark:text-slate-50">{step.value}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-slate-500">
-        <span>Status</span>
         <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-blue-900/40 dark:text-blue-100">
-          {status}
+          {row.status || '—'}
         </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide text-slate-500">
+        {steps.map((step, index) => {
+          const isCurrent = !step.complete && nextStep !== 'link' && nextStep === step.key
+          const isLinkStep = step.key === 'link' && nextStep === 'ready_to_link'
+          const baseClasses = step.complete
+            ? 'bg-emerald-500 text-white'
+            : isCurrent || isLinkStep
+              ? 'bg-amber-400 text-amber-950'
+              : 'bg-slate-200 text-slate-500'
+
+          return (
+            <div key={step.key} className="flex items-center gap-1">
+              <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${baseClasses}`}>
+                {step.complete ? '✓' : step.label[0]}
+              </span>
+              <span>{step.label}</span>
+              {index < steps.length - 1 && <span className="text-slate-300">—</span>}
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="text-[11px] uppercase tracking-wide text-slate-500">
+        Next required step:{' '}
+        <span className="font-semibold text-slate-700 dark:text-slate-200">{nextLabel}</span>
       </div>
     </div>
   )
-}
-
-function formatCardLink(row: { card_id: number | null }) {
-  if (row.card_id) {
-    return (
-      <a href={`/pokemon/cards/${row.card_id}`} className="text-blue-600 hover:underline dark:text-blue-300">
-        View card #{row.card_id}
-      </a>
-    )
-  }
-
-  return '—'
 }
