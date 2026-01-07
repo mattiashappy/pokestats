@@ -1,3 +1,4 @@
+// src/pages/DataEnrichmentPage.tsx
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { AlertCircle, RefreshCcw, Rocket, TestTube } from 'lucide-react'
@@ -10,8 +11,8 @@ import {
   fetchEnrichmentQueue,
   fetchEnrichmentStats,
   runEnrichmentForItem,
-  updateEnrichmentItem,
   runFullPipeline,
+  updateEnrichmentItem,
   type EnrichmentQueueRow,
   type EnrichmentStats
 } from '../lib/api'
@@ -40,7 +41,7 @@ export function DataEnrichmentPage(): JSX.Element {
     queryFn: () => fetchEnrichmentQueue(stage, limit)
   })
 
-  // Run the full pipeline for `limit` items (your backend run-all endpoint processes stages internally)
+  // Run the full pipeline for `limit` items (backend run-all processes stages internally)
   const runAllMutation = useMutation({
     mutationFn: () => runFullPipeline(limit),
     onSuccess: () => {
@@ -52,7 +53,7 @@ export function DataEnrichmentPage(): JSX.Element {
     }
   })
 
-  // Run the full pipeline but only for 1 item (useful for testing)
+  // Run the full pipeline but only for 1 item
   const runSingleMutation = useMutation({
     mutationFn: () => runFullPipeline(1),
     onSuccess: (result) => {
@@ -145,7 +146,6 @@ export function DataEnrichmentPage(): JSX.Element {
     linked_but_missing_fields: 0,
     matched_status_but_unlinked: 0
   }
-
   const hasInvariantIssue = Object.values(invariants).some((value) => value > 0)
 
   const loadAudit = async (itemId: number) => {
@@ -153,18 +153,46 @@ export function DataEnrichmentPage(): JSX.Element {
     alert(JSON.stringify(data, null, 2))
   }
 
-  const funnelSteps = stats
-    ? [
-        { key: 'era', label: 'Era found', value: stats.stages.era_reached },
-        { key: 'set', label: 'Set found', value: stats.stages.set_reached },
-        { key: 'number', label: 'Number found', value: stats.stages.number_reached },
-        { key: 'name', label: 'Name verified', value: stats.stages.name_reached },
-        { key: 'ready', label: 'Ready to link', value: stats.stages.ready_to_link },
-        { key: 'linked', label: 'Linked', value: stats.linked_total }
-      ]
-    : []
+  // Backend returns "missing" counts per stage gate:
+  // stages: { era_missing, set_missing, number_missing, name_missing, ready_to_link }, plus linked_total/unlinked_total.
+  // Turn that into a funnel "reached at least this step" view.
+  const funnelSteps = useMemo(() => {
+    if (!stats) return []
 
-  const bottlenecks = stats?.bottlenecks
+    const total = (Number(stats.linked_total) || 0) + (Number(stats.unlinked_total) || 0)
+    const eraMissing = Number(stats.stages?.era_missing) || 0
+    const setMissing = Number(stats.stages?.set_missing) || 0
+    const numberMissing = Number(stats.stages?.number_missing) || 0
+    const nameMissing = Number(stats.stages?.name_missing) || 0
+    const readyToLink = Number(stats.stages?.ready_to_link) || 0
+    const linked = Number(stats.linked_total) || 0
+
+    // cumulative reached counts (monotonic)
+    const eraFound = Math.max(0, total - eraMissing)
+    const setFound = Math.max(0, total - eraMissing - setMissing)
+    const numberFound = Math.max(0, total - eraMissing - setMissing - numberMissing)
+    const nameVerified = Math.max(0, total - eraMissing - setMissing - numberMissing - nameMissing)
+    const readyGateReached = Math.max(0, readyToLink + linked)
+
+    return [
+      { key: 'era', label: 'Era found', value: eraFound },
+      { key: 'set', label: 'Set found', value: setFound },
+      { key: 'number', label: 'Number found', value: numberFound },
+      { key: 'name', label: 'Name verified', value: nameVerified },
+      { key: 'ready', label: 'Ready to link', value: readyGateReached },
+      { key: 'linked', label: 'Linked', value: linked }
+    ]
+  }, [stats])
+
+  const bottlenecks = useMemo(() => {
+    if (!stats) return null
+    return {
+      needs_set: Number(stats.stages?.set_missing) || 0,
+      needs_number: Number(stats.stages?.number_missing) || 0,
+      needs_name: Number(stats.stages?.name_missing) || 0,
+      ready_to_link: Number(stats.stages?.ready_to_link) || 0
+    }
+  }, [stats])
 
   const stageActionLabel = (value: StageKey) => {
     switch (value) {
@@ -198,8 +226,6 @@ export function DataEnrichmentPage(): JSX.Element {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Keep the stage button for UI context, but it currently runs the full pipeline with the configured limit.
-              If you later add a "run stage" endpoint, you can swap mutationFn here. */}
           <Button onClick={() => runAllMutation.mutate()} disabled={runAllMutation.isPending}>
             {runAllMutation.isPending ? (
               <RefreshCcw className="h-4 w-4 animate-spin" />
@@ -210,7 +236,11 @@ export function DataEnrichmentPage(): JSX.Element {
           </Button>
 
           <Button variant="secondary" onClick={() => runSingleMutation.mutate()} disabled={runSingleMutation.isPending}>
-            {runSingleMutation.isPending ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <TestTube className="h-4 w-4" />}
+            {runSingleMutation.isPending ? (
+              <RefreshCcw className="h-4 w-4 animate-spin" />
+            ) : (
+              <TestTube className="h-4 w-4" />
+            )}
             {runSingleMutation.isPending ? 'Running one…' : 'Run one item'}
           </Button>
 
@@ -225,8 +255,7 @@ export function DataEnrichmentPage(): JSX.Element {
           <div>
             <CardTitle>Funnel progress</CardTitle>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Counts show how many auctions have reached at least each milestone, turning enrichment into visible
-              momentum.
+              Counts show how many auctions have reached at least each milestone.
             </p>
           </div>
         </CardHeader>
@@ -269,7 +298,8 @@ export function DataEnrichmentPage(): JSX.Element {
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
           {bottlenecks ? (
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-4">
+              <BottleneckCard label="Set unresolved" value={bottlenecks.needs_set} tone="info" />
               <BottleneckCard label="Card number unresolved" value={bottlenecks.needs_number} tone="warning" />
               <BottleneckCard label="Card name unresolved" value={bottlenecks.needs_name} tone="info" />
               <BottleneckCard label="Ready to link" value={bottlenecks.ready_to_link} tone="success" />
@@ -465,6 +495,7 @@ function ProgressStack({
 
   const nextStep = getNextRequiredStep(row)
   const nextLabel = STEP_LABELS[nextStep] ?? 'Next step'
+
   const [matchedEra, setMatchedEra] = useState(row.matched_era ?? '')
   const [matchedSet, setMatchedSet] = useState(row.matched_set_code ?? '')
   const [parsedNumber, setParsedNumber] = useState(row.parsed_card_number ?? '')
@@ -533,10 +564,10 @@ function ProgressStack({
       </div>
 
       <div className="grid gap-2 rounded border border-slate-100 bg-slate-50 p-2 text-xs text-slate-700 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-200">
-        <FieldEditor label="ERA" value={matchedEra} onChange={setMatchedEra} placeholder="e.g. Scarlet & Violet" />
-        <FieldEditor label="SET" value={matchedSet} onChange={setMatchedSet} placeholder="e.g. SV4.5" />
-        <FieldEditor label="NUMBER" value={parsedNumber} onChange={setParsedNumber} placeholder="e.g. 102" />
-        <FieldEditor label="NAME" value={parsedName} onChange={setParsedName} placeholder="e.g. Charizard" />
+        <FieldEditor label="ERA" value={matchedEra} onChange={setMatchedEra} placeholder="e.g. Wizards of the Coast" />
+        <FieldEditor label="SET" value={matchedSet} onChange={setMatchedSet} placeholder="e.g. GYM2" />
+        <FieldEditor label="NUMBER" value={parsedNumber} onChange={setParsedNumber} placeholder="e.g. 57/132" />
+        <FieldEditor label="NAME" value={parsedName} onChange={setParsedName} placeholder="e.g. Misty's Tentacool" />
         <div className="flex justify-end">
           <Button size="sm" variant="outline" onClick={handleSave} disabled={!hasChanges || isSaving}>
             {isSaving ? 'Saving…' : 'Save fields'}
