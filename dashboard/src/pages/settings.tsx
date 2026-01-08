@@ -17,6 +17,17 @@ const settingsSchema = z.object({
   subscriptionStatus: z.union([z.literal('active'), z.literal('inactive'), z.literal('trialing')])
 })
 
+const passwordSchema = z
+  .object({
+    currentPassword: z.string().min(8),
+    newPassword: z.string().min(8),
+    confirmPassword: z.string().min(8)
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword']
+  })
+
 export function SettingsPage(): JSX.Element {
   const { user, updateSubscription } = useAuth()
   const form = useForm<z.infer<typeof settingsSchema>>({
@@ -27,10 +38,26 @@ export function SettingsPage(): JSX.Element {
       subscriptionStatus: user?.subscriptionStatus ?? 'inactive'
     }
   })
+  const passwordForm = useForm<z.infer<typeof passwordSchema>>({
+    resolver: zodResolver(passwordSchema),
+    defaultValues: {
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    }
+  })
 
   const onSubmit = (data: z.infer<typeof settingsSchema>): void => {
     updateSubscription(data.subscriptionStatus)
     form.reset(data)
+  }
+
+  const onPasswordSubmit = (_data: z.infer<typeof passwordSchema>): void => {
+    passwordForm.reset({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    })
   }
 
   return (
@@ -89,6 +116,32 @@ export function SettingsPage(): JSX.Element {
             </div>
 
             <Button type="submit">Save settings</Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Change password</CardTitle>
+          <CardDescription>Use a strong password with at least 8 characters.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)} className="space-y-4" noValidate>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="currentPassword">Current password</Label>
+                <Input id="currentPassword" type="password" {...passwordForm.register('currentPassword')} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="newPassword">New password</Label>
+                <Input id="newPassword" type="password" {...passwordForm.register('newPassword')} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirm new password</Label>
+              <Input id="confirmPassword" type="password" {...passwordForm.register('confirmPassword')} />
+            </div>
+            <Button type="submit" variant="secondary">Update password</Button>
           </form>
         </CardContent>
       </Card>
