@@ -200,6 +200,60 @@ def parse_images(el: ET.Element) -> List[str]:
             out.append(e.text.strip())
     return out
 
+def parse_attributes(el: ET.Element) -> Dict[str, List[str]]:
+    out: Dict[str, List[str]] = {}
+    for tav in el.iter():
+        if strip_ns(tav.tag) != "TermAttributeValue":
+            continue
+
+        name = None
+        values: List[str] = []
+
+        for child in list(tav):
+            if strip_ns(child.tag) == "Name" and child.text:
+                name = child.text.strip()
+            for desc in child.iter():
+                if strip_ns(desc.tag) == "string" and desc.text:
+                    values.append(desc.text.strip())
+
+        if name:
+            out[name] = values
+    return out
+
+def build_attributes_payload(el: ET.Element) -> Dict[str, Any]:
+    return parse_attributes(el)
+
+def element_to_dict(element: ET.Element) -> Dict[str, Any]:
+    children = [element_to_dict(child) for child in list(element)]
+    text = element.text.strip() if element.text and element.text.strip() else None
+
+    payload: Dict[str, Any] = {
+        "tag": strip_ns(element.tag),
+        "attributes": element.attrib or {},
+    }
+
+    if text is not None:
+        payload["text"] = text
+
+    if children:
+        payload["children"] = children
+
+    return payload
+
+def extract_attribute_value(attributes: Dict[str, Any], key: str) -> Optional[str]:
+    if not attributes:
+        return None
+
+    key_lower = key.strip().lower()
+    for name, values in attributes.items():
+        if str(name).strip().lower() != key_lower:
+            continue
+        if isinstance(values, list) and values:
+            return str(values[0])
+        if isinstance(values, str) and values.strip():
+            return values.strip()
+    return None
+
 def parse_start_date(s: Optional[str]) -> Optional[datetime]:
     """
     Accepts YYYY-MM-DD (recommended). Interprets as midnight UTC.
@@ -248,11 +302,15 @@ class Row:
     seller_id: Optional[int]
     seller_alias: Optional[str]
     title: Optional[str]
-    description: Optional[str]
     item_url: Optional[str]
     thumbnail_url: Optional[str]
+    tradera_attributes: Dict[str, Any]
     image_urls: List[str]
-    attributes: Dict[str, Any]
+    description: Optional[str]
+    item_condition: Optional[str]
+    pokemon_era: Optional[str]
+    pokemon_language: Optional[str]
+    raw: Dict[str, Any]
 
     def as_params(self) -> Dict[str, Any]:
         return {
@@ -264,11 +322,15 @@ class Row:
             "seller_id": self.seller_id,
             "seller_alias": self.seller_alias,
             "title": self.title,
-            "description": self.description,
             "item_url": self.item_url,
             "thumbnail_url": self.thumbnail_url,
+            "tradera_attributes": Json(self.tradera_attributes),
             "image_urls": Json(self.image_urls),
-            "attributes": Json(self.attributes),
+            "description": self.description,
+            "item_condition": self.item_condition,
+            "pokemon_era": self.pokemon_era,
+            "pokemon_language": self.pokemon_language,
+            "raw": Json(self.raw),
         }
 
 # -----------------------------
@@ -280,17 +342,36 @@ def upsert_sales(conn, rows: List[Row]) -> None:
         return
 
     sql = """
-    INSERT INTO auctions (
+    INSERT INTO tradera_auctions (
         item_id, category_id, end_date, price, bid_count,
-        seller_id, seller_alias, title, description,
-        item_url, thumbnail_url, image_urls, attributes
+        seller_id, seller_alias, title, item_url, thumbnail_url,
+        tradera_attributes, image_urls, description, item_condition, pokemon_era, pokemon_language,
+        raw, created_at, updated_at
     )
     VALUES (
         %(item_id)s, %(category_id)s, %(end_date)s, %(price)s, %(bid_count)s,
-        %(seller_id)s, %(seller_alias)s, %(title)s, %(description)s,
-        %(item_url)s, %(thumbnail_url)s, %(image_urls)s, %(attributes)s
+        %(seller_id)s, %(seller_alias)s, %(title)s, %(item_url)s, %(thumbnail_url)s,
+        %(tradera_attributes)s, %(image_urls)s, %(description)s, %(item_condition)s, %(pokemon_era)s, %(pokemon_language)s,
+        %(raw)s, NOW(), NOW()
     )
-    ON CONFLICT (item_id) DO NOTHING;
+    ON CONFLICT (item_id) DO UPDATE SET
+        category_id = EXCLUDED.category_id,
+        end_date = EXCLUDED.end_date,
+        price = EXCLUDED.price,
+        bid_count = EXCLUDED.bid_count,
+        seller_id = EXCLUDED.seller_id,
+        seller_alias = EXCLUDED.seller_alias,
+        title = EXCLUDED.title,
+        item_url = EXCLUDED.item_url,
+        thumbnail_url = EXCLUDED.thumbnail_url,
+        tradera_attributes = EXCLUDED.tradera_attributes,
+        image_urls = EXCLUDED.image_urls,
+        description = EXCLUDED.description,
+        item_condition = EXCLUDED.item_condition,
+        pokemon_era = EXCLUDED.pokemon_era,
+        pokemon_language = EXCLUDED.pokemon_language,
+        raw = EXCLUDED.raw,
+        updated_at = NOW();
     """
     with conn.cursor() as cur:
         execute_batch(cur, sql, [r.as_params() for r in rows], page_size=100)
@@ -447,6 +528,21 @@ def main():
                     continue
 
                 page_dates.append(end_date.astimezone(timezone.utc))
+                tradera_attributes = build_attributes_payload(el)
+                image_urls = parse_images(el)
+                description = find_text(el, "LongDescription")
+                item_condition = extract_attribute_value(tradera_attributes, "condition")
+                pokemon_era = extract_attribute_value(tradera_attributes, "pokemon_era")
+                pokemon_language = extract_attribute_value(tradera_attributes, "pokemon_language")
+                raw_payload = {
+                    "attributes": tradera_attributes,
+                    "image_urls": image_urls,
+                    "description": description,
+                    "item_condition": item_condition,
+                    "pokemon_era": pokemon_era,
+                    "pokemon_language": pokemon_language,
+                    "item": element_to_dict(el),
+                }
 
                 rows.append(Row(
                     item_id=item_id,
@@ -457,11 +553,15 @@ def main():
                     seller_id=parse_int(find_text(el, "SellerId")),
                     seller_alias=find_text(el, "SellerAlias"),
                     title=find_text(el, "ShortDescription"),
-                    description=find_text(el, "LongDescription"),
+                    description=description,
                     item_url=find_text(el, "ItemUrl"),
                     thumbnail_url=find_text(el, "ThumbnailLink"),
-                    image_urls=parse_images(el),
-                    attributes={},
+                    tradera_attributes=tradera_attributes,
+                    image_urls=image_urls,
+                    item_condition=item_condition,
+                    pokemon_era=pokemon_era,
+                    pokemon_language=pokemon_language,
+                    raw=raw_payload,
                 ))
 
             upsert_sales(conn, rows)

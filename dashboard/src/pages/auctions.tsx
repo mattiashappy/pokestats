@@ -46,12 +46,12 @@ export function AuctionsPage(): JSX.Element {
   const totalAuctions = data?.length ?? 0
 
   const eras = useMemo(() => {
-    const unique = new Set<string>(data?.map((auction) => auction.cardEra || 'Unknown era') ?? [])
+    const unique = new Set<string>(data?.map((auction) => auction.pokemonEra || 'Unknown era') ?? [])
     return ['all', ...Array.from(unique)]
   }, [data])
 
   const languages = useMemo(() => {
-    const unique = new Set<string>(data?.map((auction) => auction.language || 'Unknown language') ?? [])
+    const unique = new Set<string>(data?.map((auction) => auction.pokemonLanguage || 'Unknown language') ?? [])
     return ['all', ...Array.from(unique)]
   }, [data])
 
@@ -108,9 +108,9 @@ export function AuctionsPage(): JSX.Element {
       .sort((a, b) => b.count - a.count)
   }
 
-  const eraDistribution = useMemo(() => buildDistribution((auction) => auction.cardEra, 'Unknown era'), [data])
+  const eraDistribution = useMemo(() => buildDistribution((auction) => auction.pokemonEra, 'Unknown era'), [data])
   const languageDistribution = useMemo(
-    () => buildDistribution((auction) => auction.language, 'Unknown language'),
+    () => buildDistribution((auction) => auction.pokemonLanguage, 'Unknown language'),
     [data]
   )
 
@@ -130,17 +130,13 @@ export function AuctionsPage(): JSX.Element {
     const query = searchTerm.trim().toLowerCase()
 
     const filtered = data.filter((auction) => {
-      const matchesSearch =
-        !query ||
-        [auction.title, auction.description]
-          .filter(Boolean)
-          .some((value) => value?.toLowerCase().includes(query))
+      const matchesSearch = !query || auction.title.toLowerCase().includes(query)
 
       const matchesPriceMin = minPrice ? (auction.finalPrice || 0) >= Number(minPrice) : true
       const matchesPriceMax = maxPrice ? (auction.finalPrice || 0) <= Number(maxPrice) : true
 
-      const matchesEra = era === 'all' || (auction.cardEra || 'Unknown era') === era
-      const matchesLanguage = language === 'all' || (auction.language || 'Unknown language') === language
+      const matchesEra = era === 'all' || (auction.pokemonEra || 'Unknown era') === era
+      const matchesLanguage = language === 'all' || (auction.pokemonLanguage || 'Unknown language') === language
 
       return (
         matchesSearch &&
@@ -351,7 +347,7 @@ export function AuctionsPage(): JSX.Element {
                 <Input
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search titles or descriptions"
+                  placeholder="Search titles"
                   className="h-9 border-none bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
                 />
               </div>
@@ -495,15 +491,12 @@ export function AuctionsPage(): JSX.Element {
                 <TableBody>
                   {paginatedAuctions.length ? (
                     paginatedAuctions.map((auction) => {
-                      const preview =
-                        auction.thumbnail || auction.imageUrls?.[2] || auction.imageUrls?.[0] || null
-
                       return (
                         <TableRow key={auction.id}>
                           <TableCell className="w-24">
                             <div className="overflow-hidden rounded-md border border-slate-200 dark:border-slate-800">
-                              {preview ? (
-                                <img src={preview} alt={auction.title} className="h-16 w-full object-cover" />
+                              {auction.thumbnail ? (
+                                <img src={auction.thumbnail} alt={auction.title} className="h-16 w-full object-cover" />
                               ) : (
                                 <div className="flex h-16 w-full items-center justify-center bg-slate-100 text-xs text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
                                   No image
@@ -514,15 +507,10 @@ export function AuctionsPage(): JSX.Element {
 
                           <TableCell className="font-semibold text-slate-900 dark:text-slate-100">
                             <div className="text-slate-900 dark:text-slate-100">{auction.title}</div>
-                            {auction.description ? (
-                              <div className="text-xs font-normal text-slate-600 dark:text-slate-400 line-clamp-2">
-                                {auction.description}
-                              </div>
-                            ) : null}
                           </TableCell>
 
-                          <TableCell>{auction.cardEra || 'Unknown era'}</TableCell>
-                          <TableCell>{auction.language || 'Unknown language'}</TableCell>
+                          <TableCell>{auction.pokemonEra || 'Unknown era'}</TableCell>
+                          <TableCell>{auction.pokemonLanguage || 'Unknown language'}</TableCell>
                           <TableCell>{auction.itemCondition || 'Unknown condition'}</TableCell>
 
                           <TableCell className="text-right text-slate-900 dark:text-slate-100">

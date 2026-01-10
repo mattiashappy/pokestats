@@ -1,51 +1,31 @@
 // src/lib/api.ts
 import type { AuctionRecord, CardListItem, CardResponse, EraSummary, ExpansionSummary } from '../types'
 
-type AuctionApiRow = {
-  item_id?: number | string | null
+type TraderaAuctionDTO = {
+  id?: number | string | null
   title?: string | null
-  price?: number | null
-  bid_count?: number | null
-  end_date?: string | null
-  seller_alias?: string | null
-  item_url?: string | null
-  thumbnail_url?: string | null
-  pokemon_era?: string | null
-  pokemon_language?: string | null
-  item_condition?: string | null
-  description?: string | null
-  image_urls?: string[] | null
-  tradera_attributes?: Record<string, unknown> | null
-  card_id?: number | null
-  card_name?: string | null
-  card_era?: string | null
-  card_set_name?: string | null
-  card_set_code?: string | null
-  card_number?: string | null
-  card_language?: string | null
+  endTime?: string | null
+  finalPrice?: number | null
+  bids?: number | null
+  url?: string | null
+  thumbnail?: string | null
+  pokemonEra?: string | null
+  pokemonLanguage?: string | null
+  itemCondition?: string | null
 }
 
-function mapAuctionRecord(row: AuctionApiRow): AuctionRecord {
-  const imageUrls = Array.isArray(row.image_urls) ? row.image_urls : null
-
+function mapAuctionRecord(row: TraderaAuctionDTO): AuctionRecord {
   return {
-    id: row.item_id != null ? String(row.item_id) : '',
+    id: row.id != null ? String(row.id) : '',
     title: row.title ?? 'Untitled auction',
-    description: row.description ?? null,
-    finalPrice: row.price ?? 0,
-    bids: row.bid_count ?? 0,
-    endTime: row.end_date ?? new Date(0).toISOString(),
-    url: row.item_url ?? null,
-    thumbnail: row.thumbnail_url ?? null,
-    imageUrls,
-    cardEra: row.pokemon_era ?? row.card_era ?? null,
-    language: row.pokemon_language ?? row.card_language ?? null,
-    itemCondition: row.item_condition ?? null,
-    cardId: row.card_id ?? null,
-    cardName: row.card_name ?? row.title ?? null,
-    cardSetName: row.card_set_name ?? null,
-    cardSetCode: row.card_set_code ?? null,
-    cardNumber: row.card_number ?? null,
+    finalPrice: row.finalPrice ?? null,
+    bids: row.bids ?? null,
+    endTime: row.endTime ?? new Date(0).toISOString(),
+    url: row.url ?? null,
+    thumbnail: row.thumbnail ?? null,
+    pokemonEra: row.pokemonEra ?? null,
+    pokemonLanguage: row.pokemonLanguage ?? null,
+    itemCondition: row.itemCondition ?? null,
     currency: 'SEK'
   }
 }
@@ -53,7 +33,7 @@ function mapAuctionRecord(row: AuctionApiRow): AuctionRecord {
 export async function fetchAuctions(): Promise<AuctionRecord[]> {
   const response = await fetch('/api/sales')
   if (!response.ok) throw new Error('Failed to fetch auctions')
-  const rows = (await response.json()) as AuctionApiRow[]
+  const rows = (await response.json()) as TraderaAuctionDTO[]
   return rows.map(mapAuctionRecord)
 }
 
@@ -66,7 +46,7 @@ export async function fetchCardDetails(cardId: number): Promise<CardResponse> {
 export async function fetchCardAuctions(cardId: number): Promise<AuctionRecord[]> {
   const response = await fetch(`/api/cards/${cardId}/auctions`)
   if (!response.ok) throw new Error('Failed to fetch card auctions')
-  const rows = (await response.json()) as AuctionApiRow[]
+  const rows = (await response.json()) as TraderaAuctionDTO[]
   return rows.map(mapAuctionRecord)
 }
 

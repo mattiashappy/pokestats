@@ -14,14 +14,14 @@ const attributeConfigs = {
     label: 'Era',
     description: 'Auction count by Pokémon TCG era.',
     fallback: 'Unknown era',
-    selector: (auction: AuctionRecord) => auction.cardEra
+    selector: (auction: AuctionRecord) => auction.pokemonEra
   },
   language: {
     title: 'Languages',
     label: 'Language',
     description: 'Listing language breakdown across auctions.',
     fallback: 'Unknown language',
-    selector: (auction: AuctionRecord) => auction.language
+    selector: (auction: AuctionRecord) => auction.pokemonLanguage
   }
 } satisfies Record<string, {
   title: string
