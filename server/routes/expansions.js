@@ -1,3 +1,5 @@
+const { resolveEraCode } = require('../era')
+
 function normalizeKey(value) {
   return value ? String(value).trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : ''
 }
@@ -46,7 +48,8 @@ function createExpansionService({ pool, ensureCardInfrastructure, getStaticExpan
         NULL::int AS id,
         COALESCE(e.set_code, c.set_code, c.set_name) AS set_code,
         COALESCE(e.name, c.set_name) AS name,
-        COALESCE(e.era, c.era) AS era,
+        COALESCE(er.name, e.era, c.era) AS era,
+        er.code AS era_code,
         COALESCE(e.language, c.language) AS language,
         COALESCE(e.set_total, c.set_total) AS set_total,
         COALESCE(e.release_date, c.release_date) AS release_date,
@@ -55,8 +58,9 @@ function createExpansionService({ pool, ensureCardInfrastructure, getStaticExpan
         COUNT(a.item_id)::int AS linked_auctions
       FROM public.cards c
       LEFT JOIN public.expansions e ON c.expansion_id = e.id
+      LEFT JOIN public.eras er ON er.id = e.era_id
       LEFT JOIN public.auctions a ON a.card_id = c.id
-      GROUP BY 2, 3, 4, 5, 6, 7, 8
+      GROUP BY 2, 3, 4, 5, 6, 7, 8, 9
     `
 
       const expansionsQuery = `
@@ -64,7 +68,8 @@ function createExpansionService({ pool, ensureCardInfrastructure, getStaticExpan
         e.id,
         e.set_code,
         e.name,
-        e.era,
+        COALESCE(er.name, e.era) AS era,
+        er.code AS era_code,
         e.language,
         e.set_total,
         e.release_date,
@@ -72,6 +77,7 @@ function createExpansionService({ pool, ensureCardInfrastructure, getStaticExpan
         0::int AS cards_total,
         0::int AS linked_auctions
       FROM public.expansions e
+      LEFT JOIN public.eras er ON er.id = e.era_id
     `
 
       const salesBySetQuery = `
@@ -102,6 +108,7 @@ function createExpansionService({ pool, ensureCardInfrastructure, getStaticExpan
           set_code: current.set_code ?? incoming.set_code ?? null,
           name: current.name ?? incoming.name ?? null,
           era: current.era ?? incoming.era ?? null,
+          era_code: current.era_code ?? incoming.era_code ?? null,
           language: current.language ?? incoming.language ?? null,
           set_total: current.set_total ?? incoming.set_total ?? null,
           release_date: current.release_date ?? incoming.release_date ?? null,
@@ -139,11 +146,16 @@ function createExpansionService({ pool, ensureCardInfrastructure, getStaticExpan
         const row = mergedRow ?? {}
         const fallback = staticByCode.get(expansion.set_code)
 
+        const eraLabel = row?.era ?? fallback?.era ?? null
+        const eraCode = row?.era_code ?? resolveEraCode(eraLabel)
+
         return {
           ...row,
           set_code: expansion.set_code,
           name: row?.name ?? fallback?.name ?? null,
-          era: row?.era ?? fallback?.era ?? null,
+          era: eraLabel,
+          era_code: eraCode,
+          era_name: eraLabel,
           language: row?.language ?? fallback?.language ?? null,
           set_total: row?.set_total ?? fallback?.set_total ?? null,
           release_date: row?.release_date ?? fallback?.release_date ?? null,
@@ -155,11 +167,16 @@ function createExpansionService({ pool, ensureCardInfrastructure, getStaticExpan
 
       for (const [setCode, row] of mergedByCode.entries()) {
         if (staticByCode.has(setCode)) continue
+        const eraLabel = row?.era ?? null
+        const eraCode = row?.era_code ?? resolveEraCode(eraLabel)
+
         orderedResults.push({
           ...row,
           set_code: setCode,
           name: row?.name ?? null,
-          era: row?.era ?? null,
+          era: eraLabel,
+          era_code: eraCode,
+          era_name: eraLabel,
           language: row?.language ?? null,
           set_total: row?.set_total ?? null,
           release_date: row?.release_date ?? null,

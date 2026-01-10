@@ -1,5 +1,5 @@
 // src/lib/api.ts
-import type { AuctionRecord, CardListItem, CardResponse, ExpansionSummary } from '../types'
+import type { AuctionRecord, CardListItem, CardResponse, EraSummary, ExpansionSummary } from '../types'
 
 type AuctionApiRow = {
   item_id?: number | string | null
@@ -70,6 +70,21 @@ export async function fetchCardAuctions(cardId: number): Promise<AuctionRecord[]
 export async function fetchExpansions(): Promise<ExpansionSummary[]> {
   const response = await fetch('/api/expansions')
   if (!response.ok) throw new Error('Failed to fetch expansions')
+  return response.json()
+}
+
+export async function fetchEras(): Promise<EraSummary[]> {
+  const response = await fetch('/api/eras')
+  if (!response.ok) throw new Error('Failed to fetch eras')
+  return response.json()
+}
+
+export async function fetchEraExpansions(eraCode: string): Promise<ExpansionSummary[]> {
+  const code = (eraCode || '').trim()
+  if (!code) return []
+
+  const response = await fetch(`/api/eras/${encodeURIComponent(code)}/expansions`)
+  if (!response.ok) throw new Error('Failed to fetch era expansions')
   return response.json()
 }
 
