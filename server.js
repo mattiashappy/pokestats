@@ -8,6 +8,7 @@ const { Pool } = require('pg')
 const crypto = require('crypto')
 
 const { createExpansionService } = require('./server/routes/expansions')
+const { ERA_DEFINITIONS, getEraDefinition, normalizeEraCode, resolveEraCode } = require('./server/era')
 
 const { loadCatalog } = require('./server/catalog/catalogLoader')
 const { seedCatalog } = require('./server/catalog/catalogSeeder')
@@ -184,6 +185,8 @@ async function getStaticExpansionSummaries() {
     set_code: expansion.set_code,
     name: expansion.name ?? null,
     era: expansion.era ?? null,
+    era_code: resolveEraCode(expansion.era ?? null),
+    era_name: expansion.era ?? null,
     language: expansion.language ?? null,
     set_number: expansion.set_number ?? null,
     cards_in_set: expansion.cards_in_set ?? null,
@@ -220,6 +223,8 @@ let hasEnsuredSalesCardIndex = false
 let hasCheckedImportRunsTable = false
 let importRunsTableAvailable = false
 let ensureCardInfrastructurePromise = null
+let hasCheckedErasTable = false
+let erasTableAvailable = false
 
 async function ensureColumnExists(tableName, columnName, definition) {
   const { rows } = await pool.query(
@@ -375,6 +380,36 @@ async function ensureSalesTableAvailable() {
   return salesTableAvailable
 }
 
+async function ensureErasTableAvailable() {
+  if (!pool) return false
+  if (hasCheckedErasTable) return erasTableAvailable
+
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS public.eras (
+        id SERIAL PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        sort_order INTEGER NOT NULL,
+        start_year INTEGER,
+        end_year INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `)
+
+    const codeIndexReady = await ensureIndexExists('eras', 'idx_eras_code', 'UNIQUE (code)')
+    const sortIndexReady = await ensureIndexExists('eras', 'idx_eras_sort_order', '(sort_order)')
+
+    erasTableAvailable = Boolean(codeIndexReady && sortIndexReady)
+  } catch (error) {
+    console.error('Failed to ensure eras table exists', error)
+    erasTableAvailable = false
+  }
+
+  hasCheckedErasTable = true
+  return erasTableAvailable
+}
+
 // ✅ single canonical expansions definition
 async function ensureExpansionsTableAvailable() {
   if (!pool) return false
@@ -397,7 +432,16 @@ async function ensureExpansionsTableAvailable() {
 
     const hasImageUrl = await ensureColumnExists('expansions', 'image_url', 'TEXT')
     const hasEraIndex = await ensureIndexExists('expansions', 'idx_expansions_era', '(era)')
-    expansionsTableAvailable = Boolean(hasEraIndex && hasImageUrl)
+    const hasEraId = await ensureColumnExists('expansions', 'era_id', 'INTEGER')
+    const hasEraIdIndex = await ensureIndexExists('expansions', 'idx_expansions_era_id', '(era_id)')
+    await ensureErasTableAvailable()
+    const hasEraForeignKey = await ensureConstraintExists(
+      'expansions',
+      'expansions_era_id_fkey',
+      'FOREIGN KEY (era_id) REFERENCES public.eras(id)'
+    )
+
+    expansionsTableAvailable = Boolean(hasEraIndex && hasImageUrl && hasEraId && hasEraIdIndex && hasEraForeignKey)
   } catch (error) {
     console.error('Failed to ensure expansions table exists', error)
     expansionsTableAvailable = false
@@ -530,11 +574,107 @@ async function ensureCardInfrastructure() {
   return ensureCardInfrastructurePromise
 }
 
+async function fetchErasFromDatabase() {
+  if (!pool) return []
+  const erasReady = await ensureErasTableAvailable()
+  if (!erasReady) return []
+
+  const { rows } = await pool.query(`
+    SELECT
+      er.id,
+      er.code,
+      er.name,
+      er.sort_order,
+      er.start_year,
+      er.end_year,
+      COUNT(e.id)::int AS sets_total
+    FROM public.eras er
+    LEFT JOIN public.expansions e ON e.era_id = er.id
+    GROUP BY er.id, er.code, er.name, er.sort_order, er.start_year, er.end_year
+    ORDER BY er.sort_order, er.start_year, er.name
+  `)
+
+  const { rows: extras } = await pool.query(`
+    SELECT e.era AS name, COUNT(*)::int AS sets_total
+    FROM public.expansions e
+    WHERE e.era_id IS NULL AND e.era IS NOT NULL
+    GROUP BY e.era
+  `)
+
+  const byCode = new Map(rows.map((row) => [normalizeEraCode(row.code), row]))
+
+  for (const extra of extras) {
+    const code = resolveEraCode(extra.name)
+    if (!code || byCode.has(normalizeEraCode(code))) continue
+
+    byCode.set(normalizeEraCode(code), {
+      id: null,
+      code,
+      name: extra.name,
+      sort_order: 999,
+      start_year: null,
+      end_year: null,
+      sets_total: extra.sets_total
+    })
+  }
+
+  return Array.from(byCode.values()).sort((a, b) => {
+    const orderDiff = (a.sort_order ?? 999) - (b.sort_order ?? 999)
+    if (orderDiff !== 0) return orderDiff
+    return String(a.name).localeCompare(String(b.name))
+  })
+}
+
+async function fetchErasFromStaticCatalog() {
+  const expansions = await getStaticExpansionSummaries()
+  const eraMap = new Map()
+
+  for (const expansion of expansions) {
+    const eraLabel = expansion.era ?? 'Unknown era'
+    const code = resolveEraCode(eraLabel)
+    if (!code) continue
+
+    const normalized = normalizeEraCode(code)
+    const existing = eraMap.get(normalized)
+    if (existing) {
+      existing.sets_total += 1
+      continue
+    }
+
+    const definition = getEraDefinition(code)
+    eraMap.set(normalized, {
+      id: null,
+      code,
+      name: definition?.name ?? eraLabel,
+      sort_order: definition?.sort_order ?? 999,
+      start_year: definition?.start_year ?? null,
+      end_year: definition?.end_year ?? null,
+      sets_total: 1
+    })
+  }
+
+  for (const era of ERA_DEFINITIONS) {
+    if (!eraMap.has(normalizeEraCode(era.code))) {
+      eraMap.set(normalizeEraCode(era.code), { ...era, id: null, sets_total: 0 })
+    }
+  }
+
+  return Array.from(eraMap.values()).sort((a, b) => a.sort_order - b.sort_order)
+}
+
+async function fetchErasList() {
+  if (pool) {
+    const rows = await fetchErasFromDatabase()
+    if (rows.length) return rows
+  }
+  return fetchErasFromStaticCatalog()
+}
+
 // --------------------
 // Routes that depend on ensureCardInfrastructure
 // (moved here to avoid TDZ/ReferenceError)
 // --------------------
-const { registerRoutes: registerExpansionRoutes } = createExpansionService({
+const { registerRoutes: registerExpansionRoutes, fetchExpansionSummaries } = createExpansionService({
   pool,
   ensureCardInfrastructure,
   getStaticExpansionSummaries
@@ -807,6 +947,35 @@ app.get('/api/health', (_req, res) => {
 })
 
 registerExpansionRoutes(app)
+
+app.get('/api/eras', async (_req, res) => {
+  try {
+    const eras = await fetchErasList()
+    res.json(eras)
+  } catch (error) {
+    console.error('Failed to fetch eras', error)
+    res.status(500).json({ error: 'Failed to load eras' })
+  }
+})
+
+app.get('/api/eras/:code/expansions', async (req, res) => {
+  try {
+    const requestedCode = normalizeEraCode(req.params.code)
+    if (!requestedCode) return res.status(400).json({ error: 'Invalid era code' })
+
+    const expansions = await fetchExpansionSummaries()
+
+    const filtered = expansions.filter((expansion) => {
+      const expansionCode = normalizeEraCode(expansion.era_code ?? resolveEraCode(expansion.era))
+      return expansionCode === requestedCode
+    })
+
+    return res.json(filtered)
+  } catch (error) {
+    console.error('Failed to fetch expansions for era', error)
+    return res.status(500).json({ error: 'Failed to load era expansions' })
+  }
+})
 
 app.get('/api/sales', async (req, res) => {
   try {

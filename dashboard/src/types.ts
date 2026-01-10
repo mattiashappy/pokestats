@@ -50,6 +50,8 @@ export type ExpansionSummary = {
   set_code: string
   name: string | null
   era: string | null
+  era_code?: string | null
+  era_name?: string | null
   language: string | null
   set_number: number | null
   cards_in_set: number | null
@@ -58,6 +60,16 @@ export type ExpansionSummary = {
   image_url: string | null
   cards_total: number
   linked_auctions: number
+}
+
+export type EraSummary = {
+  id: number | null
+  code: string
+  name: string
+  sort_order: number
+  start_year: number | null
+  end_year: number | null
+  sets_total: number
 }
 
 export type CardPreview = {

@@ -1,4 +1,5 @@
 const { loadCatalog } = require('./catalogLoader')
+const { resolveEraCode } = require('../era')
 
 async function seedCatalog(pool) {
   if (!pool) return
@@ -11,31 +12,79 @@ async function seedCatalog(pool) {
   try {
     await client.query('BEGIN')
 
+    let hasEraIdColumn = false
+    try {
+      const { rows } = await client.query(
+        `
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'expansions'
+            AND column_name = 'era_id'
+        `
+      )
+      hasEraIdColumn = rows.length > 0
+    } catch {
+      hasEraIdColumn = false
+    }
+
+    let eraIdByCode = {}
+    if (hasEraIdColumn) {
+      try {
+        const { rows } = await client.query('SELECT id, code, name FROM public.eras')
+        eraIdByCode = rows.reduce((acc, row) => {
+          acc[row.code] = row.id
+          if (row.name) acc[row.name] = row.id
+          return acc
+        }, {})
+      } catch {
+        eraIdByCode = {}
+      }
+    }
+
     const expansionIdByCode = {}
 
     for (const expansion of expansions) {
+      const eraCode = resolveEraCode(expansion.era ?? null)
+      const eraId = hasEraIdColumn && eraCode ? eraIdByCode[eraCode] ?? eraIdByCode[expansion.era] ?? null : null
+
+      const columns = ['set_code', 'name', 'era', 'language', 'set_total', 'release_date', 'image_url']
+      const values = ['$1', '$2', '$3', '$4', '$5', '$6', '$7']
+      const params = [
+        expansion.set_code,
+        expansion.name ?? null,
+        expansion.era ?? null,
+        expansion.language ?? null,
+        expansion.set_total ?? null,
+        expansion.release_date ?? null,
+        expansion.image_url ?? null
+      ]
+
+      if (hasEraIdColumn) {
+        columns.push('era_id')
+        values.push(`$${params.length + 1}`)
+        params.push(eraId)
+      }
+
+      const updates = [
+        'name = EXCLUDED.name',
+        'era = EXCLUDED.era',
+        'language = EXCLUDED.language',
+        'set_total = EXCLUDED.set_total',
+        'release_date = EXCLUDED.release_date',
+        'image_url = EXCLUDED.image_url'
+      ]
+      if (hasEraIdColumn) updates.push('era_id = EXCLUDED.era_id')
+
       const result = await client.query(
         `
-          INSERT INTO public.expansions (set_code, name, era, language, set_total, release_date, image_url)
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          INSERT INTO public.expansions (${columns.join(', ')})
+          VALUES (${values.join(', ')})
           ON CONFLICT (set_code) DO UPDATE SET
-            name = EXCLUDED.name,
-            era = EXCLUDED.era,
-            language = EXCLUDED.language,
-            set_total = EXCLUDED.set_total,
-            release_date = EXCLUDED.release_date,
-            image_url = EXCLUDED.image_url
+            ${updates.join(',\n            ')}
           RETURNING id
         `,
-        [
-          expansion.set_code,
-          expansion.name ?? null,
-          expansion.era ?? null,
-          expansion.language ?? null,
-          expansion.set_total ?? null,
-          expansion.release_date ?? null,
-          expansion.image_url ?? null
-        ]
+        params
       )
 
       expansionIdByCode[expansion.set_code] = result.rows[0].id
