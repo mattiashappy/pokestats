@@ -2,10 +2,7 @@
 
 ## Core principle
 
-Truth of link state lives in `auctions.card_id`.
-
-- `card_id IS NULL` → unlinked auction
-- `card_id IS NOT NULL` → linked auction
+Raw Tradera imports live in `tradera_auctions`. Linking happens separately in `tradera_auction_card_links`.
 
 ## Tables
 
@@ -37,8 +34,8 @@ Write rules:
 
 - Importers/catalog syncs own writes; app treats this as read-mostly metadata.
 
-### `auctions` (source of truth)
-Purpose: store auction records; minimal stable schema.
+### `tradera_auctions` (source of truth)
+Purpose: store raw auction records; minimal stable schema.
 
 Columns:
 
@@ -52,35 +49,53 @@ Columns:
 - `title TEXT NULL`
 - `item_url TEXT NULL`
 - `thumbnail_url TEXT NULL`
-- `card_id INT NULL REFERENCES cards(id)`
-- `parsed_set_code TEXT NULL`
-- `raw JSONB NULL` (misc extra payload; do not add columns unless truly needed)
+- `tradera_attributes JSONB NULL`
+- `image_urls JSONB NULL`
+- `description TEXT NULL`
+- `item_condition TEXT NULL`
+- `pokemon_era TEXT NULL`
+- `pokemon_language TEXT NULL`
+- `raw JSONB NULL` (full payload; prefer `raw` over new columns unless absolutely necessary)
 - `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`
 - `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`
 
 Indexes:
 
 - PK on `item_id`
-- `idx_auctions_card_id (card_id)`
-- `idx_auctions_end_date_desc (end_date DESC)`
-- `idx_auctions_updated_at_desc (updated_at DESC)`
-- `idx_auctions_unlinked_end_date (end_date DESC) WHERE card_id IS NULL`
-- `idx_auctions_unlinked_recent (end_date DESC) WHERE card_id IS NULL`
+- `idx_tradera_auctions_end_date_desc (end_date DESC)`
+- `idx_tradera_auctions_pokemon_era (pokemon_era)`
+- `idx_tradera_auctions_language (pokemon_language)`
 
 Write rules:
 
-- Importer upserts into `auctions` by `item_id`.
-- Linking sets `auctions.card_id` and updates `updated_at`.
+- Importer upserts into `tradera_auctions` by `item_id`.
+- `updated_at` is set on every import upsert.
+
+### `tradera_auction_card_links` (linking table)
+Purpose: track the relationship between raw auctions and catalog cards.
+
+Columns:
+
+- `item_id BIGINT PRIMARY KEY REFERENCES tradera_auctions(item_id)`
+- `card_id INT NOT NULL REFERENCES cards(id)`
+- `linked_at TIMESTAMPTZ NOT NULL DEFAULT now()`
+- `method TEXT NULL`
+- `confidence_score INT NULL`
+- `status TEXT NOT NULL DEFAULT 'linked'`
+
+Indexes:
+
+- `idx_tradera_links_card_id (card_id)`
 
 ## Operational notes
 
-- Keep `auctions` minimal: aside from `parsed_set_code`, avoid new parsed/debug columns and prefer `raw`.
+- Keep `tradera_auctions` minimal: avoid new parsed/debug columns and prefer `raw`.
 - The `cards` catalog rejects placeholder values: `set_name`, `card_number`, and `set_code` cannot be `unknown` / `unknown-*`.
 
 ## Queries the app relies on
 
-- Fetch recent unlinked: `SELECT * FROM auctions WHERE card_id IS NULL ORDER BY end_date DESC LIMIT $1;`
-- Fetch linked card auctions: `SELECT * FROM auctions WHERE card_id = $1 ORDER BY end_date DESC;`
+- Fetch recent auctions: `SELECT * FROM tradera_auctions ORDER BY end_date DESC LIMIT $1;`
+- Fetch linked card auctions: `SELECT a.* FROM tradera_auction_card_links l JOIN tradera_auctions a ON a.item_id = l.item_id WHERE l.card_id = $1 ORDER BY a.end_date DESC;`
 ## Migration policy
 
-Any schema change must update both `schema.sql` and `DATABASE_CONTRACT.md`. Keep `auctions` minimal; prefer `raw` over adding new columns unless absolutely necessary.
+Any schema change must update both `schema.sql` and `DATABASE_CONTRACT.md`. Keep `tradera_auctions` minimal; prefer `raw` over adding new columns unless absolutely necessary.

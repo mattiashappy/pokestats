@@ -208,18 +208,14 @@ const pool = DATABASE_URL
     })
   : null
 
-let hasCheckedSalesTable = false
-let salesTableAvailable = false
-let auctionsBaseTableExists = false
+let hasCheckedTraderaAuctionsTable = false
+let traderaAuctionsTableAvailable = false
+let hasCheckedTraderaAuctionLinksTable = false
+let traderaAuctionLinksTableAvailable = false
 let hasCheckedCardsTable = false
 let cardsTableAvailable = false
 let hasCheckedExpansionsTable = false
 let expansionsTableAvailable = false
-let hasCheckedSalesCardColumn = false
-let salesCardColumnAvailable = false
-let hasCheckedSalesParsedSetCodeColumn = false
-let salesParsedSetCodeColumnAvailable = false
-let hasEnsuredSalesCardIndex = false
 let hasCheckedImportRunsTable = false
 let importRunsTableAvailable = false
 let ensureCardInfrastructurePromise = null
@@ -367,17 +363,32 @@ async function ensureImportRunsTable() {
   return importRunsTableAvailable
 }
 
-async function ensureSalesTableAvailable() {
+async function ensureTraderaAuctionsTableAvailable() {
   if (!pool) return false
-  if (hasCheckedSalesTable) return salesTableAvailable
+  if (hasCheckedTraderaAuctionsTable) return traderaAuctionsTableAvailable
 
-  const { rows } = await pool.query("SELECT to_regclass('public.auctions') AS auctions")
-  auctionsBaseTableExists = Boolean(rows?.[0]?.auctions)
-  salesTableAvailable = auctionsBaseTableExists
-  hasCheckedSalesTable = true
+  const { rows } = await pool.query("SELECT to_regclass('public.tradera_auctions') AS tradera_auctions")
+  traderaAuctionsTableAvailable = Boolean(rows?.[0]?.tradera_auctions)
+  hasCheckedTraderaAuctionsTable = true
 
-  if (!salesTableAvailable) console.warn('auctions table does not exist')
-  return salesTableAvailable
+  if (!traderaAuctionsTableAvailable) console.warn('tradera_auctions table does not exist')
+  return traderaAuctionsTableAvailable
+}
+
+async function ensureTraderaAuctionLinksTableAvailable() {
+  if (!pool) return false
+  if (hasCheckedTraderaAuctionLinksTable) return traderaAuctionLinksTableAvailable
+
+  const { rows } = await pool.query(
+    "SELECT to_regclass('public.tradera_auction_card_links') AS tradera_auction_card_links"
+  )
+  traderaAuctionLinksTableAvailable = Boolean(rows?.[0]?.tradera_auction_card_links)
+  hasCheckedTraderaAuctionLinksTable = true
+
+  if (!traderaAuctionLinksTableAvailable) {
+    console.warn('tradera_auction_card_links table does not exist')
+  }
+  return traderaAuctionLinksTableAvailable
 }
 
 async function ensureErasTableAvailable() {
@@ -525,44 +536,12 @@ async function ensureCardInfrastructure() {
 
   ensureCardInfrastructurePromise = (async () => {
     try {
-      const [salesReady, expansionsReady, cardsReady] = await Promise.all([
-        ensureSalesTableAvailable(),
+      const [expansionsReady, cardsReady] = await Promise.all([
         ensureExpansionsTableAvailable(),
         ensureCardsTableAvailable()
       ])
 
-      if (!salesReady || !expansionsReady || !cardsReady) return false
-
-      if (salesReady && auctionsBaseTableExists) {
-        if (!hasCheckedSalesCardColumn) {
-          try {
-            salesCardColumnAvailable = await ensureColumnExists('auctions', 'card_id', 'INTEGER REFERENCES public.cards(id)')
-          } catch (error) {
-            console.error('Failed to ensure auctions.card_id column exists', error)
-            salesCardColumnAvailable = false
-          }
-          hasCheckedSalesCardColumn = true
-        }
-
-        if (!hasCheckedSalesParsedSetCodeColumn) {
-          try {
-            salesParsedSetCodeColumnAvailable = await ensureColumnExists('auctions', 'parsed_set_code', 'TEXT')
-          } catch (error) {
-            console.error('Failed to ensure auctions.parsed_set_code column exists', error)
-            salesParsedSetCodeColumnAvailable = false
-          }
-          hasCheckedSalesParsedSetCodeColumn = true
-        }
-
-        if (salesCardColumnAvailable && !hasEnsuredSalesCardIndex) {
-          try {
-            hasEnsuredSalesCardIndex = await ensureIndexExists('auctions', 'idx_auctions_card_id', '(card_id)')
-          } catch (error) {
-            console.error('Failed to ensure auctions.card_id index exists', error)
-            hasEnsuredSalesCardIndex = false
-          }
-        }
-      }
+      if (!expansionsReady || !cardsReady) return false
 
       return true
     } catch (error) {
@@ -677,38 +656,28 @@ async function fetchErasList() {
 const { registerRoutes: registerExpansionRoutes, fetchExpansionSummaries } = createExpansionService({
   pool,
   ensureCardInfrastructure,
-  getStaticExpansionSummaries
+  getStaticExpansionSummaries,
+  ensureTraderaAuctionLinksTableAvailable
 })
 
-function normalizeAuctionRow(row) {
+function normalizeTraderaAuctionRow(row) {
   return {
-    item_id: row.item_id,
-    title: row.title,
-    price: row.price,
-    bid_count: row.bid_count,
-    end_date: row.end_date,
-    seller_alias: row.seller_alias,
-    item_url: row.item_url,
-    thumbnail_url: row.thumbnail_url,
-    pokemon_era: row.pokemon_era ?? null,
-    pokemon_language: row.pokemon_language ?? null,
-    item_condition: row.item_condition ?? null,
-    description: row.description ?? null,
-    image_urls: row.image_urls ?? null,
-    tradera_attributes: row.tradera_attributes ?? null,
-    card_id: row.card_id ?? null,
-    card_name: row.card_name ?? null,
-    card_era: row.card_era ?? null,
-    card_language: row.card_language ?? null,
-    card_set_name: row.card_set_name ?? null,
-    card_set_code: row.card_set_code ?? null,
-    card_number: row.card_number ?? null
+    id: row.item_id,
+    title: row.title ?? null,
+    endTime: row.end_date,
+    finalPrice: row.price ?? null,
+    bids: row.bid_count ?? null,
+    url: row.item_url ?? null,
+    thumbnail: row.thumbnail_url ?? null,
+    pokemonEra: row.pokemon_era ?? null,
+    pokemonLanguage: row.pokemon_language ?? null,
+    itemCondition: row.item_condition ?? null
   }
 }
 
 async function fetchAuctionsFromDatabase(filters = {}) {
   if (!pool) return []
-  const ok = await ensureSalesTableAvailable()
+  const ok = await ensureTraderaAuctionsTableAvailable()
   if (!ok) return []
 
   const { era = null, language = null, minPrice = null, maxPrice = null, limit = null, offset = 0 } = filters
@@ -717,20 +686,15 @@ async function fetchAuctionsFromDatabase(filters = {}) {
     SELECT
       a.item_id,
       a.title,
-      a.price,
-      a.bid_count,
       a.end_date,
-      a.seller_alias,
-      a.item_url,
       a.thumbnail_url,
       a.pokemon_era,
       a.pokemon_language,
       a.item_condition,
-      a.description,
-      a.image_urls,
-      a.tradera_attributes,
-      a.card_id
-    FROM public.auctions a
+      a.price,
+      a.bid_count,
+      a.item_url
+    FROM public.tradera_auctions a
     WHERE
       ($1::text IS NULL OR a.pokemon_era = $1)
       AND ($2::text IS NULL OR a.pokemon_language = $2)
@@ -751,7 +715,7 @@ async function fetchAuctionsFromDatabase(filters = {}) {
   }
 
   const { rows } = await pool.query(query, params)
-  return rows.map(normalizeAuctionRow)
+  return rows.map(normalizeTraderaAuctionRow)
 }
 
 async function fetchCard(cardId) {
@@ -785,40 +749,32 @@ async function fetchCard(cardId) {
 
 async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
   if (!pool) return []
-  const ok = await ensureCardInfrastructure()
-  if (!ok) return []
+  const [linksReady, auctionsReady] = await Promise.all([
+    ensureTraderaAuctionLinksTableAvailable(),
+    ensureTraderaAuctionsTableAvailable()
+  ])
+  if (!linksReady || !auctionsReady) return []
 
   const query = `
     SELECT
       a.item_id,
       a.title,
-      a.price,
-      a.bid_count,
       a.end_date,
-      a.seller_alias,
-      a.item_url,
       a.thumbnail_url,
       a.pokemon_era,
       a.pokemon_language,
       a.item_condition,
-      a.description,
-      a.image_urls,
-      a.tradera_attributes,
-      a.card_id,
-      c.name AS card_name,
-      COALESCE(e.era, c.era) AS card_era,
-      COALESCE(e.name, c.set_name) AS card_set_name,
-      COALESCE(e.set_code, c.set_code) AS card_set_code,
-      c.card_number AS card_number
-    FROM public.auctions a
-    JOIN public.cards c ON c.id = a.card_id
-    LEFT JOIN public.expansions e ON e.id = c.expansion_id
-    WHERE a.card_id = $1
+      a.price,
+      a.bid_count,
+      a.item_url
+    FROM public.tradera_auction_card_links l
+    JOIN public.tradera_auctions a ON a.item_id = l.item_id
+    WHERE l.card_id = $1
     ORDER BY a.end_date DESC
     LIMIT $2
   `
   const result = await pool.query(query, [cardId, limit])
-  return result.rows.map(normalizeAuctionRow)
+  return result.rows.map(normalizeTraderaAuctionRow)
 }
 
 function extractImporterError(stdout, stderr) {
@@ -892,6 +848,12 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
   const ok = await ensureCardInfrastructure()
   if (!ok) return getStaticCardsForSet(setCode)
 
+  const [linksReady, auctionsReady] = await Promise.all([
+    ensureTraderaAuctionLinksTableAvailable(),
+    ensureTraderaAuctionsTableAvailable()
+  ])
+  const canJoinAuctions = linksReady && auctionsReady
+
   let whereClause = ''
   const params = []
 
@@ -919,11 +881,12 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
       c.product_details,
       c.created_at,
       c.expansion_id,
-      COUNT(a.item_id)::int AS linked_auctions,
-      MAX(a.end_date) AS last_seen
+      ${canJoinAuctions ? 'COUNT(a.item_id)::int' : '0::int'} AS linked_auctions,
+      ${canJoinAuctions ? 'MAX(a.end_date)' : 'NULL::timestamptz'} AS last_seen
     FROM public.cards c
     LEFT JOIN public.expansions e ON e.id = c.expansion_id
-    LEFT JOIN public.auctions a ON a.card_id = c.id
+    ${canJoinAuctions ? 'LEFT JOIN public.tradera_auction_card_links l ON l.card_id = c.id' : ''}
+    ${canJoinAuctions ? 'LEFT JOIN public.tradera_auctions a ON a.item_id = l.item_id' : ''}
     ${whereClause}
     GROUP BY c.id, e.id
     ORDER BY
@@ -1167,7 +1130,7 @@ app.post('/api/import/run', async (_req, res) => {
   if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
 
   try {
-    const salesAvailable = await ensureSalesTableAvailable()
+    const salesAvailable = await ensureTraderaAuctionsTableAvailable()
     const runsAvailable = await ensureImportRunsTable()
     if (!salesAvailable || !runsAvailable) {
       return res.status(500).json({ ok: false, error: 'Required tables unavailable' })
@@ -1178,14 +1141,14 @@ app.post('/api/import/run', async (_req, res) => {
 
     const {
       rows: [before]
-    } = await pool.query('SELECT COUNT(*)::int AS count, MAX(fetched_at) AS last_fetched FROM public.auctions')
+    } = await pool.query('SELECT COUNT(*)::int AS count, MAX(updated_at) AS last_updated FROM public.tradera_auctions')
 
     const { code, stdout, stderr } = await runImporterScript(runUuid)
     const durationMs = Date.now() - startTime
 
     const {
       rows: [after]
-    } = await pool.query('SELECT COUNT(*)::int AS count, MAX(fetched_at) AS last_fetched FROM public.auctions')
+    } = await pool.query('SELECT COUNT(*)::int AS count, MAX(updated_at) AS last_updated FROM public.tradera_auctions')
 
     const newRows = after.count - before.count
     const output = `${stdout}${stderr}`.trim()
@@ -1197,7 +1160,7 @@ app.post('/api/import/run', async (_req, res) => {
       newRows,
       durationMs,
       startedAt: new Date(startTime).toISOString(),
-      lastFetchedAt: after.last_fetched,
+      lastFetchedAt: after.last_updated,
       output,
       runUuid
     }

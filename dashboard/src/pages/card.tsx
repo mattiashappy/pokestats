@@ -156,14 +156,12 @@ export function CardPage(): JSX.Element {
                 </TableHeader>
                 <TableBody>
                   {auctions?.map((auction) => {
-                    const hasKnownSetName = auction.cardSetName && auction.cardSetName.toLowerCase() !== 'unknown'
-
                     return (
                       <TableRow key={auction.id}>
                         <TableCell className="w-24">
                           <div className="overflow-hidden rounded-md border border-slate-200 dark:border-slate-800">
                             {auction.thumbnail ? (
-                              <img src={auction.thumbnail} alt={auction.cardName} className="h-16 w-full object-cover" />
+                              <img src={auction.thumbnail} alt={auction.title} className="h-16 w-full object-cover" />
                             ) : (
                               <div className="flex h-16 w-full items-center justify-center bg-slate-100 text-xs text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
                                 No image
@@ -172,19 +170,9 @@ export function CardPage(): JSX.Element {
                           </div>
                         </TableCell>
                         <TableCell className="font-semibold text-slate-900 dark:text-slate-100">
-                          <div className="flex items-start gap-2">
-                            <div>
-                              <div className="text-slate-900 dark:text-slate-100">{auction.cardName}</div>
-                              {auction.cardName !== auction.title ? (
-                                <div className="text-xs font-normal text-slate-600 dark:text-slate-400">{auction.title}</div>
-                              ) : null}
-                              {hasKnownSetName ? (
-                                <div className="text-xs text-slate-500 dark:text-slate-400">Set: {auction.cardSetName}</div>
-                              ) : null}
-                            </div>
-                          </div>
+                          {auction.title}
                         </TableCell>
-                        <TableCell>{auction.cardEra || 'Unknown era'}</TableCell>
+                        <TableCell>{auction.pokemonEra || card?.era || 'Unknown era'}</TableCell>
                         <TableCell className="text-right text-slate-900 dark:text-slate-100">
                           {new Intl.NumberFormat('sv-SE', { style: 'currency', currency: auction.currency }).format(auction.finalPrice)}
                         </TableCell>

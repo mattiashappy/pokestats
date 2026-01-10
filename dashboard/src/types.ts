@@ -3,21 +3,14 @@
 export type AuctionRecord = {
   id: string
   title: string
-  description?: string | null
-  finalPrice: number
-  bids: number
+  finalPrice: number | null
+  bids: number | null
   endTime: string
   url: string | null
   thumbnail: string | null
-  imageUrls?: string[] | null
-  cardEra: string | null
-  language?: string | null
+  pokemonEra?: string | null
+  pokemonLanguage?: string | null
   itemCondition?: string | null
-  cardId?: number | null
-  cardName?: string | null
-  cardSetName?: string | null
-  cardSetCode?: string | null
-  cardNumber?: string | null
   currency: string
 }
 

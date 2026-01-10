@@ -34,10 +34,10 @@
 # - TRADERA_BACKOFF (default 0.8)
 #
 # DB assumptions:
-# - auctions has unique constraint on item_id
+# - tradera_auctions has unique constraint on item_id
 # - columns: item_id, category_id, end_date, price, bid_count, seller_id, seller_alias,
-#           seller_dsr, title, description, item_url, thumbnail_url, image_urls, attributes, card_id (nullable)
-# - cards deduplicate via a UNIQUE on (set_code, card_number) OR a constraint named cards_unique_setcode_number
+#           title, item_url, thumbnail_url, tradera_attributes, image_urls, description,
+#           item_condition, pokemon_era, pokemon_language, raw, created_at, updated_at
 #
 # Notes:
 # - This version is cleaned up to avoid broken SQL, duplicate blocks, and mismatched cache keys.
@@ -380,6 +380,39 @@ def build_attributes_payload(item_el: ET.Element) -> Dict[str, Any]:
     return attributes
 
 
+def element_to_dict(element: ET.Element) -> Dict[str, Any]:
+    children = [element_to_dict(child) for child in list(element)]
+    text = element.text.strip() if element.text and element.text.strip() else None
+
+    payload: Dict[str, Any] = {
+        "tag": strip_ns(element.tag),
+        "attributes": element.attrib or {},
+    }
+
+    if text is not None:
+        payload["text"] = text
+
+    if children:
+        payload["children"] = children
+
+    return payload
+
+
+def extract_attribute_value(attributes: Dict[str, Any], key: str) -> Optional[str]:
+    if not attributes:
+        return None
+
+    key_lower = key.strip().lower()
+    for name, values in attributes.items():
+        if str(name).strip().lower() != key_lower:
+            continue
+        if isinstance(values, list) and values:
+            return str(values[0])
+        if isinstance(values, str) and values.strip():
+            return values.strip()
+    return None
+
+
 @dataclass
 class Row:
     item_id: int
@@ -389,14 +422,16 @@ class Row:
     bid_count: Optional[int]
     seller_id: Optional[int]
     seller_alias: Optional[str]
-    seller_dsr: Optional[float]
     title: Optional[str]
-    description: Optional[str]
     item_url: Optional[str]
     thumbnail_url: Optional[str]
+    tradera_attributes: Dict[str, Any]
     image_urls: List[str]
-    attributes: Dict[str, Any]
-    card_id: Optional[int] = None
+    description: Optional[str]
+    item_condition: Optional[str]
+    pokemon_era: Optional[str]
+    pokemon_language: Optional[str]
+    raw: Dict[str, Any]
 
     def as_params(self) -> Dict[str, object]:
         return {
@@ -407,14 +442,16 @@ class Row:
             "bid_count": self.bid_count,
             "seller_id": self.seller_id,
             "seller_alias": self.seller_alias,
-            "seller_dsr": self.seller_dsr,
             "title": self.title,
-            "description": self.description,
             "item_url": self.item_url,
             "thumbnail_url": self.thumbnail_url,
+            "tradera_attributes": Json(self.tradera_attributes),
             "image_urls": Json(self.image_urls),
-            "attributes": Json(self.attributes),
-            "card_id": self.card_id,
+            "description": self.description,
+            "item_condition": self.item_condition,
+            "pokemon_era": self.pokemon_era,
+            "pokemon_language": self.pokemon_language,
+            "raw": Json(self.raw),
         }
 
 
@@ -434,13 +471,25 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
     bid_count = parse_int_text(find_child_text(item_el, "BidCount") or find_any_text(item_el, "BidCount"))
     seller_id = parse_int_text(find_child_text(item_el, "SellerId") or find_any_text(item_el, "SellerId"))
     seller_alias = find_child_text(item_el, "SellerAlias") or find_any_text(item_el, "SellerAlias")
-    seller_dsr = parse_float_text(
-        find_child_text(item_el, "SellerDsrAverage") or find_any_text(item_el, "SellerDsrAverage")
-    )
     title = find_child_text(item_el, "ShortDescription") or find_any_text(item_el, "ShortDescription")
     description = find_child_text(item_el, "LongDescription") or find_any_text(item_el, "LongDescription")
     item_url = find_child_text(item_el, "ItemUrl") or find_any_text(item_el, "ItemUrl")
     thumbnail_url = find_child_text(item_el, "ThumbnailLink") or find_any_text(item_el, "ThumbnailLink")
+    tradera_attributes = build_attributes_payload(item_el)
+    image_urls = parse_image_links(item_el)
+    item_condition = extract_attribute_value(tradera_attributes, "condition")
+    pokemon_era = extract_attribute_value(tradera_attributes, "pokemon_era")
+    pokemon_language = extract_attribute_value(tradera_attributes, "pokemon_language")
+
+    raw_payload = {
+        "attributes": tradera_attributes,
+        "image_urls": image_urls,
+        "description": description,
+        "item_condition": item_condition,
+        "pokemon_era": pokemon_era,
+        "pokemon_language": pokemon_language,
+        "item": element_to_dict(item_el),
+    }
 
     return Row(
         item_id=item_id,
@@ -450,104 +499,17 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
         bid_count=bid_count,
         seller_id=seller_id,
         seller_alias=seller_alias,
-        seller_dsr=seller_dsr,
         title=title,
-        description=description,
         item_url=item_url,
         thumbnail_url=thumbnail_url,
-        image_urls=parse_image_links(item_el),
-        attributes=build_attributes_payload(item_el),
+        tradera_attributes=tradera_attributes,
+        image_urls=image_urls,
+        description=description,
+        item_condition=item_condition,
+        pokemon_era=pokemon_era,
+        pokemon_language=pokemon_language,
+        raw=raw_payload,
     )
-
-
-# -----------------------------
-# Card extraction / upsert
-# -----------------------------
-
-def normalize_card_value(value: Optional[str]) -> str:
-    if not value:
-        return "unknown"
-    return " ".join(value.strip().lower().split()) or "unknown"
-
-
-def is_unknown(value: Optional[str]) -> bool:
-    if value is None:
-        return True
-
-    lowered = str(value).strip().lower()
-    return not lowered or lowered == "unknown" or lowered.startswith("unknown-")
-
-
-def extract_card_payload(row: Row) -> Dict[str, Optional[str]]:
-    """
-    Pulls card-ish metadata out of attributes when present.
-    Falls back to title.
-    """
-    def attr_value(*keys: str) -> Optional[str]:
-        if not row.attributes:
-            return None
-        lower_map = {str(k).lower(): v for k, v in row.attributes.items()}
-        for key in keys:
-            values = lower_map.get(key.lower())
-            if isinstance(values, list) and values:
-                return str(values[0])
-        return None
-
-    raw_name = attr_value("card_name", "card name", "Card name") or row.title or "unknown card"
-    raw_set = attr_value("series", "set", "pokemon_set", "Series", "Set")
-    raw_set_code = attr_value("set_code", "set code", "Set code", "Set_code", "setcode")
-    raw_era = attr_value("pokemon_era", "era", "generation", "Era", "Generation")
-
-    name_value = normalize_card_value(raw_name)
-    set_name_value = normalize_card_value(raw_set) if raw_set else "unknown"
-
-    # Prefer explicit set_code; else fall back to set_name; else stable unknown code
-    if raw_set_code and str(raw_set_code).strip():
-        set_code_value = normalize_card_value(raw_set_code)
-    elif raw_set and str(raw_set).strip():
-        set_code_value = set_name_value
-    else:
-        fallback_code = name_value.replace(" ", "-")
-        set_code_value = f"unknown-{fallback_code}" if fallback_code != "unknown" else "unknown-unknown"
-
-    # Card number: default to "unknown" (safe for schemas expecting non-null)
-    card_number_value = attr_value("card_number", "card number", "Card number")
-    card_number_value = card_number_value.strip() if isinstance(card_number_value, str) else None
-    if not card_number_value:
-        card_number_value = "unknown"
-
-    return {
-        "name": name_value,
-        "era": raw_era,
-        "set_name": set_name_value,
-        "set_code": set_code_value,
-        "card_number": card_number_value,
-    }
-
-
-def lookup_card_id(conn, payload: Dict[str, Optional[str]]) -> Optional[int]:
-    """
-    Match an auction payload to an existing catalog card.
-    Unknown placeholders should never create new cards.
-    """
-    set_code = payload.get("set_code")
-    card_number = payload.get("card_number")
-
-    if is_unknown(set_code) or is_unknown(card_number):
-        return None
-
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT id
-            FROM cards
-            WHERE LOWER(set_code) = LOWER(%(set_code)s) AND card_number = %(card_number)s
-            LIMIT 1;
-            """,
-            payload,
-        )
-        found = cur.fetchone()
-        return int(found[0]) if found else None
 
 
 # -----------------------------
@@ -558,27 +520,18 @@ def upsert_sales(conn, rows: List[Row]) -> None:
     if not rows:
         return
 
-    # Cache lookups by the SAME uniqueness as the catalog: (set_code, card_number)
-    card_cache: Dict[Tuple[str, str], Optional[int]] = {}
-
-    for r in rows:
-        payload = extract_card_payload(r)
-        set_code = payload.get("set_code") or "unknown"
-        card_number = payload.get("card_number") or "unknown"
-        key = (set_code, card_number)
-
-        if key not in card_cache:
-            card_cache[key] = lookup_card_id(conn, payload)
-        r.card_id = card_cache[key]
-
     sql = (
-        "INSERT INTO auctions (\n"
+        "INSERT INTO tradera_auctions (\n"
         "    item_id, category_id, end_date, price, bid_count, seller_id, seller_alias,\n"
-        "    seller_dsr, title, description, item_url, thumbnail_url, image_urls, attributes, card_id\n"
+        "    title, item_url, thumbnail_url,\n"
+        "    tradera_attributes, image_urls, description, item_condition, pokemon_era, pokemon_language,\n"
+        "    raw, created_at, updated_at\n"
         ") VALUES (\n"
         "    %(item_id)s, %(category_id)s, %(end_date)s, %(price)s, %(bid_count)s,\n"
-        "    %(seller_id)s, %(seller_alias)s, %(seller_dsr)s, %(title)s, %(description)s,\n"
-        "    %(item_url)s, %(thumbnail_url)s, %(image_urls)s, %(attributes)s, %(card_id)s\n"
+        "    %(seller_id)s, %(seller_alias)s, %(title)s,\n"
+        "    %(item_url)s, %(thumbnail_url)s,\n"
+        "    %(tradera_attributes)s, %(image_urls)s, %(description)s, %(item_condition)s, %(pokemon_era)s, %(pokemon_language)s,\n"
+        "    %(raw)s, NOW(), NOW()\n"
         ")\n"
         "ON CONFLICT (item_id) DO UPDATE SET\n"
         "    category_id = EXCLUDED.category_id,\n"
@@ -587,14 +540,17 @@ def upsert_sales(conn, rows: List[Row]) -> None:
         "    bid_count = EXCLUDED.bid_count,\n"
         "    seller_id = EXCLUDED.seller_id,\n"
         "    seller_alias = EXCLUDED.seller_alias,\n"
-        "    seller_dsr = EXCLUDED.seller_dsr,\n"
         "    title = EXCLUDED.title,\n"
-        "    description = EXCLUDED.description,\n"
         "    item_url = EXCLUDED.item_url,\n"
         "    thumbnail_url = EXCLUDED.thumbnail_url,\n"
+        "    tradera_attributes = EXCLUDED.tradera_attributes,\n"
         "    image_urls = EXCLUDED.image_urls,\n"
-        "    attributes = EXCLUDED.attributes,\n"
-        "    card_id = EXCLUDED.card_id;"
+        "    description = EXCLUDED.description,\n"
+        "    item_condition = EXCLUDED.item_condition,\n"
+        "    pokemon_era = EXCLUDED.pokemon_era,\n"
+        "    pokemon_language = EXCLUDED.pokemon_language,\n"
+        "    raw = EXCLUDED.raw,\n"
+        "    updated_at = NOW();"
     )
     with conn.cursor() as cur:
         execute_batch(cur, sql, [r.as_params() for r in rows], page_size=200)
@@ -681,7 +637,7 @@ def finalize_import_run(
 
 def get_db_watermark_end_date(conn) -> Optional[datetime]:
     with conn.cursor() as cur:
-        cur.execute("SELECT max(end_date) FROM auctions;")
+        cur.execute("SELECT max(end_date) FROM tradera_auctions;")
         val = cur.fetchone()[0]
     return val
 

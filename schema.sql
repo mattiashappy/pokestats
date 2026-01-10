@@ -56,8 +56,8 @@ ALTER TABLE IF EXISTS cards
         AND (set_code IS NULL OR (lower(btrim(set_code)) <> 'unknown' AND lower(btrim(set_code)) NOT LIKE 'unknown-%'))
     );
 
--- Source-of-truth auctions table.
-CREATE TABLE IF NOT EXISTS auctions (
+-- Raw Tradera auctions (source of truth for imports).
+CREATE TABLE IF NOT EXISTS tradera_auctions (
     item_id BIGINT PRIMARY KEY,
     category_id INT NOT NULL,
     end_date TIMESTAMPTZ NOT NULL,
@@ -68,15 +68,29 @@ CREATE TABLE IF NOT EXISTS auctions (
     title TEXT NULL,
     item_url TEXT NULL,
     thumbnail_url TEXT NULL,
-    card_id INT NULL REFERENCES cards(id),
-    parsed_set_code TEXT NULL,
+    tradera_attributes JSONB NULL,
+    image_urls JSONB NULL,
+    description TEXT NULL,
+    item_condition TEXT NULL,
+    pokemon_era TEXT NULL,
+    pokemon_language TEXT NULL,
     raw JSONB NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_auctions_card_id ON auctions (card_id);
-CREATE INDEX IF NOT EXISTS idx_auctions_end_date_desc ON auctions (end_date DESC);
-CREATE INDEX IF NOT EXISTS idx_auctions_updated_at_desc ON auctions (updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_auctions_unlinked_end_date ON auctions (end_date DESC) WHERE card_id IS NULL;
-CREATE INDEX IF NOT EXISTS idx_auctions_unlinked_recent ON auctions (end_date DESC) WHERE card_id IS NULL;
+CREATE INDEX IF NOT EXISTS idx_tradera_auctions_end_date_desc ON tradera_auctions (end_date DESC);
+CREATE INDEX IF NOT EXISTS idx_tradera_auctions_pokemon_era ON tradera_auctions (pokemon_era);
+CREATE INDEX IF NOT EXISTS idx_tradera_auctions_language ON tradera_auctions (pokemon_language);
+
+-- Linked auctions table (populated by linking feature).
+CREATE TABLE IF NOT EXISTS tradera_auction_card_links (
+    item_id BIGINT PRIMARY KEY REFERENCES tradera_auctions(item_id) ON DELETE CASCADE,
+    card_id INT NOT NULL REFERENCES cards(id),
+    linked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    method TEXT,
+    confidence_score INT,
+    status TEXT NOT NULL DEFAULT 'linked'
+);
+
+CREATE INDEX IF NOT EXISTS idx_tradera_links_card_id ON tradera_auction_card_links (card_id);

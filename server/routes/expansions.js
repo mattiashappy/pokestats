@@ -22,13 +22,22 @@ function buildAliasMap(staticExpansions) {
   return aliasToCanonicalCode
 }
 
-function createExpansionService({ pool, ensureCardInfrastructure, getStaticExpansionSummaries }) {
+function createExpansionService({
+  pool,
+  ensureCardInfrastructure,
+  getStaticExpansionSummaries,
+  ensureTraderaAuctionLinksTableAvailable
+}) {
   async function fetchExpansionSummaries() {
     if (!pool) return getStaticExpansionSummaries()
 
     try {
       const ok = await ensureCardInfrastructure()
       if (!ok) return getStaticExpansionSummaries()
+
+      const linksReady = ensureTraderaAuctionLinksTableAvailable
+        ? await ensureTraderaAuctionLinksTableAvailable()
+        : false
 
       const staticExpansions = await getStaticExpansionSummaries()
       const staticByCode = new Map(staticExpansions.map((expansion) => [expansion.set_code, expansion]))
@@ -55,11 +64,11 @@ function createExpansionService({ pool, ensureCardInfrastructure, getStaticExpan
         COALESCE(e.release_date, c.release_date) AS release_date,
         COALESCE(e.image_url, c.image_url) AS image_url,
         COUNT(DISTINCT c.id)::int AS cards_total,
-        COUNT(a.item_id)::int AS linked_auctions
+        ${linksReady ? 'COUNT(l.item_id)::int' : '0::int'} AS linked_auctions
       FROM public.cards c
       LEFT JOIN public.expansions e ON c.expansion_id = e.id
       LEFT JOIN public.eras er ON er.id = e.era_id
-      LEFT JOIN public.auctions a ON a.card_id = c.id
+      ${linksReady ? 'LEFT JOIN public.tradera_auction_card_links l ON l.card_id = c.id' : ''}
       GROUP BY 2, 3, 4, 5, 6, 7, 8, 9
     `
 
@@ -80,20 +89,9 @@ function createExpansionService({ pool, ensureCardInfrastructure, getStaticExpan
       LEFT JOIN public.eras er ON er.id = e.era_id
     `
 
-      const salesBySetQuery = `
-      SELECT
-        COALESCE(e.set_code, c.set_code, c.set_name, a.parsed_set_code) AS set_code,
-        COUNT(a.item_id)::int AS linked_auctions
-      FROM public.auctions a
-      LEFT JOIN public.cards c ON c.id = a.card_id
-      LEFT JOIN public.expansions e ON e.id = c.expansion_id
-      GROUP BY 1
-    `
-
-      const [cardRowsResult, expansionsResult, salesBySetResult] = await Promise.all([
+      const [cardRowsResult, expansionsResult] = await Promise.all([
         pool.query(cardRowsQuery),
-        pool.query(expansionsQuery),
-        pool.query(salesBySetQuery)
+        pool.query(expansionsQuery)
       ])
 
       const mergedRows = [...cardRowsResult.rows, ...expansionsResult.rows]
@@ -125,20 +123,6 @@ function createExpansionService({ pool, ensureCardInfrastructure, getStaticExpan
         const normalizedRow = { ...row, set_code: canonicalCode ?? row.set_code ?? row.name ?? null }
         const current = mergedByCode.get(normalizedRow.set_code)
         mergedByCode.set(normalizedRow.set_code, mergeRows(current, normalizedRow))
-      }
-
-      for (const row of salesBySetResult.rows || []) {
-        if (!row?.set_code) continue
-        const canonicalCode =
-          resolveCanonicalCode(row.set_code) ?? resolveCanonicalCode(row.name) ?? row.set_code ?? null
-        if (!canonicalCode) continue
-
-        const existing = mergedByCode.get(canonicalCode) ?? { set_code: canonicalCode }
-        mergedByCode.set(canonicalCode, {
-          ...existing,
-          set_code: canonicalCode,
-          linked_auctions: (existing.linked_auctions ?? 0) + (row.linked_auctions ?? 0)
-        })
       }
 
       const orderedResults = staticExpansions.map((expansion) => {
