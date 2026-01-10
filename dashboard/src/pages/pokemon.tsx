@@ -88,8 +88,8 @@ export function PokemonPage(): JSX.Element {
       <div className="flex items-center gap-3">
         <Sparkles className="h-5 w-5 text-amber-500" />
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sets</p>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Sets</h1>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pokémon</p>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Pokémon sets</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
             Browse every set in the database. Sets and cards are always available; auctions are shown as overlays when linked.
           </p>

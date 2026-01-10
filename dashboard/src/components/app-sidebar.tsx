@@ -50,6 +50,7 @@ export function AppSidebar(): JSX.Element {
   ]
 
   const navOther: NavItem[] = [
+    { title: 'Pokémon', url: '/pokemon', icon: Sparkles },
     { title: 'Eras', url: '/era', icon: Layers },
     { title: 'Settings', url: '/settings', icon: Settings }
   ]
