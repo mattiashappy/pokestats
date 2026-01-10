@@ -3,27 +3,22 @@
 export type AuctionRecord = {
   id: string
   title: string
-  cardId: number | null
-  cardName: string
-  cardEra: string
-  cardSetName: string
-  cardSetCode?: string | null
-  cardNumber: string | null
-  seller: string
-  sellerType: 'trusted' | 'new'
+  description?: string | null
   finalPrice: number
-  currency: string
   bids: number
   endTime: string
-  condition: string
-  category: string
-  location: string
-  url: string
-  addedAt: string
+  url: string | null
   thumbnail: string | null
+  imageUrls?: string[] | null
+  cardEra: string | null
   language?: string | null
-  gradingCompany?: string | null
-  grade?: string | null
+  itemCondition?: string | null
+  cardId?: number | null
+  cardName?: string | null
+  cardSetName?: string | null
+  cardSetCode?: string | null
+  cardNumber?: string | null
+  currency: string
 }
 
 export type CardResponse = {

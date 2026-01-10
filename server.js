@@ -690,6 +690,12 @@ function normalizeAuctionRow(row) {
     seller_alias: row.seller_alias,
     item_url: row.item_url,
     thumbnail_url: row.thumbnail_url,
+    pokemon_era: row.pokemon_era ?? null,
+    pokemon_language: row.pokemon_language ?? null,
+    item_condition: row.item_condition ?? null,
+    description: row.description ?? null,
+    image_urls: row.image_urls ?? null,
+    tradera_attributes: row.tradera_attributes ?? null,
     card_id: row.card_id ?? null,
     card_name: row.card_name ?? null,
     card_era: row.card_era ?? null,
@@ -702,7 +708,7 @@ function normalizeAuctionRow(row) {
 
 async function fetchAuctionsFromDatabase(filters = {}) {
   if (!pool) return []
-  const ok = await ensureCardInfrastructure()
+  const ok = await ensureSalesTableAvailable()
   if (!ok) return []
 
   const { era = null, language = null, minPrice = null, maxPrice = null, limit = null, offset = 0 } = filters
@@ -717,19 +723,17 @@ async function fetchAuctionsFromDatabase(filters = {}) {
       a.seller_alias,
       a.item_url,
       a.thumbnail_url,
-      a.card_id,
-      c.name AS card_name,
-      COALESCE(e.era, c.era) AS card_era,
-      COALESCE(e.name, c.set_name) AS card_set_name,
-      COALESCE(e.set_code, c.set_code) AS card_set_code,
-      e.language AS card_language,
-      c.card_number AS card_number
+      a.pokemon_era,
+      a.pokemon_language,
+      a.item_condition,
+      a.description,
+      a.image_urls,
+      a.tradera_attributes,
+      a.card_id
     FROM public.auctions a
-    LEFT JOIN public.cards c ON c.id = a.card_id
-    LEFT JOIN public.expansions e ON e.id = c.expansion_id
     WHERE
-      ($1::text IS NULL OR COALESCE(e.era, c.era) = $1)
-      AND ($2::text IS NULL OR e.language = $2)
+      ($1::text IS NULL OR a.pokemon_era = $1)
+      AND ($2::text IS NULL OR a.pokemon_language = $2)
       AND ($3::int IS NULL OR a.price >= $3)
       AND ($4::int IS NULL OR a.price <= $4)
     ORDER BY a.end_date DESC
@@ -794,6 +798,12 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
       a.seller_alias,
       a.item_url,
       a.thumbnail_url,
+      a.pokemon_era,
+      a.pokemon_language,
+      a.item_condition,
+      a.description,
+      a.image_urls,
+      a.tradera_attributes,
       a.card_id,
       c.name AS card_name,
       COALESCE(e.era, c.era) AS card_era,
@@ -986,8 +996,6 @@ app.get('/api/sales', async (req, res) => {
     const filters = {
       era: req.query.era || null,
       language: req.query.language || null,
-      gradingIssuer: req.query.gradingIssuer || null,
-      grade: req.query.grade || null,
       minPrice: req.query.minPrice ? Number(req.query.minPrice) : null,
       maxPrice: req.query.maxPrice ? Number(req.query.maxPrice) : null,
       limit,

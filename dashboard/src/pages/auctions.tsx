@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format, formatDistanceToNow, parseISO } from 'date-fns'
 import { ArrowUpDown, CalendarClock, ChevronDown, ExternalLink, Loader2, Search } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
@@ -35,8 +35,6 @@ export function AuctionsPage(): JSX.Element {
 
   const [era, setEra] = useState<string>('all')
   const [language, setLanguage] = useState<string>('all')
-  const [gradingCompany, setGradingCompany] = useState<string>('all')
-  const [grade, setGrade] = useState<string>('all')
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [sortBy, setSortBy] = useState<SortValue>('endDesc')
@@ -54,16 +52,6 @@ export function AuctionsPage(): JSX.Element {
 
   const languages = useMemo(() => {
     const unique = new Set<string>(data?.map((auction) => auction.language || 'Unknown language') ?? [])
-    return ['all', ...Array.from(unique)]
-  }, [data])
-
-  const gradingCompanies = useMemo(() => {
-    const unique = new Set<string>(data?.map((auction) => auction.gradingCompany || 'Ungraded') ?? [])
-    return ['all', ...Array.from(unique)]
-  }, [data])
-
-  const grades = useMemo(() => {
-    const unique = new Set<string>(data?.map((auction) => auction.grade || 'Not graded') ?? [])
     return ['all', ...Array.from(unique)]
   }, [data])
 
@@ -121,15 +109,10 @@ export function AuctionsPage(): JSX.Element {
   }
 
   const eraDistribution = useMemo(() => buildDistribution((auction) => auction.cardEra, 'Unknown era'), [data])
-  const gradingCompanyDistribution = useMemo(
-    () => buildDistribution((auction) => auction.gradingCompany, 'Ungraded'),
-    [data]
-  )
   const languageDistribution = useMemo(
     () => buildDistribution((auction) => auction.language, 'Unknown language'),
     [data]
   )
-  const gradeDistribution = useMemo(() => buildDistribution((auction) => auction.grade, 'Not graded'), [data])
 
   const attributeView = useMemo(() => {
     if (activeAttribute === 'era') {
@@ -138,18 +121,8 @@ export function AuctionsPage(): JSX.Element {
     if (activeAttribute === 'language') {
       return { title: 'Languages', description: 'Listing language breakdown across auctions.', items: languageDistribution }
     }
-    if (activeAttribute === 'grading') {
-      return {
-        title: 'Grading companies',
-        description: 'How many auctions include a third-party grade.',
-        items: gradingCompanyDistribution
-      }
-    }
-    if (activeAttribute === 'grade') {
-      return { title: 'Grades', description: 'Reported grade for graded cards.', items: gradeDistribution }
-    }
     return null
-  }, [activeAttribute, eraDistribution, languageDistribution, gradingCompanyDistribution, gradeDistribution])
+  }, [activeAttribute, eraDistribution, languageDistribution])
 
   const filteredAndSorted = useMemo(() => {
     if (!data) return []
@@ -159,7 +132,7 @@ export function AuctionsPage(): JSX.Element {
     const filtered = data.filter((auction) => {
       const matchesSearch =
         !query ||
-        [auction.cardName, auction.title, auction.cardSetName]
+        [auction.title, auction.description]
           .filter(Boolean)
           .some((value) => value?.toLowerCase().includes(query))
 
@@ -168,18 +141,13 @@ export function AuctionsPage(): JSX.Element {
 
       const matchesEra = era === 'all' || (auction.cardEra || 'Unknown era') === era
       const matchesLanguage = language === 'all' || (auction.language || 'Unknown language') === language
-      const matchesGradingCompany =
-        gradingCompany === 'all' || (auction.gradingCompany || 'Ungraded') === gradingCompany
-      const matchesGrade = grade === 'all' || (auction.grade || 'Not graded') === grade
 
       return (
         matchesSearch &&
         matchesPriceMin &&
         matchesPriceMax &&
         matchesEra &&
-        matchesLanguage &&
-        matchesGradingCompany &&
-        matchesGrade
+        matchesLanguage
       )
     })
 
@@ -188,11 +156,11 @@ export function AuctionsPage(): JSX.Element {
       if (sortBy === 'bidsDesc') return (b.bids || 0) - (a.bids || 0)
       return new Date(b.endTime).getTime() - new Date(a.endTime).getTime()
     })
-  }, [data, searchTerm, maxPrice, minPrice, era, language, gradingCompany, grade, sortBy])
+  }, [data, searchTerm, maxPrice, minPrice, era, language, sortBy])
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm, maxPrice, minPrice, era, language, gradingCompany, grade, sortBy])
+  }, [searchTerm, maxPrice, minPrice, era, language, sortBy])
 
   const totalPages = useMemo(() => {
     if (!filteredAndSorted.length) return 1
@@ -355,7 +323,7 @@ export function AuctionsPage(): JSX.Element {
             <div className="space-y-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pokémon</p>
               <CardTitle className="text-2xl font-semibold text-slate-900 dark:text-slate-50">Ended auctions</CardTitle>
-              <CardDescription>Search the archive and refine by language, grading, era, and price.</CardDescription>
+              <CardDescription>Search the archive and refine by language, era, and price.</CardDescription>
             </div>
 
             <Button
@@ -365,8 +333,6 @@ export function AuctionsPage(): JSX.Element {
               onClick={() => {
                 setEra('all')
                 setLanguage('all')
-                setGradingCompany('all')
-                setGrade('all')
                 setMinPrice('')
                 setMaxPrice('')
                 setSortBy('endDesc')
@@ -385,7 +351,7 @@ export function AuctionsPage(): JSX.Element {
                 <Input
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search cards, titles, or sets"
+                  placeholder="Search titles or descriptions"
                   className="h-9 border-none bg-transparent px-0 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
                 />
               </div>
@@ -424,32 +390,6 @@ export function AuctionsPage(): JSX.Element {
                           {languages.map((option) => (
                             <option key={option} value={option}>
                               {option === 'all' ? 'All languages' : option}
-                            </option>
-                          ))}
-                        </Select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Grading company
-                        </p>
-                        <Select value={gradingCompany} onChange={(event) => setGradingCompany(event.target.value)}>
-                          {gradingCompanies.map((option) => (
-                            <option key={option} value={option}>
-                              {option === 'all' ? 'All companies' : option}
-                            </option>
-                          ))}
-                        </Select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Grade
-                        </p>
-                        <Select value={grade} onChange={(event) => setGrade(event.target.value)}>
-                          {grades.map((option) => (
-                            <option key={option} value={option}>
-                              {option === 'all' ? 'All grades' : option}
                             </option>
                           ))}
                         </Select>
@@ -503,8 +443,6 @@ export function AuctionsPage(): JSX.Element {
                         onClick={() => {
                           setEra('all')
                           setLanguage('all')
-                          setGradingCompany('all')
-                          setGrade('all')
                           setMinPrice('')
                           setMaxPrice('')
                           setSortBy('endDesc')
@@ -545,6 +483,8 @@ export function AuctionsPage(): JSX.Element {
                     <TableHead>Picture</TableHead>
                     <TableHead>Title</TableHead>
                     <TableHead>Era</TableHead>
+                    <TableHead>Language</TableHead>
+                    <TableHead>Condition</TableHead>
                     <TableHead className="text-right">Final price</TableHead>
                     <TableHead className="text-center">Bids</TableHead>
                     <TableHead>Ended at</TableHead>
@@ -555,87 +495,65 @@ export function AuctionsPage(): JSX.Element {
                 <TableBody>
                   {paginatedAuctions.length ? (
                     paginatedAuctions.map((auction) => {
-                    const hasKnownSetName = auction.cardSetName && auction.cardSetName.toLowerCase() !== 'unknown'
-                    const cardHref = auction.cardId ? `/cards/${auction.cardId}` : null
+                      const preview =
+                        auction.thumbnail || auction.imageUrls?.[2] || auction.imageUrls?.[0] || null
 
-                    const imageContent = (
-                      <div className="overflow-hidden rounded-md border border-slate-200 dark:border-slate-800">
-                        {auction.thumbnail ? (
-                          <img src={auction.thumbnail} alt={auction.cardName} className="h-16 w-full object-cover" />
-                        ) : (
-                          <div className="flex h-16 w-full items-center justify-center bg-slate-100 text-xs text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
-                            No image
-                          </div>
-                        )}
-                      </div>
-                    )
-
-                    return (
-                      <TableRow key={auction.id}>
-                        <TableCell className="w-24">
-                          {cardHref ? (
-                            <Link to={cardHref} className="block">{imageContent}</Link>
-                          ) : (
-                            <div className="block">{imageContent}</div>
-                          )}
-                        </TableCell>
-
-                        <TableCell className="font-semibold text-slate-900 dark:text-slate-100">
-                          <div className="flex items-center gap-2">
-                            <div>
-                              {cardHref ? (
-                                <Link
-                                  to={cardHref}
-                                  className="text-slate-900 hover:text-sky-600 dark:text-slate-100 dark:hover:text-sky-300"
-                                >
-                                  {auction.cardName}
-                                </Link>
+                      return (
+                        <TableRow key={auction.id}>
+                          <TableCell className="w-24">
+                            <div className="overflow-hidden rounded-md border border-slate-200 dark:border-slate-800">
+                              {preview ? (
+                                <img src={preview} alt={auction.title} className="h-16 w-full object-cover" />
                               ) : (
-                                <div className="text-slate-900 dark:text-slate-100">{auction.cardName}</div>
+                                <div className="flex h-16 w-full items-center justify-center bg-slate-100 text-xs text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
+                                  No image
+                                </div>
                               )}
-
-                              {auction.cardName !== auction.title ? (
-                                <div className="text-xs font-normal text-slate-600 dark:text-slate-400">{auction.title}</div>
-                              ) : null}
-
-                              {hasKnownSetName ? (
-                                <div className="text-xs text-slate-500 dark:text-slate-400">Set: {auction.cardSetName}</div>
-                              ) : null}
                             </div>
-                          </div>
-                        </TableCell>
+                          </TableCell>
 
-                        <TableCell>{auction.cardEra || 'Unknown era'}</TableCell>
+                          <TableCell className="font-semibold text-slate-900 dark:text-slate-100">
+                            <div className="text-slate-900 dark:text-slate-100">{auction.title}</div>
+                            {auction.description ? (
+                              <div className="text-xs font-normal text-slate-600 dark:text-slate-400 line-clamp-2">
+                                {auction.description}
+                              </div>
+                            ) : null}
+                          </TableCell>
 
-                        <TableCell className="text-right text-slate-900 dark:text-slate-100">
-                          {currencyFormatter.format(auction.finalPrice || 0)}
-                        </TableCell>
+                          <TableCell>{auction.cardEra || 'Unknown era'}</TableCell>
+                          <TableCell>{auction.language || 'Unknown language'}</TableCell>
+                          <TableCell>{auction.itemCondition || 'Unknown condition'}</TableCell>
 
-                        <TableCell className="text-center">{auction.bids || 0}</TableCell>
+                          <TableCell className="text-right text-slate-900 dark:text-slate-100">
+                            {currencyFormatter.format(auction.finalPrice || 0)}
+                          </TableCell>
 
-                        <TableCell>
-                          <div className="text-slate-900 dark:text-slate-100">{new Date(auction.endTime).toLocaleString()}</div>
-                          <div className="text-xs text-slate-600 dark:text-slate-400">
-                            {formatDistanceToNow(parseISO(auction.endTime), { addSuffix: true })}
-                          </div>
-                        </TableCell>
+                          <TableCell className="text-center">{auction.bids || 0}</TableCell>
 
-                        <TableCell>
-                          <a
-                            href={auction.url}
-                            className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-700 dark:text-sky-300 dark:hover:text-sky-200"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            View <ExternalLink className="h-3 w-3" />
-                          </a>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
+                          <TableCell>
+                            <div className="text-slate-900 dark:text-slate-100">{new Date(auction.endTime).toLocaleString()}</div>
+                            <div className="text-xs text-slate-600 dark:text-slate-400">
+                              {formatDistanceToNow(parseISO(auction.endTime), { addSuffix: true })}
+                            </div>
+                          </TableCell>
+
+                          <TableCell>
+                            <a
+                              href={auction.url ?? '#'}
+                              className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-700 dark:text-sky-300 dark:hover:text-sky-200"
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              View <ExternalLink className="h-3 w-3" />
+                            </a>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
+                      <TableCell colSpan={9} className="py-8 text-center text-sm text-muted-foreground">
                         No auctions match your filters.
                       </TableCell>
                     </TableRow>

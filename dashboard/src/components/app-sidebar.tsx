@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { BadgeCheck, CreditCard, Gavel, Globe, History, Layers, Settings, Shield, Sparkles, Star } from 'lucide-react'
+import { CreditCard, Gavel, Globe, History, Layers, Settings, Shield, Sparkles, Star } from 'lucide-react'
 
 import {
   Sidebar,
@@ -42,9 +42,7 @@ export function AppSidebar(): JSX.Element {
       icon: Gavel,
       items: [
         { title: 'Eras', url: '/auctions/era' },
-        { title: 'Languages', url: '/auctions/language' },
-        { title: 'Grading companies', url: '/auctions/grading' },
-        { title: 'Grades', url: '/auctions/grade' }
+        { title: 'Languages', url: '/auctions/language' }
       ]
     }
   ]
@@ -98,9 +96,7 @@ export function AppSidebar(): JSX.Element {
                             ? Star
                             : sub.url === '/auctions/language'
                               ? Globe
-                              : sub.url === '/auctions/grading'
-                                ? BadgeCheck
-                                : null
+                              : null
 
                         return (
                           <SidebarMenuSubItem key={sub.title}>
@@ -157,11 +153,9 @@ export function AppSidebar(): JSX.Element {
                             ? Star
                             : sub.url === '/auctions/language'
                               ? Globe
-                              : sub.url === '/auctions/grading'
-                                ? BadgeCheck
-                                : sub.url === '/admin/imports'
-                                  ? History
-                                  : null
+                              : sub.url === '/admin/imports'
+                                ? History
+                                : null
 
                         return (
                           <SidebarMenuSubItem key={sub.title}>
