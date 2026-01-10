@@ -10,10 +10,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Input } from '../components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { fetchCardsForSet, fetchExpansions } from '../lib/api'
+import { normalizeEraCode } from '../lib/era'
 import type { CardListItem, ExpansionSummary } from '../types'
 
 export function PokemonSetPage(): JSX.Element {
-  const { setCode = '' } = useParams()
+  const { setCode = '', eraCode } = useParams()
   const [searchTerm, setSearchTerm] = useState('')
 
   const {
@@ -41,6 +42,8 @@ export function PokemonSetPage(): JSX.Element {
     return expansions.find((expansion) => expansion.set_code.toLowerCase() === normalized) ?? null
   }, [expansions, setCode])
 
+  const resolvedEraCode = normalizeEraCode(eraCode ?? expansion?.era_code ?? null)
+
   const filteredCards = useMemo(() => {
     if (!cards) return []
     const term = searchTerm.trim().toLowerCase()
@@ -56,14 +59,16 @@ export function PokemonSetPage(): JSX.Element {
 
   const headerLabel = expansion?.name ?? setCode
   const setTotal = expansion?.set_total ?? expansion?.cards_total ?? cards?.length ?? null
+  const backLink = resolvedEraCode ? `/era/${resolvedEraCode}` : '/pokemon'
+  const backLabel = resolvedEraCode ? `Back to ${expansion?.era_name ?? expansion?.era ?? resolvedEraCode}` : 'Back to sets'
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Button asChild variant="ghost" size="sm">
-            <Link to="/pokemon">
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back to sets
+            <Link to={backLink}>
+              <ArrowLeft className="mr-2 h-4 w-4" /> {backLabel}
             </Link>
           </Button>
           <div>
@@ -73,7 +78,7 @@ export function PokemonSetPage(): JSX.Element {
               <CardDescription className="text-sm text-rose-400">Failed to load set metadata.</CardDescription>
             ) : expansion ? (
               <CardDescription className="text-sm text-slate-600 dark:text-slate-400">
-                {expansion.set_code} · {expansion.era || 'Unknown era'} · {expansion.language || 'Unknown language'}
+                {expansion.set_code} · {expansion.era_name ?? expansion.era ?? 'Unknown era'} · {expansion.language || 'Unknown language'}
               </CardDescription>
             ) : isLoadingExpansions ? (
               <CardDescription className="text-sm text-slate-500">Loading set metadata…</CardDescription>
@@ -163,7 +168,15 @@ export function PokemonSetPage(): JSX.Element {
                       </TableCell>
                       <TableCell className="text-right">
                         <Button asChild size="sm" variant="secondary">
-                          <Link to={`/pokemon/cards/${card.id}`}>View card</Link>
+                          <Link
+                            to={
+                              resolvedEraCode
+                                ? `/pokemon/${resolvedEraCode}/${setCode}/${card.id}`
+                                : `/pokemon/cards/${card.id}`
+                            }
+                          >
+                            View card
+                          </Link>
                         </Button>
                       </TableCell>
                     </TableRow>

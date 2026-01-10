@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { BadgeCheck, CreditCard, Gavel, Globe, History, Settings, Shield, Sparkles, Star } from 'lucide-react'
+import { BadgeCheck, CreditCard, Gavel, Globe, History, Layers, Settings, Shield, Sparkles, Star } from 'lucide-react'
 
 import {
   Sidebar,
@@ -51,6 +51,7 @@ export function AppSidebar(): JSX.Element {
 
   const navOther: NavItem[] = [
     { title: 'Pokémon', url: '/pokemon', icon: Sparkles },
+    { title: 'Eras', url: '/era', icon: Layers },
     { title: 'Settings', url: '/settings', icon: Settings }
   ]
 
