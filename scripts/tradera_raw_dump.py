@@ -105,8 +105,14 @@ def parse_totals_and_items(xml_text: str):
     if tp is not None and tp.text:
         total_pages = int(tp.text)
 
-    items = root.findall(".//t:Item", ns)
-    return total_items, total_pages, len(items)
+    # Find the container <Items> and count its direct children (the actual rows)
+    items_container = root.find(".//t:Items", ns)
+    if items_container is None:
+        items_count = 0
+    else:
+        items_count = len(list(items_container))
+
+    return total_items, total_pages, items_count
 
 
 # =========================
