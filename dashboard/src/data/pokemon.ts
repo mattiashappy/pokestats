@@ -16,7 +16,7 @@ export const pokemonEras: PokemonEra[] = [
   {
     name: "Scarlet & Violet",
     code: "SV",
-    description: "Current era for the Tradera-sourced auctions and enrichment records.",
+    description: "Current era for the Tradera-sourced auctions.",
     sets: [
       { code: "SV10.5", name: "Black Bolt & White Flare" },
       { code: "SV10", name: "Destined Rivals" },
@@ -27,7 +27,7 @@ export const pokemonEras: PokemonEra[] = [
       { code: "SV6.5", name: "Shrouded Fable" },
       { code: "SV6", name: "Twilight Masquerade" },
       { code: "SV5", name: "Temporal Forces" },
-      { code: "SV4.5", name: "Paldean Fates", cardTotal: 200, notes: "Example count from the enriched catalogue." },
+      { code: "SV4.5", name: "Paldean Fates", cardTotal: 200, notes: "Example count from the catalog." },
       { code: "SV4", name: "Paradox Rift" },
       { code: "SV3.5", name: "151" },
       { code: "SV3", name: "Obsidian Flames" },

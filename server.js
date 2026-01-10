@@ -12,8 +12,6 @@ const { createExpansionService } = require('./server/routes/expansions')
 const { loadCatalog } = require('./server/catalog/catalogLoader')
 const { seedCatalog } = require('./server/catalog/catalogSeeder')
 
-const { runStage: runEnrichmentStage, runFullPipeline } = require('./server/enrichment/enrichmentJob')
-
 const app = express()
 const PORT = process.env.PORT || 8000
 const distPath = path.join(__dirname, 'dashboard', 'dist')
@@ -210,7 +208,6 @@ const pool = DATABASE_URL
 let hasCheckedSalesTable = false
 let salesTableAvailable = false
 let auctionsBaseTableExists = false
-let salesViewAvailable = false
 let hasCheckedCardsTable = false
 let cardsTableAvailable = false
 let hasCheckedExpansionsTable = false
@@ -220,10 +217,6 @@ let salesCardColumnAvailable = false
 let hasCheckedSalesParsedSetCodeColumn = false
 let salesParsedSetCodeColumnAvailable = false
 let hasEnsuredSalesCardIndex = false
-let hasEnsuredEnrichmentColumns = false
-let hasEnsuredEnrichmentIndexes = false
-let hasCheckedEnrichmentTable = false
-let enrichmentTableAvailable = false
 let hasCheckedImportRunsTable = false
 let importRunsTableAvailable = false
 let ensureCardInfrastructurePromise = null
@@ -373,31 +366,13 @@ async function ensureSalesTableAvailable() {
   if (!pool) return false
   if (hasCheckedSalesTable) return salesTableAvailable
 
-  const { rows } = await pool.query(
-    "SELECT to_regclass('public.auctions') AS auctions, to_regclass('public.tradera_sales') AS sales_view"
-  )
+  const { rows } = await pool.query("SELECT to_regclass('public.auctions') AS auctions")
   auctionsBaseTableExists = Boolean(rows?.[0]?.auctions)
-  salesViewAvailable = Boolean(rows?.[0]?.sales_view)
-  salesTableAvailable = Boolean(rows?.[0]?.auctions || rows?.[0]?.sales_view)
-  if (!salesViewAvailable) {
-    console.warn('tradera_sales view does not exist; legacy reads may fail')
-  }
+  salesTableAvailable = auctionsBaseTableExists
   hasCheckedSalesTable = true
 
   if (!salesTableAvailable) console.warn('auctions table does not exist')
   return salesTableAvailable
-}
-
-async function ensureEnrichmentTableAvailable() {
-  if (!pool) return false
-  if (hasCheckedEnrichmentTable) return enrichmentTableAvailable
-
-  const { rows } = await pool.query("SELECT to_regclass('public.auction_enrichment') AS table_name")
-  enrichmentTableAvailable = Boolean(rows?.[0]?.table_name)
-  hasCheckedEnrichmentTable = true
-
-  if (!enrichmentTableAvailable) console.warn('auction_enrichment table does not exist')
-  return enrichmentTableAvailable
 }
 
 // ✅ single canonical expansions definition
@@ -545,32 +520,6 @@ async function ensureCardInfrastructure() {
         }
       }
 
-      const enrichmentReady = await ensureEnrichmentTableAvailable()
-
-      if (enrichmentReady && !hasEnsuredEnrichmentColumns) {
-        const columnResults = await Promise.all([
-          ensureColumnExists('auction_enrichment', 'status', 'TEXT'),
-          ensureColumnExists('auction_enrichment', 'stage', "TEXT NOT NULL DEFAULT 'era'"),
-          ensureColumnExists('auction_enrichment', 'matched_era', 'TEXT'),
-          ensureColumnExists('auction_enrichment', 'matched_set_code', 'TEXT'),
-          ensureColumnExists('auction_enrichment', 'parsed_card_number', 'TEXT'),
-          ensureColumnExists('auction_enrichment', 'parsed_number_text', 'TEXT'),
-          ensureColumnExists('auction_enrichment', 'parsed_set_hint', 'TEXT'),
-          ensureColumnExists('auction_enrichment', 'parsed_card_name', 'TEXT')
-        ])
-        hasEnsuredEnrichmentColumns = columnResults.every(Boolean)
-      }
-
-      if (enrichmentReady && !hasEnsuredEnrichmentIndexes) {
-        const indexResults = await Promise.all([
-          ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_status', '(status)'),
-          ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_matched', '(matched_era, matched_set_code)'),
-          ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_parsed_card_number', '(parsed_card_number)'),
-          ensureIndexExists('auction_enrichment', 'idx_auction_enrichment_stage', '(stage)')
-        ])
-        hasEnsuredEnrichmentIndexes = indexResults.every(Boolean)
-      }
-
       return true
     } catch (error) {
       console.error('Failed to ensure card infrastructure', error)
@@ -601,15 +550,6 @@ function normalizeAuctionRow(row) {
     seller_alias: row.seller_alias,
     item_url: row.item_url,
     thumbnail_url: row.thumbnail_url,
-    enrich_status: row.enrich_status,
-    match_confidence_score: row.match_confidence_score,
-    match_method: row.match_method,
-    matched_set_code: row.matched_set_code,
-    matched_era: row.matched_era,
-    parsed_card_number: row.parsed_card_number,
-    parsed_number_text: row.parsed_number_text,
-    parsed_set_hint: row.parsed_set_hint,
-    suggested_cards: row.suggested_cards,
     card_id: row.card_id ?? null,
     card_name: row.card_name ?? null,
     card_era: row.card_era ?? null,
@@ -620,89 +560,6 @@ function normalizeAuctionRow(row) {
   }
 }
 
-/**
- * ✅ Conflict-free + robust:
- * Always returns a source that matches the downstream SELECT shape
- * (so ts.enrich_status / ts.match_confidence_score / etc always exist).
- */
-function buildSalesSourceQuery() {
-  // Use the view only when BOTH the view and enrichment table exist
-  if (salesViewAvailable && enrichmentTableAvailable) {
-    return {
-      cte: '',
-      source: 'public.tradera_sales ts'
-    }
-  }
-
-  // If enrichment table is missing, provide NULL placeholders
-  if (!enrichmentTableAvailable) {
-    return {
-      cte: `
-        WITH sales_source AS (
-          SELECT
-            a.item_id,
-            a.category_id,
-            a.end_date,
-            a.price,
-            a.bid_count,
-            a.seller_id,
-            a.seller_alias,
-            a.title,
-            a.item_url,
-            a.thumbnail_url,
-            a.card_id,
-            NULL::text AS enrich_status,
-            NULL::int AS match_confidence_score,
-            NULL::text AS match_method,
-            NULL::text AS matched_set_code,
-            NULL::text AS matched_era,
-            NULL::text AS parsed_card_number,
-            NULL::text AS parsed_number_text,
-            NULL::text AS parsed_set_hint,
-            NULL::jsonb AS suggested_cards,
-            a.updated_at
-          FROM public.auctions a
-        )
-      `,
-      source: 'sales_source ts'
-    }
-  }
-
-  // Enrichment exists, but view doesn't
-  return {
-    cte: `
-      WITH sales_source AS (
-        SELECT
-          a.item_id,
-          a.category_id,
-          a.end_date,
-          a.price,
-          a.bid_count,
-          a.seller_id,
-          a.seller_alias,
-          a.title,
-          a.item_url,
-          a.thumbnail_url,
-          a.card_id,
-          ae.status AS enrich_status,
-          ae.confidence_score AS match_confidence_score,
-          ae.method AS match_method,
-          ae.matched_set_code,
-          ae.matched_era,
-          ae.parsed_card_number,
-          ae.parsed_number_text,
-          ae.parsed_set_hint,
-          ae.suggested_cards,
-          a.updated_at
-        FROM public.auctions a
-        LEFT JOIN public.auction_enrichment ae
-          ON ae.item_id = a.item_id
-      )
-    `,
-    source: 'sales_source ts'
-  }
-}
-
 async function fetchAuctionsFromDatabase(filters = {}) {
   if (!pool) return []
   const ok = await ensureCardInfrastructure()
@@ -710,44 +567,32 @@ async function fetchAuctionsFromDatabase(filters = {}) {
 
   const { era = null, language = null, minPrice = null, maxPrice = null, limit = null, offset = 0 } = filters
 
-  const { cte, source } = buildSalesSourceQuery()
-
   let query = `
-    ${cte}
     SELECT
-      ts.item_id,
-      ts.title,
-      ts.price,
-      ts.bid_count,
-      ts.end_date,
-      ts.seller_alias,
-      ts.item_url,
-      ts.thumbnail_url,
-      ts.card_id,
-      ts.enrich_status,
-      ts.match_confidence_score,
-      ts.match_method,
-      ts.matched_set_code,
-      ts.matched_era,
-      ts.parsed_card_number,
-      ts.parsed_number_text,
-      ts.parsed_set_hint,
-      ts.suggested_cards,
+      a.item_id,
+      a.title,
+      a.price,
+      a.bid_count,
+      a.end_date,
+      a.seller_alias,
+      a.item_url,
+      a.thumbnail_url,
+      a.card_id,
       c.name AS card_name,
       COALESCE(e.era, c.era) AS card_era,
       COALESCE(e.name, c.set_name) AS card_set_name,
       COALESCE(e.set_code, c.set_code) AS card_set_code,
       e.language AS card_language,
       c.card_number AS card_number
-    FROM ${source}
-    LEFT JOIN public.cards c ON c.id = ts.card_id
+    FROM public.auctions a
+    LEFT JOIN public.cards c ON c.id = a.card_id
     LEFT JOIN public.expansions e ON e.id = c.expansion_id
     WHERE
-      ($1::text IS NULL OR COALESCE(e.era, c.era, ts.matched_era) = $1)
+      ($1::text IS NULL OR COALESCE(e.era, c.era) = $1)
       AND ($2::text IS NULL OR e.language = $2)
-      AND ($3::int IS NULL OR ts.price >= $3)
-      AND ($4::int IS NULL OR ts.price <= $4)
-    ORDER BY ts.end_date DESC
+      AND ($3::int IS NULL OR a.price >= $3)
+      AND ($4::int IS NULL OR a.price <= $4)
+    ORDER BY a.end_date DESC
   `
   const params = [era, language, minPrice, maxPrice]
 
@@ -799,38 +644,27 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
   const ok = await ensureCardInfrastructure()
   if (!ok) return []
 
-  const { cte, source } = buildSalesSourceQuery()
   const query = `
-    ${cte}
     SELECT
-      ts.item_id,
-      ts.title,
-      ts.price,
-      ts.bid_count,
-      ts.end_date,
-      ts.seller_alias,
-      ts.item_url,
-      ts.thumbnail_url,
-      ts.card_id,
-      ts.enrich_status,
-      ts.match_confidence_score,
-      ts.match_method,
-      ts.matched_set_code,
-      ts.matched_era,
-      ts.parsed_card_number,
-      ts.parsed_number_text,
-      ts.parsed_set_hint,
-      ts.suggested_cards,
+      a.item_id,
+      a.title,
+      a.price,
+      a.bid_count,
+      a.end_date,
+      a.seller_alias,
+      a.item_url,
+      a.thumbnail_url,
+      a.card_id,
       c.name AS card_name,
       COALESCE(e.era, c.era) AS card_era,
       COALESCE(e.name, c.set_name) AS card_set_name,
       COALESCE(e.set_code, c.set_code) AS card_set_code,
       c.card_number AS card_number
-    FROM ${source}
-    JOIN public.cards c ON c.id = ts.card_id
+    FROM public.auctions a
+    JOIN public.cards c ON c.id = a.card_id
     LEFT JOIN public.expansions e ON e.id = c.expansion_id
-    WHERE ts.card_id = $1
-    ORDER BY ts.end_date DESC
+    WHERE a.card_id = $1
+    ORDER BY a.end_date DESC
     LIMIT $2
   `
   const result = await pool.query(query, [cardId, limit])
@@ -935,11 +769,11 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
       c.product_details,
       c.created_at,
       c.expansion_id,
-      COUNT(ts.item_id)::int AS linked_auctions,
-      MAX(ts.end_date) AS last_seen
+      COUNT(a.item_id)::int AS linked_auctions,
+      MAX(a.end_date) AS last_seen
     FROM public.cards c
     LEFT JOIN public.expansions e ON e.id = c.expansion_id
-    LEFT JOIN public.tradera_sales ts ON ts.card_id = c.id
+    LEFT JOIN public.auctions a ON a.card_id = c.id
     ${whereClause}
     GROUP BY c.id, e.id
     ORDER BY
@@ -1202,262 +1036,6 @@ app.post('/api/import/run', async (_req, res) => {
   }
 })
 
-// --------------------
-// Enrichment
-// --------------------
-async function runEnrichmentJob({ stage = 'era', limit = 100 } = {}) {
-  return runEnrichmentStage(pool, stage, limit)
-}
-
-const STAGE_QUEUE_WHERE = {
-  era: "a.card_id IS NULL AND e.status <> 'discarded' AND e.matched_era IS NULL",
-  set: "a.card_id IS NULL AND e.status <> 'discarded' AND e.matched_era IS NOT NULL AND e.matched_set_code IS NULL",
-  number:
-    "a.card_id IS NULL AND e.status <> 'discarded' AND e.matched_set_code IS NOT NULL AND e.parsed_card_number IS NULL",
-  name:
-    "a.card_id IS NULL AND e.status <> 'discarded' AND e.parsed_card_number IS NOT NULL AND e.parsed_card_name IS NULL",
-  ready_to_link:
-    "a.card_id IS NULL AND e.status <> 'discarded' AND e.matched_era IS NOT NULL AND e.matched_set_code IS NOT NULL " +
-    "AND e.parsed_card_number IS NOT NULL AND e.parsed_card_name IS NOT NULL",
-  link: 'a.card_id IS NOT NULL'
-}
-
-async function loadQueue(stage, limit = 100) {
-  const where = STAGE_QUEUE_WHERE[stage]
-  if (!where) return []
-
-  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500)
-  const { rows } = await pool.query(
-    `
-      SELECT a.*, e.*
-      FROM public.auctions a
-      JOIN public.auction_enrichment e ON e.item_id = a.item_id
-      WHERE ${where}
-      ORDER BY a.end_date DESC
-      LIMIT $1
-    `,
-    [safeLimit]
-  )
-
-  return rows
-}
-
-app.post('/api/enrichment/run', async (req, res) => {
-  try {
-    const payload = await runEnrichmentJob({ stage: req.body?.stage || 'era', limit: req.body?.limit })
-    res.json(payload)
-  } catch (error) {
-    console.error('Failed to run enrichment matcher', error)
-    res.status(500).json({ ok: false, error: String(error) })
-  }
-})
-
-app.post('/api/enrichment/run-all', async (req, res) => {
-  if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
-  try {
-    const limitPerStage = Math.min(Math.max(Number(req.body?.limitPerStage) || 100, 1), 1000)
-    const payload = await runFullPipeline(pool, limitPerStage)
-    res.json(payload)
-  } catch (error) {
-    console.error('Failed to run full enrichment pipeline', error)
-    res.status(500).json({ ok: false, error: String(error) })
-  }
-})
-
-app.post('/api/enrichment/run-item', async (req, res) => {
-  if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
-
-  try {
-    const itemId = Number(req.body?.itemId)
-    if (!Number.isFinite(itemId)) return res.status(400).json({ ok: false, error: 'Invalid itemId' })
-
-    const payload = await runFullPipeline(pool, 1, itemId)
-    res.json({ itemId, ...payload })
-  } catch (error) {
-    console.error('Failed to run enrichment for item', error)
-    res.status(500).json({ ok: false, error: String(error) })
-  }
-})
-
-app.post('/api/enrichment/update', async (req, res) => {
-  if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
-
-  try {
-    const itemId = Number(req.body?.itemId)
-    if (!Number.isFinite(itemId)) return res.status(400).json({ ok: false, error: 'Invalid itemId' })
-
-    const normalize = (value) => {
-      if (value === undefined) return undefined
-      if (value === null) return null
-      const trimmed = String(value).trim()
-      return trimmed.length ? trimmed : null
-    }
-
-    const matchedEra = normalize(req.body?.matched_era)
-    const matchedSetCode = normalize(req.body?.matched_set_code)
-    const parsedCardNumber = normalize(req.body?.parsed_card_number)
-    const parsedCardName = normalize(req.body?.parsed_card_name)
-
-    const fields = [
-      { column: 'matched_era', value: matchedEra },
-      { column: 'matched_set_code', value: matchedSetCode },
-      { column: 'parsed_card_number', value: parsedCardNumber },
-      { column: 'parsed_card_name', value: parsedCardName }
-    ].filter((entry) => entry.value !== undefined)
-
-    if (!fields.length) return res.status(400).json({ ok: false, error: 'No fields provided' })
-
-    const { rows } = await pool.query(
-      `
-        SELECT matched_era, matched_set_code, parsed_card_number, parsed_card_name
-        FROM public.auction_enrichment
-        WHERE item_id = $1
-        LIMIT 1
-      `,
-      [itemId]
-    )
-
-    if (!rows.length) return res.status(404).json({ ok: false, error: 'Enrichment row not found' })
-
-    const current = rows[0]
-    const effective = {
-      matched_era: matchedEra !== undefined ? matchedEra : current.matched_era,
-      matched_set_code: matchedSetCode !== undefined ? matchedSetCode : current.matched_set_code,
-      parsed_card_number: parsedCardNumber !== undefined ? parsedCardNumber : current.parsed_card_number,
-      parsed_card_name: parsedCardName !== undefined ? parsedCardName : current.parsed_card_name
-    }
-
-    const nextStage = !effective.matched_era
-      ? 'era'
-      : !effective.matched_set_code
-        ? 'set'
-        : !effective.parsed_card_number
-          ? 'number'
-          : !effective.parsed_card_name
-            ? 'name'
-            : 'ready_to_link'
-
-    const setClauses = fields.map((entry, index) => `${entry.column} = $${index + 2}`)
-    const values = fields.map((entry) => entry.value)
-
-    setClauses.push('stage = $' + (values.length + 2), 'updated_at = NOW()')
-    values.push(nextStage)
-
-    await pool.query(
-      `
-        UPDATE public.auction_enrichment
-        SET ${setClauses.join(', ')}
-        WHERE item_id = $1
-      `,
-      [itemId, ...values]
-    )
-
-    res.json({ ok: true })
-  } catch (error) {
-    console.error('Failed to update enrichment fields', error)
-    res.status(500).json({ ok: false, error: String(error) })
-  }
-})
-
-app.get('/api/enrichment/queue', async (req, res) => {
-  if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
-  try {
-    const stage = req.query.stage || 'era'
-    const limit = req.query.limit || 100
-    const rows = await loadQueue(stage, limit)
-    res.json({ stage, rows })
-  } catch (error) {
-    console.error('Failed to load enrichment queue', error)
-    res.status(500).json({ ok: false, error: String(error) })
-  }
-})
-
-app.get('/api/enrichment/audit', async (req, res) => {
-  if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
-  try {
-    const itemId = Number(req.query.itemId)
-    if (!Number.isFinite(itemId)) return res.status(400).json({ ok: false, error: 'Invalid itemId' })
-
-    const { rows: auctionsRows } = await pool.query('SELECT * FROM public.auctions WHERE item_id = $1 LIMIT 1', [itemId])
-    const { rows: enrichmentRows } = await pool.query(
-      'SELECT * FROM public.auction_enrichment WHERE item_id = $1 LIMIT 1',
-      [itemId]
-    )
-
-    if (!auctionsRows.length) return res.status(404).json({ ok: false, error: 'Auction not found' })
-
-    res.json({ auction: auctionsRows[0], enrichment: enrichmentRows[0] || null })
-  } catch (error) {
-    console.error('Failed to load enrichment audit row', error)
-    res.status(500).json({ ok: false, error: String(error) })
-  }
-})
-
-app.get('/api/enrichment/stats', async (_req, res) => {
-  if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' })
-
-  try {
-    const { rows: funnelRows } = await pool.query(
-      `
-        SELECT
-          SUM(CASE WHEN e.matched_era IS NOT NULL THEN 1 ELSE 0 END) AS era_reached,
-          SUM(CASE WHEN e.matched_era IS NOT NULL AND e.matched_set_code IS NOT NULL THEN 1 ELSE 0 END) AS set_reached,
-          SUM(CASE WHEN e.matched_set_code IS NOT NULL AND e.parsed_card_number IS NOT NULL THEN 1 ELSE 0 END) AS number_reached,
-          SUM(CASE WHEN e.parsed_card_number IS NOT NULL AND e.parsed_card_name IS NOT NULL THEN 1 ELSE 0 END) AS name_reached,
-          SUM(CASE WHEN a.card_id IS NULL AND e.matched_era IS NOT NULL AND e.matched_set_code IS NOT NULL AND e.parsed_card_number IS NOT NULL AND e.parsed_card_name IS NOT NULL THEN 1 ELSE 0 END) AS ready_to_link,
-          SUM(CASE WHEN a.card_id IS NOT NULL THEN 1 ELSE 0 END) AS linked_total,
-          SUM(CASE WHEN a.card_id IS NULL THEN 1 ELSE 0 END) AS unlinked_total,
-          SUM(CASE WHEN a.card_id IS NULL AND e.matched_era IS NULL THEN 1 ELSE 0 END) AS needs_era,
-          SUM(CASE WHEN a.card_id IS NULL AND e.matched_era IS NOT NULL AND e.matched_set_code IS NULL THEN 1 ELSE 0 END) AS needs_set,
-          SUM(CASE WHEN a.card_id IS NULL AND e.matched_set_code IS NOT NULL AND e.parsed_card_number IS NULL THEN 1 ELSE 0 END) AS needs_number,
-          SUM(CASE WHEN a.card_id IS NULL AND e.parsed_card_number IS NOT NULL AND e.parsed_card_name IS NULL THEN 1 ELSE 0 END) AS needs_name
-        FROM public.auctions a
-        LEFT JOIN public.auction_enrichment e ON e.item_id = a.item_id
-      `
-    )
-
-    const funnel = funnelRows[0] || {}
-
-    const { rows: invariants } = await pool.query(
-      `
-        SELECT
-          SUM(CASE WHEN a.card_id IS NOT NULL AND e.status IS NOT NULL AND e.status <> 'matched' THEN 1 ELSE 0 END) AS linked_but_not_matched_status,
-          SUM(CASE WHEN a.card_id IS NOT NULL AND (e.matched_era IS NULL OR e.matched_set_code IS NULL OR e.parsed_card_number IS NULL OR e.parsed_card_name IS NULL) THEN 1 ELSE 0 END) AS linked_but_missing_fields,
-          SUM(CASE WHEN a.card_id IS NULL AND e.status = 'matched' THEN 1 ELSE 0 END) AS matched_status_but_unlinked
-        FROM public.auctions a
-        LEFT JOIN public.auction_enrichment e ON e.item_id = a.item_id
-      `
-    )
-
-    res.json({
-      unlinked_total: Number(funnel.unlinked_total) || 0,
-      linked_total: Number(funnel.linked_total) || 0,
-      stages: {
-        era_reached: Number(funnel.era_reached) || 0,
-        set_reached: Number(funnel.set_reached) || 0,
-        number_reached: Number(funnel.number_reached) || 0,
-        name_reached: Number(funnel.name_reached) || 0,
-        ready_to_link: Number(funnel.ready_to_link) || 0
-      },
-      bottlenecks: {
-        needs_era: Number(funnel.needs_era) || 0,
-        needs_set: Number(funnel.needs_set) || 0,
-        needs_number: Number(funnel.needs_number) || 0,
-        needs_name: Number(funnel.needs_name) || 0,
-        ready_to_link: Number(funnel.ready_to_link) || 0
-      },
-      invariants: {
-        linked_but_not_matched_status: Number(invariants?.[0]?.linked_but_not_matched_status) || 0,
-        linked_but_missing_fields: Number(invariants?.[0]?.linked_but_missing_fields) || 0,
-        matched_status_but_unlinked: Number(invariants?.[0]?.matched_status_but_unlinked) || 0
-      }
-    })
-  } catch (error) {
-    console.error('Failed to load enrichment stats', error)
-    res.status(500).json({ ok: false, error: String(error) })
-  }
-})
-
 // Bootstrap seed
 if (pool) {
   ensureCardInfrastructure()
@@ -1496,4 +1074,4 @@ if (require.main === module) {
   })
 }
 
-module.exports = { app, pool, runEnrichmentJob, ensureCardInfrastructure }
+module.exports = { app, pool, ensureCardInfrastructure }

@@ -12,7 +12,6 @@ import { PokemonPage } from "./pages/pokemon"
 import { PokemonSetPage } from "./pages/pokemon-set"
 import { SettingsPage } from "./pages/settings"
 import { SignupPage } from "./pages/signup"
-import { DataEnrichmentPage } from "./pages/data-enrichment"
 import { AuctionImportsPage } from "./pages/auction-imports"
 
 function App(): JSX.Element {
@@ -34,7 +33,6 @@ function App(): JSX.Element {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/admin/imports" element={<AuctionImportsPage />} />
-          <Route path="/enrichment" element={<DataEnrichmentPage />} />
         </Route>
       </Route>
 

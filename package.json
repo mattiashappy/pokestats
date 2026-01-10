@@ -6,7 +6,6 @@
     "heroku-postbuild": "npm run build --prefix dashboard",
     "build": "npm run build --prefix dashboard",
     "start": "node server.js",
-    "enrich": "node scripts/run_enrichment_job.js",
     "dev": "npm run dev --prefix dashboard",
     "test": "node --test"
   },

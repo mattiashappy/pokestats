@@ -82,28 +82,10 @@ export TRADERA_APP_ID=your_app_id
 export TRADERA_APP_KEY=your_app_key
 export DATABASE_URL=postgres://user:pass@host:5432/db
 
-psql "$DATABASE_URL" -f schema.sql   # create auctions + auction_enrichment if needed
+psql "$DATABASE_URL" -f schema.sql   # create auctions table if needed
 python scripts/tradera_importer.py    # imports yesterday's ended auctions
 
 npm start                             # /api/sales now returns the imported rows
 ```
 
 If the database is empty or unavailable, `/api/sales` falls back to the baked-in mock data.
-
-## Automating enrichment runs
-
-After new auctions are imported, run the enrichment matcher to link them to catalogued cards:
-
-```bash
-# Run locally (uses DATABASE_URL)
-npm run enrich -- 500   # optional limit argument
-```
-
-On Heroku, add a Scheduler job that executes the same command so new auctions are automatically matched without manual clicks:
-
-```bash
-heroku addons:create scheduler:standard
-# In the Heroku Scheduler UI, create a job like:
-#   Command: npm run enrich -- 750
-#   Frequency: Every hour (or whatever cadence you prefer)
-```

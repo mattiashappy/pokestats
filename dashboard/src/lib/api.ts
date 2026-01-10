@@ -17,15 +17,6 @@ type AuctionApiRow = {
   card_set_code?: string | null
   card_number?: string | null
   card_language?: string | null
-  matched_set_code?: string | null
-  matched_era?: string | null
-  enrich_status?: string | null
-  match_confidence_score?: number | null
-  match_method?: string | null
-  parsed_card_number?: string | null
-  parsed_number_text?: string | null
-  parsed_set_hint?: string | null
-  suggested_cards?: Record<string, unknown> | null
 }
 
 function mapAuctionRecord(row: AuctionApiRow): AuctionRecord {
@@ -34,9 +25,9 @@ function mapAuctionRecord(row: AuctionApiRow): AuctionRecord {
     title: row.title ?? 'Untitled auction',
     cardId: row.card_id ?? null,
     cardName: row.card_name ?? row.title ?? 'Unknown card',
-    cardEra: row.card_era ?? row.matched_era ?? 'Unknown era',
+    cardEra: row.card_era ?? 'Unknown era',
     cardSetName: row.card_set_name ?? 'Unknown set',
-    cardSetCode: row.card_set_code ?? row.matched_set_code ?? null,
+    cardSetCode: row.card_set_code ?? null,
     cardNumber: row.card_number ?? null,
     seller: row.seller_alias ?? 'Unknown seller',
     sellerType: 'new',
@@ -44,7 +35,7 @@ function mapAuctionRecord(row: AuctionApiRow): AuctionRecord {
     currency: 'SEK',
     bids: row.bid_count ?? 0,
     endTime: row.end_date ?? new Date(0).toISOString(),
-    condition: row.enrich_status ?? 'Unknown',
+    condition: 'Unknown',
     category: 'Auction',
     location: 'Unknown',
     url: row.item_url ?? '#',
@@ -52,8 +43,7 @@ function mapAuctionRecord(row: AuctionApiRow): AuctionRecord {
     thumbnail: row.thumbnail_url ?? null,
     language: row.card_language ?? null,
     gradingCompany: null,
-    grade: null,
-    rawAttributes: row.suggested_cards ?? undefined
+    grade: null
   }
 }
 
@@ -94,125 +84,6 @@ export async function fetchCardsForSet(setCode: string): Promise<CardListItem[]>
   const response = await fetch(`/api/expansions/${encodeURIComponent(code)}/cards`)
   if (!response.ok) throw new Error('Failed to fetch cards')
   return response.json()
-}
-
-export type EnrichmentRunResult = {
-  stage: string
-  attempted: number
-  updated?: number
-  linked?: number
-  needs_review?: number
-}
-
-export async function runEnrichmentStage(stage: string, limit = 100): Promise<EnrichmentRunResult> {
-  const res = await fetch('/api/enrichment/run', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ stage, limit })
-  })
-
-  if (!res.ok) throw new Error(`Failed to run ${stage} stage`)
-  return res.json()
-}
-
-export async function runFullPipeline(limitPerStage = 100): Promise<{ ok: boolean; stages: EnrichmentRunResult[] }> {
-  const res = await fetch('/api/enrichment/run-all', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ limitPerStage })
-  })
-
-  if (!res.ok) throw new Error('Failed to run full enrichment pipeline')
-  return res.json()
-}
-
-export async function runEnrichmentForItem(
-  itemId: number
-): Promise<{ ok: boolean; stages: EnrichmentRunResult[]; itemId: number }> {
-  const res = await fetch('/api/enrichment/run-item', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ itemId })
-  })
-
-  if (!res.ok) throw new Error('Failed to run enrichment for item')
-  return res.json()
-}
-
-export type EnrichmentStats = {
-  unlinked_total: number
-  linked_total: number
-  stages: {
-    era_reached: number
-    set_reached: number
-    number_reached: number
-    name_reached: number
-    ready_to_link: number
-  }
-  bottlenecks: {
-    needs_era: number
-    needs_set: number
-    needs_number: number
-    needs_name: number
-    ready_to_link: number
-  }
-  invariants: {
-    linked_but_not_matched_status: number
-    linked_but_missing_fields: number
-    matched_status_but_unlinked: number
-  }
-}
-
-export async function fetchEnrichmentStats(): Promise<EnrichmentStats> {
-  const res = await fetch('/api/enrichment/stats')
-  if (!res.ok) throw new Error('Failed to load enrichment stats')
-  return res.json()
-}
-
-export type EnrichmentQueueRow = {
-  item_id: number
-  title: string | null
-  card_id: number | null
-  end_date: string | null
-  status: string | null
-  stage: string | null
-  matched_era: string | null
-  matched_set_code: string | null
-  parsed_card_number: string | null
-  parsed_card_name: string | null
-  confidence_score: number | null
-  method: string | null
-  updated_at: string | null
-}
-
-export async function fetchEnrichmentQueue(stage: string, limit = 100): Promise<{ stage: string; rows: EnrichmentQueueRow[] }> {
-  const params = new URLSearchParams({ stage, limit: String(limit) })
-  const res = await fetch(`/api/enrichment/queue?${params.toString()}`)
-  if (!res.ok) throw new Error('Failed to load enrichment queue')
-  return res.json()
-}
-
-export async function fetchEnrichmentAudit(itemId: number) {
-  const res = await fetch(`/api/enrichment/audit?itemId=${itemId}`)
-  if (!res.ok) throw new Error('Failed to load audit row')
-  return res.json() as Promise<{ auction: any; enrichment: any }>
-}
-
-export async function updateEnrichmentItem(payload: {
-  itemId: number
-  matched_era?: string | null
-  matched_set_code?: string | null
-  parsed_card_number?: string | null
-  parsed_card_name?: string | null
-}) {
-  const res = await fetch('/api/enrichment/update', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  })
-
-  if (!res.ok) throw new Error('Failed to update enrichment fields')
-  return res.json() as Promise<{ ok: boolean }>
 }
 
 export type ImportRun = {
