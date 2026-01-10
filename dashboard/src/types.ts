@@ -1,13 +1,14 @@
 // src/types.ts
 
 export type AuctionRecord = {
-  id: string
+  itemId: string
   title: string
-  finalPrice: number | null
-  bids: number | null
-  endTime: string
-  url: string | null
-  thumbnail: string | null
+  endDate: string
+  price: number | null
+  bidCount: number | null
+  sellerAlias?: string | null
+  itemUrl: string | null
+  thumbnailUrl: string | null
   pokemonEra?: string | null
   pokemonLanguage?: string | null
   itemCondition?: string | null

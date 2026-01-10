@@ -157,11 +157,11 @@ export function CardPage(): JSX.Element {
                 <TableBody>
                   {auctions?.map((auction) => {
                     return (
-                      <TableRow key={auction.id}>
+                      <TableRow key={auction.itemId}>
                         <TableCell className="w-24">
                           <div className="overflow-hidden rounded-md border border-slate-200 dark:border-slate-800">
-                            {auction.thumbnail ? (
-                              <img src={auction.thumbnail} alt={auction.title} className="h-16 w-full object-cover" />
+                            {auction.thumbnailUrl ? (
+                              <img src={auction.thumbnailUrl} alt={auction.title} className="h-16 w-full object-cover" />
                             ) : (
                               <div className="flex h-16 w-full items-center justify-center bg-slate-100 text-xs text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
                                 No image
@@ -174,16 +174,16 @@ export function CardPage(): JSX.Element {
                         </TableCell>
                         <TableCell>{auction.pokemonEra || card?.era || 'Unknown era'}</TableCell>
                         <TableCell className="text-right text-slate-900 dark:text-slate-100">
-                          {new Intl.NumberFormat('sv-SE', { style: 'currency', currency: auction.currency }).format(auction.finalPrice)}
+                          {new Intl.NumberFormat('sv-SE', { style: 'currency', currency: auction.currency }).format(auction.price)}
                         </TableCell>
-                        <TableCell className="text-center">{auction.bids}</TableCell>
+                        <TableCell className="text-center">{auction.bidCount}</TableCell>
                         <TableCell>
-                          <div className="text-slate-900 dark:text-slate-100">{new Date(auction.endTime).toLocaleString()}</div>
-                          <div className="text-xs text-slate-600 dark:text-slate-400">{formatDistanceToNow(parseISO(auction.endTime), { addSuffix: true })}</div>
+                          <div className="text-slate-900 dark:text-slate-100">{new Date(auction.endDate).toLocaleString()}</div>
+                          <div className="text-xs text-slate-600 dark:text-slate-400">{formatDistanceToNow(parseISO(auction.endDate), { addSuffix: true })}</div>
                         </TableCell>
                         <TableCell>
                           <a
-                            href={auction.url}
+                            href={auction.itemUrl}
                             className="inline-flex items-center gap-1 text-sky-300 hover:text-sky-200"
                             target="_blank"
                             rel="noreferrer"
