@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { BadgeCheck, CreditCard, Database, Gavel, Globe, History, Settings, Shield, Sparkles, Star } from 'lucide-react'
+import { BadgeCheck, CreditCard, Gavel, Globe, History, Settings, Shield, Sparkles, Star } from 'lucide-react'
 
 import {
   Sidebar,
@@ -60,10 +60,7 @@ export function AppSidebar(): JSX.Element {
           title: 'Admin',
           url: '/admin',
           icon: Shield,
-          items: [
-            { title: 'Data Enrichment', url: '/enrichment' },
-            { title: 'Auction Imports', url: '/admin/imports' }
-          ]
+          items: [{ title: 'Auction Imports', url: '/admin/imports' }]
         }
       ]
     : []
@@ -161,11 +158,9 @@ export function AppSidebar(): JSX.Element {
                               ? Globe
                               : sub.url === '/auctions/grading'
                                 ? BadgeCheck
-                                : sub.url === '/enrichment'
-                                  ? Database
-                                  : sub.url === '/admin/imports'
-                                    ? History
-                                    : null
+                                : sub.url === '/admin/imports'
+                                  ? History
+                                  : null
 
                         return (
                           <SidebarMenuSubItem key={sub.title}>

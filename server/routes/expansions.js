@@ -52,10 +52,10 @@ function createExpansionService({ pool, ensureCardInfrastructure, getStaticExpan
         COALESCE(e.release_date, c.release_date) AS release_date,
         COALESCE(e.image_url, c.image_url) AS image_url,
         COUNT(DISTINCT c.id)::int AS cards_total,
-        COUNT(ts.item_id)::int AS linked_auctions
+        COUNT(a.item_id)::int AS linked_auctions
       FROM public.cards c
       LEFT JOIN public.expansions e ON c.expansion_id = e.id
-      LEFT JOIN public.tradera_sales ts ON ts.card_id = c.id
+      LEFT JOIN public.auctions a ON a.card_id = c.id
       GROUP BY 2, 3, 4, 5, 6, 7, 8
     `
 
@@ -76,10 +76,10 @@ function createExpansionService({ pool, ensureCardInfrastructure, getStaticExpan
 
       const salesBySetQuery = `
       SELECT
-        COALESCE(ts.matched_set_code, e.set_code, c.set_code, c.set_name, ts.parsed_set_code) AS set_code,
-        COUNT(ts.item_id)::int AS linked_auctions
-      FROM public.tradera_sales ts
-      LEFT JOIN public.cards c ON c.id = ts.card_id
+        COALESCE(e.set_code, c.set_code, c.set_name, a.parsed_set_code) AS set_code,
+        COUNT(a.item_id)::int AS linked_auctions
+      FROM public.auctions a
+      LEFT JOIN public.cards c ON c.id = a.card_id
       LEFT JOIN public.expansions e ON e.id = c.expansion_id
       GROUP BY 1
     `

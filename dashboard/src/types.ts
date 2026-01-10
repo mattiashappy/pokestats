@@ -24,7 +24,6 @@ export type AuctionRecord = {
   language?: string | null
   gradingCompany?: string | null
   grade?: string | null
-  rawAttributes?: Record<string, unknown>
 }
 
 export type CardResponse = {
@@ -68,16 +67,4 @@ export type CardPreview = {
   set_name: string | null
   card_number: string | null
   image_url: string | null
-}
-
-export type EnrichmentSummary = {
-  available: boolean
-  totalAuctions?: number
-  matched?: number
-  needsReview?: number
-  mismatched?: number
-  unprocessed?: number
-  unmatched?: number
-  linkedAuctions?: number
-  error?: string
 }
