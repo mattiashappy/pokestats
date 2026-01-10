@@ -10,6 +10,12 @@ type AuctionApiRow = {
   seller_alias?: string | null
   item_url?: string | null
   thumbnail_url?: string | null
+  pokemon_era?: string | null
+  pokemon_language?: string | null
+  item_condition?: string | null
+  description?: string | null
+  image_urls?: string[] | null
+  tradera_attributes?: Record<string, unknown> | null
   card_id?: number | null
   card_name?: string | null
   card_era?: string | null
@@ -20,30 +26,27 @@ type AuctionApiRow = {
 }
 
 function mapAuctionRecord(row: AuctionApiRow): AuctionRecord {
+  const imageUrls = Array.isArray(row.image_urls) ? row.image_urls : null
+
   return {
     id: row.item_id != null ? String(row.item_id) : '',
     title: row.title ?? 'Untitled auction',
-    cardId: row.card_id ?? null,
-    cardName: row.card_name ?? row.title ?? 'Unknown card',
-    cardEra: row.card_era ?? 'Unknown era',
-    cardSetName: row.card_set_name ?? 'Unknown set',
-    cardSetCode: row.card_set_code ?? null,
-    cardNumber: row.card_number ?? null,
-    seller: row.seller_alias ?? 'Unknown seller',
-    sellerType: 'new',
+    description: row.description ?? null,
     finalPrice: row.price ?? 0,
-    currency: 'SEK',
     bids: row.bid_count ?? 0,
     endTime: row.end_date ?? new Date(0).toISOString(),
-    condition: 'Unknown',
-    category: 'Auction',
-    location: 'Unknown',
-    url: row.item_url ?? '#',
-    addedAt: row.end_date ?? new Date(0).toISOString(),
+    url: row.item_url ?? null,
     thumbnail: row.thumbnail_url ?? null,
-    language: row.card_language ?? null,
-    gradingCompany: null,
-    grade: null
+    imageUrls,
+    cardEra: row.pokemon_era ?? row.card_era ?? null,
+    language: row.pokemon_language ?? row.card_language ?? null,
+    itemCondition: row.item_condition ?? null,
+    cardId: row.card_id ?? null,
+    cardName: row.card_name ?? row.title ?? null,
+    cardSetName: row.card_set_name ?? null,
+    cardSetCode: row.card_set_code ?? null,
+    cardNumber: row.card_number ?? null,
+    currency: 'SEK'
   }
 }
 

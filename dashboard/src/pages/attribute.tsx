@@ -16,26 +16,12 @@ const attributeConfigs = {
     fallback: 'Unknown era',
     selector: (auction: AuctionRecord) => auction.cardEra
   },
-  grading: {
-    title: 'Grading companies',
-    label: 'Grading company',
-    description: 'How many auctions include a third-party grade.',
-    fallback: 'Ungraded',
-    selector: (auction: AuctionRecord) => auction.gradingCompany
-  },
   language: {
     title: 'Languages',
     label: 'Language',
     description: 'Listing language breakdown across auctions.',
     fallback: 'Unknown language',
     selector: (auction: AuctionRecord) => auction.language
-  },
-  grade: {
-    title: 'Grades',
-    label: 'Grade',
-    description: 'Reported grade for graded cards.',
-    fallback: 'Not graded',
-    selector: (auction: AuctionRecord) => auction.grade
   }
 } satisfies Record<string, {
   title: string
