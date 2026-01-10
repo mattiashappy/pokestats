@@ -360,24 +360,20 @@ def parse_attributes(item_el: ET.Element) -> Dict[str, List[str]]:
 
 
 def build_attributes_payload(item_el: ET.Element) -> Dict[str, Any]:
-    attributes: Dict[str, Any] = parse_attributes(item_el)
+    return parse_attributes(item_el)
 
-    has_bids = parse_bool_text(find_child_text(item_el, "HasBids") or find_any_text(item_el, "HasBids"))
-    is_ended = parse_bool_text(find_child_text(item_el, "IsEnded") or find_any_text(item_el, "IsEnded"))
 
+def build_item_meta(item_el: ET.Element) -> Dict[str, Any]:
     meta = {
-        "has_bids": has_bids,
-        "is_ended": is_ended,
+        "has_bids": parse_bool_text(find_child_text(item_el, "HasBids") or find_any_text(item_el, "HasBids")),
+        "is_ended": parse_bool_text(find_child_text(item_el, "IsEnded") or find_any_text(item_el, "IsEnded")),
         "item_type": find_child_text(item_el, "ItemType") or find_any_text(item_el, "ItemType"),
         "next_bid": parse_int_text(find_child_text(item_el, "NextBid") or find_any_text(item_el, "NextBid")),
         "buy_it_now_price": parse_float_text(
             find_child_text(item_el, "BuyItNowPrice") or find_any_text(item_el, "BuyItNowPrice")
         ),
     }
-    meta = {k: v for k, v in meta.items() if v is not None}
-    if meta:
-        attributes["_meta"] = meta
-    return attributes
+    return {k: v for k, v in meta.items() if v is not None}
 
 
 def element_to_dict(element: ET.Element) -> Dict[str, Any]:
@@ -490,6 +486,9 @@ def parse_item(item_el: ET.Element) -> Optional[Row]:
         "pokemon_language": pokemon_language,
         "item": element_to_dict(item_el),
     }
+    item_meta = build_item_meta(item_el)
+    if item_meta:
+        raw_payload["meta"] = item_meta
 
     return Row(
         item_id=item_id,
