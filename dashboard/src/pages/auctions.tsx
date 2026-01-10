@@ -74,9 +74,9 @@ export function AuctionsPage(): JSX.Element {
     const aggregates = data.reduce(
       (acc, auction) => {
         return {
-          totalSales: acc.totalSales + (auction.finalPrice || 0),
-          totalBids: acc.totalBids + (auction.bids || 0),
-          highestSale: Math.max(acc.highestSale, auction.finalPrice || 0)
+          totalSales: acc.totalSales + (auction.price || 0),
+          totalBids: acc.totalBids + (auction.bidCount || 0),
+          highestSale: Math.max(acc.highestSale, auction.price || 0)
         }
       },
       { totalSales: 0, totalBids: 0, highestSale: 0 }
@@ -132,8 +132,8 @@ export function AuctionsPage(): JSX.Element {
     const filtered = data.filter((auction) => {
       const matchesSearch = !query || auction.title.toLowerCase().includes(query)
 
-      const matchesPriceMin = minPrice ? (auction.finalPrice || 0) >= Number(minPrice) : true
-      const matchesPriceMax = maxPrice ? (auction.finalPrice || 0) <= Number(maxPrice) : true
+      const matchesPriceMin = minPrice ? (auction.price || 0) >= Number(minPrice) : true
+      const matchesPriceMax = maxPrice ? (auction.price || 0) <= Number(maxPrice) : true
 
       const matchesEra = era === 'all' || (auction.pokemonEra || 'Unknown era') === era
       const matchesLanguage = language === 'all' || (auction.pokemonLanguage || 'Unknown language') === language
@@ -148,9 +148,9 @@ export function AuctionsPage(): JSX.Element {
     })
 
     return filtered.sort((a, b) => {
-      if (sortBy === 'priceDesc') return (b.finalPrice || 0) - (a.finalPrice || 0)
-      if (sortBy === 'bidsDesc') return (b.bids || 0) - (a.bids || 0)
-      return new Date(b.endTime).getTime() - new Date(a.endTime).getTime()
+      if (sortBy === 'priceDesc') return (b.price || 0) - (a.price || 0)
+      if (sortBy === 'bidsDesc') return (b.bidCount || 0) - (a.bidCount || 0)
+      return new Date(b.endDate).getTime() - new Date(a.endDate).getTime()
     })
   }, [data, searchTerm, maxPrice, minPrice, era, language, sortBy])
 
@@ -492,11 +492,11 @@ export function AuctionsPage(): JSX.Element {
                   {paginatedAuctions.length ? (
                     paginatedAuctions.map((auction) => {
                       return (
-                        <TableRow key={auction.id}>
+                        <TableRow key={auction.itemId}>
                           <TableCell className="w-24">
                             <div className="overflow-hidden rounded-md border border-slate-200 dark:border-slate-800">
-                              {auction.thumbnail ? (
-                                <img src={auction.thumbnail} alt={auction.title} className="h-16 w-full object-cover" />
+                              {auction.thumbnailUrl ? (
+                                <img src={auction.thumbnailUrl} alt={auction.title} className="h-16 w-full object-cover" />
                               ) : (
                                 <div className="flex h-16 w-full items-center justify-center bg-slate-100 text-xs text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
                                   No image
@@ -514,21 +514,21 @@ export function AuctionsPage(): JSX.Element {
                           <TableCell>{auction.itemCondition || 'Unknown condition'}</TableCell>
 
                           <TableCell className="text-right text-slate-900 dark:text-slate-100">
-                            {currencyFormatter.format(auction.finalPrice || 0)}
+                            {currencyFormatter.format(auction.price || 0)}
                           </TableCell>
 
-                          <TableCell className="text-center">{auction.bids || 0}</TableCell>
+                          <TableCell className="text-center">{auction.bidCount || 0}</TableCell>
 
                           <TableCell>
-                            <div className="text-slate-900 dark:text-slate-100">{new Date(auction.endTime).toLocaleString()}</div>
+                            <div className="text-slate-900 dark:text-slate-100">{new Date(auction.endDate).toLocaleString()}</div>
                             <div className="text-xs text-slate-600 dark:text-slate-400">
-                              {formatDistanceToNow(parseISO(auction.endTime), { addSuffix: true })}
+                              {formatDistanceToNow(parseISO(auction.endDate), { addSuffix: true })}
                             </div>
                           </TableCell>
 
                           <TableCell>
                             <a
-                              href={auction.url ?? '#'}
+                              href={auction.itemUrl ?? '#'}
                               className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-700 dark:text-sky-300 dark:hover:text-sky-200"
                               target="_blank"
                               rel="noreferrer"

@@ -662,13 +662,14 @@ const { registerRoutes: registerExpansionRoutes, fetchExpansionSummaries } = cre
 
 function normalizeTraderaAuctionRow(row) {
   return {
-    id: row.item_id,
+    itemId: row.item_id,
     title: row.title ?? null,
-    endTime: row.end_date,
-    finalPrice: row.price ?? null,
-    bids: row.bid_count ?? null,
-    url: row.item_url ?? null,
-    thumbnail: row.thumbnail_url ?? null,
+    endDate: row.end_date,
+    price: row.price ?? null,
+    bidCount: row.bid_count ?? null,
+    sellerAlias: row.seller_alias ?? null,
+    itemUrl: row.item_url ?? null,
+    thumbnailUrl: row.thumbnail_url ?? null,
     pokemonEra: row.pokemon_era ?? null,
     pokemonLanguage: row.pokemon_language ?? null,
     itemCondition: row.item_condition ?? null
@@ -687,13 +688,14 @@ async function fetchAuctionsFromDatabase(filters = {}) {
       a.item_id,
       a.title,
       a.end_date,
-      a.thumbnail_url,
       a.pokemon_era,
       a.pokemon_language,
       a.item_condition,
       a.price,
       a.bid_count,
-      a.item_url
+      a.item_url,
+      a.thumbnail_url,
+      a.seller_alias
     FROM public.tradera_auctions a
     WHERE
       ($1::text IS NULL OR a.pokemon_era = $1)
@@ -760,13 +762,14 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
       a.item_id,
       a.title,
       a.end_date,
-      a.thumbnail_url,
       a.pokemon_era,
       a.pokemon_language,
       a.item_condition,
       a.price,
       a.bid_count,
-      a.item_url
+      a.item_url,
+      a.thumbnail_url,
+      a.seller_alias
     FROM public.tradera_auction_card_links l
     JOIN public.tradera_auctions a ON a.item_id = l.item_id
     WHERE l.card_id = $1

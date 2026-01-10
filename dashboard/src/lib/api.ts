@@ -2,13 +2,14 @@
 import type { AuctionRecord, CardListItem, CardResponse, EraSummary, ExpansionSummary } from '../types'
 
 type TraderaAuctionDTO = {
-  id?: number | string | null
+  itemId?: number | string | null
   title?: string | null
-  endTime?: string | null
-  finalPrice?: number | null
-  bids?: number | null
-  url?: string | null
-  thumbnail?: string | null
+  endDate?: string | null
+  price?: number | null
+  bidCount?: number | null
+  sellerAlias?: string | null
+  itemUrl?: string | null
+  thumbnailUrl?: string | null
   pokemonEra?: string | null
   pokemonLanguage?: string | null
   itemCondition?: string | null
@@ -16,13 +17,14 @@ type TraderaAuctionDTO = {
 
 function mapAuctionRecord(row: TraderaAuctionDTO): AuctionRecord {
   return {
-    id: row.id != null ? String(row.id) : '',
+    itemId: row.itemId != null ? String(row.itemId) : '',
     title: row.title ?? 'Untitled auction',
-    finalPrice: row.finalPrice ?? null,
-    bids: row.bids ?? null,
-    endTime: row.endTime ?? new Date(0).toISOString(),
-    url: row.url ?? null,
-    thumbnail: row.thumbnail ?? null,
+    endDate: row.endDate ?? new Date(0).toISOString(),
+    price: row.price ?? null,
+    bidCount: row.bidCount ?? null,
+    sellerAlias: row.sellerAlias ?? null,
+    itemUrl: row.itemUrl ?? null,
+    thumbnailUrl: row.thumbnailUrl ?? null,
     pokemonEra: row.pokemonEra ?? null,
     pokemonLanguage: row.pokemonLanguage ?? null,
     itemCondition: row.itemCondition ?? null,
