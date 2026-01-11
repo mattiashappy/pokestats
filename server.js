@@ -881,6 +881,40 @@ async function fetchUnlinkedAuctions(limit = null) {
   return rows
 }
 
+async function fetchUnlinkedAuctionSummaries(limit = 500, offset = 0) {
+  if (!pool) return []
+  const [linksReady, auctionsReady] = await Promise.all([
+    ensureTraderaAuctionLinksTableAvailable(),
+    ensureTraderaAuctionsTableAvailable()
+  ])
+  if (!linksReady || !auctionsReady) return []
+
+  const safeLimit = Math.min(Math.max(Number(limit) || 500, 1), 2000)
+  const safeOffset = Math.max(Number(offset) || 0, 0)
+  const { rows } = await pool.query(
+    `
+      SELECT
+        a.item_id,
+        a.title,
+        a.end_date,
+        a.price,
+        a.bid_count,
+        a.item_url,
+        a.seller_alias,
+        COUNT(*) OVER()::int AS total_count
+      FROM public.tradera_auctions a
+      LEFT JOIN public.tradera_auction_card_links l ON l.auction_id = a.item_id
+      WHERE l.auction_id IS NULL
+      ORDER BY a.end_date DESC
+      LIMIT $1
+      OFFSET $2
+    `,
+    [safeLimit, safeOffset]
+  )
+
+  return rows
+}
+
 async function runDeterministicLinker({ limit = null } = {}) {
   if (!pool) return { total: 0, linked: 0, skipped: 0 }
 
@@ -1342,6 +1376,34 @@ app.post('/api/linking/run', async (req, res) => {
   } catch (error) {
     console.error('Failed to run deterministic linker', error)
     res.status(500).json({ error: 'Failed to run linker' })
+  }
+})
+
+app.get('/api/linking/unlinked', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000)
+    const offset = Math.max(Number(req.query.offset) || 0, 0)
+    const auctions = await fetchUnlinkedAuctionSummaries(limit, offset)
+    const total = auctions[0]?.total_count ?? 0
+    res.json({
+      items: auctions.map((row) => ({
+        itemId: row.item_id,
+        title: row.title ?? null,
+        endDate: row.end_date ?? null,
+        price: row.price ?? null,
+        bidCount: row.bid_count ?? null,
+        itemUrl: row.item_url ?? null,
+        sellerAlias: row.seller_alias ?? null
+      })),
+      total,
+      limit,
+      offset
+    })
+  } catch (error) {
+    console.error('Failed to fetch unlinked auctions', error)
+    res.status(500).json({ error: 'Failed to load unlinked auctions' })
   }
 })
 

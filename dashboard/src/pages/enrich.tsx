@@ -1,13 +1,14 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Link2 } from 'lucide-react'
 
 import { Badge } from '../components/ui/badge'
+import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
-import { fetchAuctionCardLinks } from '../lib/api'
-import type { AuctionCardLink } from '../lib/api'
+import { fetchAuctionCardLinks, fetchUnlinkedAuctions } from '../lib/api'
+import type { AuctionCardLink, UnlinkedAuctionResponse } from '../lib/api'
 
 const formatCardLabel = (link: AuctionCardLink): string => {
   const parts = [link.cardName, link.cardNumber].filter(Boolean)
@@ -27,12 +28,40 @@ const formatConfidence = (confidence: number | null): string => {
 }
 
 export function EnrichPage(): JSX.Element {
-  const { data, isLoading, isError } = useQuery<AuctionCardLink[]>({
+  const unlinkedLimit = 100
+  const [unlinkedOffset, setUnlinkedOffset] = useState(0)
+  const {
+    data: linkData,
+    isLoading: linksLoading,
+    isError: linksError
+  } = useQuery<AuctionCardLink[]>({
     queryKey: ['linking-links'],
     queryFn: () => fetchAuctionCardLinks(500)
   })
 
-  const links = data ?? []
+  const {
+    data: unlinkedData,
+    isLoading: unlinkedLoading,
+    isError: unlinkedError
+  } = useQuery<UnlinkedAuctionResponse>({
+    queryKey: ['linking-unlinked', unlinkedOffset],
+    queryFn: () => fetchUnlinkedAuctions(unlinkedLimit, unlinkedOffset),
+    staleTime: 30_000
+  })
+
+  const links = linkData ?? []
+  const unlinkedAuctions = unlinkedData?.items ?? []
+  const unlinkedTotal = unlinkedData?.total ?? 0
+  const unlinkedPageCount = Math.max(1, Math.ceil(unlinkedTotal / unlinkedLimit))
+  const unlinkedPage = Math.min(unlinkedPageCount, Math.floor(unlinkedOffset / unlinkedLimit) + 1)
+
+  useEffect(() => {
+    if (!unlinkedTotal) return
+    const maxOffset = Math.max(0, (unlinkedPageCount - 1) * unlinkedLimit)
+    if (unlinkedOffset > maxOffset) {
+      setUnlinkedOffset(maxOffset)
+    }
+  }, [unlinkedLimit, unlinkedOffset, unlinkedPageCount, unlinkedTotal])
   const counts = useMemo(() => {
     const total = links.length
     const withAuction = links.filter((link) => link.auctionTitle).length
@@ -91,7 +120,7 @@ export function EnrichPage(): JSX.Element {
             <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
               <p className="text-xs uppercase tracking-wide text-slate-500">Status</p>
               <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                {isLoading ? 'Loading…' : isError ? 'Error' : 'Ready'}
+                {linksLoading ? 'Loading…' : linksError ? 'Error' : 'Ready'}
               </p>
               <p className="text-xs text-slate-600 dark:text-slate-400">Current fetch status.</p>
             </div>
@@ -155,12 +184,112 @@ export function EnrichPage(): JSX.Element {
                 ) : (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-sm text-slate-500">
-                      {isLoading ? 'Loading auction links…' : 'No auction links found.'}
+                      {linksLoading ? 'Loading auction links…' : 'No auction links found.'}
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-2 space-y-0 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <CardTitle>Not enriched auctions</CardTitle>
+            <CardDescription>Auctions without a card link in tradera_auction_card_links.</CardDescription>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge variant="outline">
+              {unlinkedTotal.toLocaleString('sv-SE')} total • page {unlinkedPage} of {unlinkedPageCount}
+            </Badge>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          <div className="overflow-hidden rounded-xl border border-slate-900/80">
+            <Table>
+              <TableHeader>
+                <TableRow className="text-xs uppercase tracking-wide text-slate-500">
+                  <TableHead className="text-left">Auction</TableHead>
+                  <TableHead className="text-left">Card ID</TableHead>
+                  <TableHead className="text-left">Card</TableHead>
+                  <TableHead className="text-left">Set</TableHead>
+                  <TableHead className="text-left">Notes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {unlinkedAuctions.length ? (
+                  unlinkedAuctions.map((auction) => (
+                    <TableRow key={auction.itemId} className="text-sm">
+                      <TableCell className="py-2 text-left">
+                        <div className="space-y-1">
+                          {auction.itemUrl ? (
+                            <a
+                              href={auction.itemUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-semibold text-indigo-600 hover:underline"
+                            >
+                              {auction.title ?? `Auction #${auction.itemId}`}
+                            </a>
+                          ) : (
+                            <p className="font-semibold text-slate-900 dark:text-slate-50">
+                              {auction.title ?? `Auction #${auction.itemId}`}
+                            </p>
+                          )}
+                          <p className="text-xs text-slate-600 dark:text-slate-400">Item #{auction.itemId}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-2 text-left text-slate-600 dark:text-slate-300">—</TableCell>
+                      <TableCell className="py-2 text-left text-slate-600 dark:text-slate-300">Not linked</TableCell>
+                      <TableCell className="py-2 text-left text-slate-600 dark:text-slate-300">—</TableCell>
+                      <TableCell className="py-2 text-left text-xs text-slate-500">
+                        {auction.title ? 'Needs card link' : 'Missing title'}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-sm text-slate-500">
+                      {unlinkedLoading
+                        ? 'Loading unlinked auctions…'
+                        : unlinkedError
+                          ? 'Unable to load unlinked auctions.'
+                          : 'No unlinked auctions found.'}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600 dark:text-slate-300">
+            <span>
+              Showing {unlinkedAuctions.length.toLocaleString('sv-SE')} of{' '}
+              {unlinkedTotal.toLocaleString('sv-SE')} auctions
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={unlinkedOffset === 0 || unlinkedLoading}
+                onClick={() => setUnlinkedOffset(Math.max(0, unlinkedOffset - unlinkedLimit))}
+              >
+                Previous
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={unlinkedPage >= unlinkedPageCount || unlinkedLoading}
+                onClick={() => setUnlinkedOffset(unlinkedOffset + unlinkedLimit)}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
