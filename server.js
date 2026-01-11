@@ -881,6 +881,37 @@ async function fetchUnlinkedAuctions(limit = null) {
   return rows
 }
 
+async function fetchUnlinkedAuctionSummaries(limit = 500) {
+  if (!pool) return []
+  const [linksReady, auctionsReady] = await Promise.all([
+    ensureTraderaAuctionLinksTableAvailable(),
+    ensureTraderaAuctionsTableAvailable()
+  ])
+  if (!linksReady || !auctionsReady) return []
+
+  const safeLimit = Math.min(Math.max(Number(limit) || 500, 1), 2000)
+  const { rows } = await pool.query(
+    `
+      SELECT
+        a.item_id,
+        a.title,
+        a.end_date,
+        a.price,
+        a.bid_count,
+        a.item_url,
+        a.seller_alias
+      FROM public.tradera_auctions a
+      LEFT JOIN public.tradera_auction_card_links l ON l.auction_id = a.item_id
+      WHERE l.auction_id IS NULL
+      ORDER BY a.end_date DESC
+      LIMIT $1
+    `,
+    [safeLimit]
+  )
+
+  return rows
+}
+
 async function runDeterministicLinker({ limit = null } = {}) {
   if (!pool) return { total: 0, linked: 0, skipped: 0 }
 
@@ -1342,6 +1373,29 @@ app.post('/api/linking/run', async (req, res) => {
   } catch (error) {
     console.error('Failed to run deterministic linker', error)
     res.status(500).json({ error: 'Failed to run linker' })
+  }
+})
+
+app.get('/api/linking/unlinked', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000)
+    const auctions = await fetchUnlinkedAuctionSummaries(limit)
+    res.json(
+      auctions.map((row) => ({
+        itemId: row.item_id,
+        title: row.title ?? null,
+        endDate: row.end_date ?? null,
+        price: row.price ?? null,
+        bidCount: row.bid_count ?? null,
+        itemUrl: row.item_url ?? null,
+        sellerAlias: row.seller_alias ?? null
+      }))
+    )
+  } catch (error) {
+    console.error('Failed to fetch unlinked auctions', error)
+    res.status(500).json({ error: 'Failed to load unlinked auctions' })
   }
 })
 
