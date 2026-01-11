@@ -12,13 +12,21 @@ import { Label } from '../components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import {
   fetchAuctionCardLinks,
+  fetchLinkingStats,
   fetchUnlinkedAuctions,
   linkAuctionToCard,
   runTraderaLink,
   runTraderaParse,
   searchCards
 } from '../lib/api'
-import type { AuctionCardLink, CardSearchResult, TraderaLinkSummary, TraderaParseSummary, UnlinkedAuction } from '../lib/api'
+import type {
+  AuctionCardLink,
+  CardSearchResult,
+  LinkingStats,
+  TraderaLinkSummary,
+  TraderaParseSummary,
+  UnlinkedAuction
+} from '../lib/api'
 
 const formatCardLabel = (link: AuctionCardLink): string => {
   const parts = [link.cardName, link.cardNumber].filter(Boolean)
@@ -76,6 +84,10 @@ export function EnrichPage(): JSX.Element {
   } = useQuery<UnlinkedAuction[]>({
     queryKey: ['linking-unlinked'],
     queryFn: () => fetchUnlinkedAuctions(500)
+  })
+  const { data: linkingStats } = useQuery<LinkingStats>({
+    queryKey: ['linking-stats'],
+    queryFn: fetchLinkingStats
   })
 
   const [traderaLimit, setTraderaLimit] = useState(500)
@@ -147,10 +159,10 @@ export function EnrichPage(): JSX.Element {
     const linkedCards = links.filter((link) => link.cardId).length
     return {
       linkedCards,
-      unlinkedCards: unlinkedAuctions.length,
+      unlinkedCards: linkingStats?.unlinked ?? unlinkedAuctions.length,
       readyToLink: sortedReadyToLinkAuctions.length
     }
-  }, [links, unlinkedAuctions, sortedReadyToLinkAuctions])
+  }, [links, linkingStats?.unlinked, unlinkedAuctions.length, sortedReadyToLinkAuctions.length])
   const visibleUnlinkedAuctions =
     activeLinkView === 'ready' ? sortedReadyToLinkAuctions : sortedUnlinkedAuctions
   const activeCount = activeLinkView === 'linked'
