@@ -197,10 +197,8 @@ export function EnrichPage(): JSX.Element {
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-left">Auction</TableHead>
-                  <TableHead className="text-left">Seller</TableHead>
-                  <TableHead className="text-left">Price</TableHead>
-                  <TableHead className="text-left">Bids</TableHead>
-                  <TableHead className="text-left">Ends</TableHead>
+                  <TableHead className="text-left">Card link</TableHead>
+                  <TableHead className="text-left">Notes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
