@@ -881,7 +881,7 @@ async function fetchUnlinkedAuctions(limit = null) {
   return rows
 }
 
-async function fetchUnlinkedAuctionSummaries(limit = 500, offset = 0) {
+async function fetchUnlinkedAuctionSummaries(limit = 500) {
   if (!pool) return []
   const [linksReady, auctionsReady] = await Promise.all([
     ensureTraderaAuctionLinksTableAvailable(),
@@ -890,7 +890,6 @@ async function fetchUnlinkedAuctionSummaries(limit = 500, offset = 0) {
   if (!linksReady || !auctionsReady) return []
 
   const safeLimit = Math.min(Math.max(Number(limit) || 500, 1), 2000)
-  const safeOffset = Math.max(Number(offset) || 0, 0)
   const { rows } = await pool.query(
     `
       SELECT
@@ -900,16 +899,14 @@ async function fetchUnlinkedAuctionSummaries(limit = 500, offset = 0) {
         a.price,
         a.bid_count,
         a.item_url,
-        a.seller_alias,
-        COUNT(*) OVER()::int AS total_count
+        a.seller_alias
       FROM public.tradera_auctions a
       LEFT JOIN public.tradera_auction_card_links l ON l.auction_id = a.item_id
       WHERE l.auction_id IS NULL
       ORDER BY a.end_date DESC
       LIMIT $1
-      OFFSET $2
     `,
-    [safeLimit, safeOffset]
+    [safeLimit]
   )
 
   return rows
@@ -1384,11 +1381,9 @@ app.get('/api/linking/unlinked', async (req, res) => {
 
   try {
     const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000)
-    const offset = Math.max(Number(req.query.offset) || 0, 0)
-    const auctions = await fetchUnlinkedAuctionSummaries(limit, offset)
-    const total = auctions[0]?.total_count ?? 0
-    res.json({
-      items: auctions.map((row) => ({
+    const auctions = await fetchUnlinkedAuctionSummaries(limit)
+    res.json(
+      auctions.map((row) => ({
         itemId: row.item_id,
         title: row.title ?? null,
         endDate: row.end_date ?? null,
@@ -1396,11 +1391,8 @@ app.get('/api/linking/unlinked', async (req, res) => {
         bidCount: row.bid_count ?? null,
         itemUrl: row.item_url ?? null,
         sellerAlias: row.seller_alias ?? null
-      })),
-      total,
-      limit,
-      offset
-    })
+      }))
+    )
   } catch (error) {
     console.error('Failed to fetch unlinked auctions', error)
     res.status(500).json({ error: 'Failed to load unlinked auctions' })

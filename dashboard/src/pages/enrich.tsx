@@ -8,7 +8,7 @@ import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { fetchAuctionCardLinks, fetchUnlinkedAuctions } from '../lib/api'
-import type { AuctionCardLink, UnlinkedAuctionResponse } from '../lib/api'
+import type { AuctionCardLink, UnlinkedAuction } from '../lib/api'
 
 const formatCardLabel = (link: AuctionCardLink): string => {
   const parts = [link.cardName, link.cardNumber].filter(Boolean)
@@ -28,8 +28,6 @@ const formatConfidence = (confidence: number | null): string => {
 }
 
 export function EnrichPage(): JSX.Element {
-  const unlinkedLimit = 100
-  const [unlinkedOffset, setUnlinkedOffset] = useState(0)
   const {
     data: linkData,
     isLoading: linksLoading,
@@ -43,25 +41,13 @@ export function EnrichPage(): JSX.Element {
     data: unlinkedData,
     isLoading: unlinkedLoading,
     isError: unlinkedError
-  } = useQuery<UnlinkedAuctionResponse>({
-    queryKey: ['linking-unlinked', unlinkedOffset],
-    queryFn: () => fetchUnlinkedAuctions(unlinkedLimit, unlinkedOffset),
-    staleTime: 30_000
+  } = useQuery<UnlinkedAuction[]>({
+    queryKey: ['linking-unlinked'],
+    queryFn: () => fetchUnlinkedAuctions(500)
   })
 
   const links = linkData ?? []
-  const unlinkedAuctions = unlinkedData?.items ?? []
-  const unlinkedTotal = unlinkedData?.total ?? 0
-  const unlinkedPageCount = Math.max(1, Math.ceil(unlinkedTotal / unlinkedLimit))
-  const unlinkedPage = Math.min(unlinkedPageCount, Math.floor(unlinkedOffset / unlinkedLimit) + 1)
-
-  useEffect(() => {
-    if (!unlinkedTotal) return
-    const maxOffset = Math.max(0, (unlinkedPageCount - 1) * unlinkedLimit)
-    if (unlinkedOffset > maxOffset) {
-      setUnlinkedOffset(maxOffset)
-    }
-  }, [unlinkedLimit, unlinkedOffset, unlinkedPageCount, unlinkedTotal])
+  const unlinkedAuctions = unlinkedData ?? []
   const counts = useMemo(() => {
     const total = links.length
     const withAuction = links.filter((link) => link.auctionTitle).length
@@ -185,6 +171,83 @@ export function EnrichPage(): JSX.Element {
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-sm text-slate-500">
                       {linksLoading ? 'Loading auction links…' : 'No auction links found.'}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-2 space-y-0 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <CardTitle>Not enriched auctions</CardTitle>
+            <CardDescription>Auctions without a card link in tradera_auction_card_links.</CardDescription>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge variant="outline">{unlinkedAuctions.length.toLocaleString('sv-SE')} showing</Badge>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          <div className="overflow-hidden rounded-xl border border-slate-900/80">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-left">Auction</TableHead>
+                  <TableHead className="text-left">Seller</TableHead>
+                  <TableHead className="text-left">Price</TableHead>
+                  <TableHead className="text-left">Bids</TableHead>
+                  <TableHead className="text-left">Ends</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {unlinkedAuctions.length ? (
+                  unlinkedAuctions.map((auction) => (
+                    <TableRow key={auction.itemId}>
+                      <TableCell className="text-left">
+                        <div className="space-y-1">
+                          {auction.itemUrl ? (
+                            <a
+                              href={auction.itemUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-semibold text-indigo-600 hover:underline"
+                            >
+                              {auction.title ?? `Auction #${auction.itemId}`}
+                            </a>
+                          ) : (
+                            <p className="font-semibold text-slate-900 dark:text-slate-50">
+                              {auction.title ?? `Auction #${auction.itemId}`}
+                            </p>
+                          )}
+                          <p className="text-xs text-slate-600 dark:text-slate-400">Item #{auction.itemId}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {auction.sellerAlias ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {auction.price != null ? `${auction.price.toFixed(0)} SEK` : '—'}
+                      </TableCell>
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {auction.bidCount ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {auction.endDate ? format(new Date(auction.endDate), 'PPpp') : '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-sm text-slate-500">
+                      {unlinkedLoading
+                        ? 'Loading unlinked auctions…'
+                        : unlinkedError
+                          ? 'Unable to load unlinked auctions.'
+                          : 'No unlinked auctions found.'}
                     </TableCell>
                   </TableRow>
                 )}

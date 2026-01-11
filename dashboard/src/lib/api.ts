@@ -141,13 +141,6 @@ export type UnlinkedAuction = {
   sellerAlias: string | null
 }
 
-export type UnlinkedAuctionResponse = {
-  items: UnlinkedAuction[]
-  total: number
-  limit: number
-  offset: number
-}
-
 const fetchImportRuns = async (limit = 10): Promise<ImportRun[]> => {
   const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100)
   const params = new URLSearchParams({ limit: String(safeLimit) })
@@ -176,13 +169,9 @@ export async function fetchAuctionCardLinks(limit = 500): Promise<AuctionCardLin
   return response.json()
 }
 
-export async function fetchUnlinkedAuctions(
-  limit = 500,
-  offset = 0
-): Promise<UnlinkedAuctionResponse> {
+export async function fetchUnlinkedAuctions(limit = 500): Promise<UnlinkedAuction[]> {
   const safeLimit = Math.min(Math.max(Number(limit) || 500, 1), 2000)
-  const safeOffset = Math.max(Number(offset) || 0, 0)
-  const params = new URLSearchParams({ limit: String(safeLimit), offset: String(safeOffset) })
+  const params = new URLSearchParams({ limit: String(safeLimit) })
   const response = await fetch(`/api/linking/unlinked?${params.toString()}`)
   if (!response.ok) throw new Error('Failed to load unlinked auctions')
   return response.json()
