@@ -147,11 +147,12 @@ async function upsertCards(client, rows, columns, batchSize) {
         INSERT INTO public.cards (${columns.join(', ')})
         VALUES ${values.join(', ')}
         ON CONFLICT (expansion_id, collector_key)
+          WHERE collector_key IS NOT NULL
         DO UPDATE SET ${updateAssignments.join(', ')}
         RETURNING (xmax = 0) AS inserted
       `,
       params
-    )
+    )  
 
     for (const row of result.rows) {
       if (row.inserted) {
