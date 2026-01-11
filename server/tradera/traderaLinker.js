@@ -31,7 +31,8 @@ async function parseAuctions({ client, limit } = {}) {
     examples: {
       collectorKey: [],
       setHints: [],
-      bundles: []
+      bundles: [],
+      skipReasons: []
     }
   }
 
@@ -62,6 +63,14 @@ async function parseAuctions({ client, limit } = {}) {
         title: row.title ?? null
       })
     }
+
+    if (parsed.skipReason) {
+      addExample(summary.examples.skipReasons, {
+        itemId: row.item_id,
+        title: row.title ?? null,
+        skipReason: parsed.skipReason
+      })
+    }
   }
 
   return summary
@@ -70,7 +79,7 @@ async function parseAuctions({ client, limit } = {}) {
 async function findExpansion(client, setHint) {
   const { rows } = await client.query(
     `
-      SELECT id, set_name
+      SELECT id, set_name, set_code, set_total
       FROM public.expansions
       WHERE set_name ILIKE $1 OR set_code ILIKE $1
       LIMIT 2
@@ -100,6 +109,20 @@ async function findCard(client, expansionId, collectorKey) {
 
 function incrementSkip(skipReasons, reason) {
   skipReasons[reason] = (skipReasons[reason] || 0) + 1
+}
+
+function shouldValidateSetTotal(collectorKey) {
+  if (!collectorKey || !collectorKey.total) return false
+  if (collectorKey.kind === 'TG' || collectorKey.kind === 'GG') return false
+  return !collectorKey.prefix
+}
+
+function isSetTotalMatch(collectorKey, expansion) {
+  if (!shouldValidateSetTotal(collectorKey)) return true
+  const expectedTotal = Number(expansion.set_total)
+  const parsedTotal = Number(collectorKey.total)
+  if (!Number.isFinite(expectedTotal) || !Number.isFinite(parsedTotal)) return true
+  return expectedTotal === parsedTotal
 }
 
 async function resolveLinkColumns(client) {
@@ -154,9 +177,9 @@ async function linkAuctions({ client, limit } = {}) {
   for (const row of rows) {
     const parsed = parseAuctionTitle(`${row.title ?? ''} ${row.description ?? ''}`)
 
-    if (parsed.isBundle) {
+    if (parsed.skipReason) {
       summary.skipped += 1
-      incrementSkip(summary.skipReasons, 'bundle')
+      incrementSkip(summary.skipReasons, parsed.skipReason)
       continue
     }
 
@@ -179,7 +202,13 @@ async function linkAuctions({ client, limit } = {}) {
       continue
     }
 
-    const card = await findCard(client, expansion.id, parsed.collectorKey)
+    if (!isSetTotalMatch(parsed.collectorKey, expansion)) {
+      summary.skipped += 1
+      incrementSkip(summary.skipReasons, 'set_total_mismatch')
+      continue
+    }
+
+    const card = await findCard(client, expansion.id, parsed.collectorKey.value)
     if (!card) {
       summary.skipped += 1
       incrementSkip(summary.skipReasons, 'card_not_unique')
