@@ -120,6 +120,40 @@ export type ParserRunResult = {
   bundleCount: number
 }
 
+export type TraderaParseExample = {
+  itemId: number
+  title: string | null
+  setHint?: string | null
+}
+
+export type TraderaParseSummary = {
+  total: number
+  withCollectorKey: number
+  withSetHints: number
+  bundles: number
+  examples: {
+    collectorKey: TraderaParseExample[]
+    setHints: TraderaParseExample[]
+    bundles: TraderaParseExample[]
+  }
+}
+
+export type TraderaLinkedExample = {
+  itemId: number
+  title: string | null
+  cardId: number
+  cardName: string | null
+  setName: string | null
+}
+
+export type TraderaLinkSummary = {
+  scanned: number
+  linked: number
+  skipped: number
+  skipReasons: Record<string, number>
+  linkedExamples: TraderaLinkedExample[]
+}
+
 export type AuctionCardLink = {
   itemId: number
   cardId: number
@@ -183,6 +217,28 @@ export async function runAuctionTitleParser(limit?: number | null): Promise<Pars
     body: JSON.stringify(body)
   })
   if (!res.ok) throw new Error('Failed to run parser')
+  return res.json()
+}
+
+export async function runTraderaParse(limit?: number | null): Promise<TraderaParseSummary> {
+  const body = Number.isFinite(Number(limit)) ? { limit: Number(limit) } : {}
+  const res = await fetch('/api/tradera/parse', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  if (!res.ok) throw new Error('Failed to parse Tradera auctions')
+  return res.json()
+}
+
+export async function runTraderaLink(limit?: number | null): Promise<TraderaLinkSummary> {
+  const body = Number.isFinite(Number(limit)) ? { limit: Number(limit) } : {}
+  const res = await fetch('/api/tradera/link', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  if (!res.ok) throw new Error('Failed to link Tradera auctions')
   return res.json()
 }
 
