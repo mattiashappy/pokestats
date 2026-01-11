@@ -21,6 +21,11 @@ const formatSetLabel = (link: AuctionCardLink): string => {
   return '—'
 }
 
+const formatConfidence = (confidence: number | null): string => {
+  if (confidence == null) return '—'
+  return `${(confidence * 100).toFixed(1)}%`
+}
+
 export function EnrichPage(): JSX.Element {
   const { data, isLoading, isError } = useQuery<AuctionCardLink[]>({
     queryKey: ['linking-links'],
@@ -100,7 +105,7 @@ export function EnrichPage(): JSX.Element {
                   <TableHead className="text-left">Card</TableHead>
                   <TableHead className="text-left">Set</TableHead>
                   <TableHead className="text-left">Method</TableHead>
-                  <TableHead className="text-left">Status</TableHead>
+                  <TableHead className="text-left">Confidence</TableHead>
                   <TableHead className="text-left">Linked</TableHead>
                 </TableRow>
               </TableHeader>
@@ -140,7 +145,7 @@ export function EnrichPage(): JSX.Element {
                         {link.method ?? '—'}
                       </TableCell>
                       <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {link.status ?? '—'}
+                        {formatConfidence(link.confidence)}
                       </TableCell>
                       <TableCell className="text-left text-slate-600 dark:text-slate-300">
                         {link.linkedAt ? format(new Date(link.linkedAt), 'PPpp') : '—'}

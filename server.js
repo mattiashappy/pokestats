@@ -431,28 +431,20 @@ async function ensureExpansionsTableAvailable() {
       CREATE TABLE IF NOT EXISTS public.expansions (
         id SERIAL PRIMARY KEY,
         set_code TEXT NOT NULL UNIQUE,
-        name TEXT,
+        set_name TEXT NOT NULL,
         era TEXT,
-        language TEXT DEFAULT 'EN',
+        base_total INTEGER,
         set_total INTEGER,
-        release_date DATE,
-        image_url TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `)
 
-    const hasImageUrl = await ensureColumnExists('expansions', 'image_url', 'TEXT')
+    const hasSetName = await ensureColumnExists('expansions', 'set_name', 'TEXT')
+    const hasBaseTotal = await ensureColumnExists('expansions', 'base_total', 'INTEGER')
+    const hasSetTotal = await ensureColumnExists('expansions', 'set_total', 'INTEGER')
     const hasEraIndex = await ensureIndexExists('expansions', 'idx_expansions_era', '(era)')
-    const hasEraId = await ensureColumnExists('expansions', 'era_id', 'INTEGER')
-    const hasEraIdIndex = await ensureIndexExists('expansions', 'idx_expansions_era_id', '(era_id)')
-    await ensureErasTableAvailable()
-    const hasEraForeignKey = await ensureConstraintExists(
-      'expansions',
-      'expansions_era_id_fkey',
-      'FOREIGN KEY (era_id) REFERENCES public.eras(id)'
-    )
 
-    expansionsTableAvailable = Boolean(hasEraIndex && hasImageUrl && hasEraId && hasEraIdIndex && hasEraForeignKey)
+    expansionsTableAvailable = Boolean(hasSetName && hasBaseTotal && hasSetTotal && hasEraIndex)
   } catch (error) {
     console.error('Failed to ensure expansions table exists', error)
     expansionsTableAvailable = false
@@ -470,56 +462,75 @@ async function ensureCardsTableAvailable() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS public.cards (
         id SERIAL PRIMARY KEY,
+        expansion_id INTEGER NOT NULL REFERENCES public.expansions(id) ON DELETE CASCADE,
         name TEXT NOT NULL,
-        era TEXT,
-        set_name TEXT NOT NULL,
+        collector_number_raw TEXT NOT NULL,
+        collector_key TEXT,
+        number INTEGER,
+        printed_total INTEGER,
+        is_secret BOOLEAN,
         image_url TEXT,
-        product_details TEXT,
-        set_code TEXT,
-        set_total INTEGER,
-        card_number TEXT,
-        expansion_id INTEGER REFERENCES public.expansions(id),
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        CONSTRAINT cards_expansion_card_number_key UNIQUE (expansion_id, card_number)
+        source TEXT NOT NULL DEFAULT 'json',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `)
 
-    const setCodeOk = await ensureColumnExists('cards', 'set_code', 'TEXT')
-    const setTotalOk = await ensureColumnExists('cards', 'set_total', 'INTEGER')
-    const expansionOk = await ensureColumnExists('cards', 'expansion_id', 'INTEGER REFERENCES public.expansions(id)')
+    const expansionOk = await ensureColumnExists(
+      'cards',
+      'expansion_id',
+      'INTEGER REFERENCES public.expansions(id) ON DELETE CASCADE'
+    )
+    const collectorRawOk = await ensureColumnExists('cards', 'collector_number_raw', 'TEXT')
+    const collectorKeyOk = await ensureColumnExists('cards', 'collector_key', 'TEXT')
+    const numberOk = await ensureColumnExists('cards', 'number', 'INTEGER')
+    const printedTotalOk = await ensureColumnExists('cards', 'printed_total', 'INTEGER')
+    const isSecretOk = await ensureColumnExists('cards', 'is_secret', 'BOOLEAN')
     const imageUrlOk = await ensureColumnExists('cards', 'image_url', 'TEXT')
-    const productDetailsOk = await ensureColumnExists('cards', 'product_details', 'TEXT')
-    const cardNumberOk = await ensureColumnExists('cards', 'card_number', 'TEXT')
+    const sourceOk = await ensureColumnExists('cards', 'source', "TEXT DEFAULT 'json'")
 
-    const removedNameSetConstraint = await dropConstraintIfExists('cards', 'cards_unique_name_set')
-
-    const uniqueByExpansionNumber = await ensureConstraintExists(
+    const collectorKeyCheck = await ensureConstraintExists(
       'cards',
-      'cards_expansion_card_number_key',
-      'UNIQUE (expansion_id, card_number)'
+      'cards_collector_key_format',
+      "CHECK (collector_key IS NULL OR collector_key ~ '^\\\\d+/\\\\d+$')"
+    )
+    const numberPairCheck = await ensureConstraintExists(
+      'cards',
+      'cards_number_pair_consistency',
+      'CHECK ((number IS NULL AND printed_total IS NULL) OR (number IS NOT NULL AND printed_total IS NOT NULL))'
     )
 
-    const setCodeIdx = await ensureIndexExists('cards', 'idx_cards_set_code', '(set_code)')
-    const numberIdx = await ensureIndexExists('cards', 'idx_cards_card_number', '(card_number)')
-
-    const forbidUnknownPlaceholders = await ensureConstraintExists(
+    const uniqueByCollectorKey = await ensureIndexExists(
       'cards',
-      'cards_no_unknown_placeholders',
-      "CHECK ((set_name IS NULL OR lower(btrim(set_name)) <> 'unknown') AND (card_number IS NULL OR lower(btrim(card_number)) <> 'unknown') AND (set_code IS NULL OR (lower(btrim(set_code)) <> 'unknown' AND lower(btrim(set_code)) NOT LIKE 'unknown-%')))"
+      'cards_unique_expansion_collectorkey',
+      'UNIQUE (expansion_id, collector_key) WHERE collector_key IS NOT NULL'
     )
+    const uniqueByRaw = await ensureIndexExists(
+      'cards',
+      'cards_unique_expansion_raw',
+      'UNIQUE (expansion_id, collector_number_raw)'
+    )
+    const expansionNumberIdx = await ensureIndexExists(
+      'cards',
+      'idx_cards_expansion_number',
+      '(expansion_id, number) WHERE number IS NOT NULL'
+    )
+    const nameIdx = await ensureIndexExists('cards', 'idx_cards_name', '(name)')
 
     cardsTableAvailable = Boolean(
-      setCodeOk &&
-        setTotalOk &&
-        expansionOk &&
+      expansionOk &&
+        collectorRawOk &&
+        collectorKeyOk &&
+        numberOk &&
+        printedTotalOk &&
+        isSecretOk &&
         imageUrlOk &&
-        productDetailsOk &&
-        cardNumberOk &&
-        removedNameSetConstraint &&
-        uniqueByExpansionNumber &&
-        setCodeIdx &&
-        numberIdx &&
-        forbidUnknownPlaceholders
+        sourceOk &&
+        collectorKeyCheck &&
+        numberPairCheck &&
+        uniqueByCollectorKey &&
+        uniqueByRaw &&
+        expansionNumberIdx &&
+        nameIdx
     )
   } catch (error) {
     console.error('Failed to ensure cards table exists', error)
@@ -558,42 +569,44 @@ async function fetchErasFromDatabase() {
   const erasReady = await ensureErasTableAvailable()
   if (!erasReady) return []
 
-  const { rows } = await pool.query(`
-    SELECT
-      er.id,
-      er.code,
-      er.name,
-      er.sort_order,
-      er.start_year,
-      er.end_year,
-      COUNT(e.id)::int AS sets_total
-    FROM public.eras er
-    LEFT JOIN public.expansions e ON e.era_id = er.id
-    GROUP BY er.id, er.code, er.name, er.sort_order, er.start_year, er.end_year
-    ORDER BY er.sort_order, er.start_year, er.name
+  const { rows: eraRows } = await pool.query(`
+    SELECT id, code, name, sort_order, start_year, end_year
+    FROM public.eras
+    ORDER BY sort_order, start_year, name
   `)
 
-  const { rows: extras } = await pool.query(`
-    SELECT e.era AS name, COUNT(*)::int AS sets_total
-    FROM public.expansions e
-    WHERE e.era_id IS NULL AND e.era IS NOT NULL
-    GROUP BY e.era
+  const { rows: expansionRows } = await pool.query(`
+    SELECT era, COUNT(*)::int AS sets_total
+    FROM public.expansions
+    WHERE era IS NOT NULL
+    GROUP BY era
   `)
 
-  const byCode = new Map(rows.map((row) => [normalizeEraCode(row.code), row]))
+  const byCode = new Map(
+    eraRows.map((row) => [
+      normalizeEraCode(row.code),
+      { ...row, sets_total: 0 }
+    ])
+  )
 
-  for (const extra of extras) {
-    const code = resolveEraCode(extra.name)
-    if (!code || byCode.has(normalizeEraCode(code))) continue
+  for (const expansion of expansionRows) {
+    const code = resolveEraCode(expansion.era)
+    if (!code) continue
+    const normalized = normalizeEraCode(code)
+    const existing = byCode.get(normalized)
+    if (existing) {
+      existing.sets_total += expansion.sets_total
+      continue
+    }
 
     byCode.set(normalizeEraCode(code), {
       id: null,
       code,
-      name: extra.name,
+      name: expansion.era,
       sort_order: 999,
       start_year: null,
       end_year: null,
-      sets_total: extra.sets_total
+      sets_total: expansion.sets_total
     })
   }
 
@@ -685,9 +698,12 @@ function normalizeAuctionText(text) {
 }
 
 function extractCardNumber(text) {
-  const match = text.match(/(\d{1,3})\s*\/\s*(\d{1,3})/)
+  const match = text.match(/(\d+)\s*\/\s*(\d+)/)
   if (!match) return null
-  return `${match[1]}/${match[2]}`
+  const number = Number.parseInt(match[1], 10)
+  const total = Number.parseInt(match[2], 10)
+  if (!Number.isFinite(number) || !Number.isFinite(total)) return null
+  return `${number}/${total}`
 }
 
 function escapeRegex(value) {
@@ -770,13 +786,13 @@ async function fetchCard(cardId) {
     SELECT
       c.id,
       c.name,
-      COALESCE(e.era, c.era) AS era,
-      COALESCE(e.name, c.set_name) AS set_name,
-      COALESCE(e.set_code, c.set_code) AS set_code,
-      COALESCE(e.set_total, c.set_total) AS set_total,
-      c.card_number,
+      e.era AS era,
+      e.set_name AS set_name,
+      e.set_code AS set_code,
+      e.set_total AS set_total,
+      c.collector_number_raw AS card_number,
       c.image_url,
-      c.product_details,
+      NULL::text AS product_details,
       c.created_at,
       c.expansion_id
     FROM public.cards c
@@ -810,7 +826,7 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
       a.thumbnail_url,
       a.seller_alias
     FROM public.tradera_auction_card_links l
-    JOIN public.tradera_auctions a ON a.item_id = l.item_id
+    JOIN public.tradera_auctions a ON a.item_id = l.auction_id
     WHERE l.card_id = $1
     ORDER BY a.end_date DESC
     LIMIT $2
@@ -825,16 +841,16 @@ async function fetchLinkingExpansions() {
   if (!ok) return []
 
   const { rows } = await pool.query(`
-    SELECT id, name, set_code
+    SELECT id, set_name, set_code
     FROM public.expansions
-    WHERE name IS NOT NULL OR set_code IS NOT NULL
+    WHERE set_name IS NOT NULL OR set_code IS NOT NULL
   `)
 
   return rows.map((row) => ({
     id: row.id,
-    name: row.name,
+    name: row.set_name,
     set_code: row.set_code,
-    normalizedName: row.name ? normalizeAuctionText(row.name) : null,
+    normalizedName: row.set_name ? normalizeAuctionText(row.set_name) : null,
     normalizedCode: row.set_code ? normalizeAuctionText(row.set_code) : null
   }))
 }
@@ -850,8 +866,8 @@ async function fetchUnlinkedAuctions(limit = null) {
   let query = `
     SELECT a.item_id, a.title, a.description
     FROM public.tradera_auctions a
-    LEFT JOIN public.tradera_auction_card_links l ON l.item_id = a.item_id
-    WHERE l.item_id IS NULL
+    LEFT JOIN public.tradera_auction_card_links l ON l.auction_id = a.item_id
+    WHERE l.auction_id IS NULL
     ORDER BY a.end_date DESC
   `
   const params = []
@@ -875,8 +891,8 @@ async function runDeterministicLinker({ limit = null } = {}) {
 
   for (const auction of auctions) {
     const text = normalizeAuctionText(`${auction.title || ''} ${auction.description || ''}`)
-    const cardNumber = extractCardNumber(text)
-    if (!cardNumber) {
+    const collectorKey = extractCardNumber(text)
+    if (!collectorKey) {
       skipped += 1
       continue
     }
@@ -889,13 +905,12 @@ async function runDeterministicLinker({ limit = null } = {}) {
 
     const { rows } = await pool.query(
       `
-        SELECT id, name
+        SELECT id
         FROM public.cards
         WHERE expansion_id = $1
-          AND card_number = $2
-          AND position(lower(name) in $3) > 0
+          AND collector_key = $2
       `,
-      [expansion.id, cardNumber, text]
+      [expansion.id, collectorKey]
     )
 
     if (rows.length !== 1) {
@@ -906,14 +921,14 @@ async function runDeterministicLinker({ limit = null } = {}) {
     const cardId = rows[0].id
     await pool.query(
       `
-        INSERT INTO public.tradera_auction_card_links (item_id, card_id, method, status, linked_at)
-        VALUES ($1, $2, 'deterministic', 'linked', NOW())
-        ON CONFLICT (item_id)
+        INSERT INTO public.tradera_auction_card_links (auction_id, card_id, method, confidence, created_at)
+        VALUES ($1, $2, 'deterministic', 1.0, NOW())
+        ON CONFLICT (auction_id)
         DO UPDATE SET
           card_id = EXCLUDED.card_id,
           method = 'deterministic',
-          status = 'linked',
-          linked_at = NOW()
+          confidence = 1.0,
+          created_at = NOW()
       `,
       [auction.item_id, cardId]
     )
@@ -1013,8 +1028,8 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
     params.push(Number(expansionId))
   } else if (setCode) {
     whereClause = `
-      WHERE LOWER(COALESCE(e.set_code, c.set_code)) = LOWER($1)
-         OR LOWER(COALESCE(e.name, c.set_name)) = LOWER($1)
+      WHERE LOWER(e.set_code) = LOWER($1)
+         OR LOWER(e.set_name) = LOWER($1)
     `
     params.push(setCode.trim())
   }
@@ -1023,13 +1038,13 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
     SELECT
       c.id,
       c.name,
-      COALESCE(e.era, c.era) AS era,
-      COALESCE(e.name, c.set_name) AS set_name,
-      COALESCE(e.set_code, c.set_code) AS set_code,
-      COALESCE(e.set_total, c.set_total) AS set_total,
-      c.card_number,
+      e.era AS era,
+      e.set_name AS set_name,
+      e.set_code AS set_code,
+      e.set_total AS set_total,
+      c.collector_number_raw AS card_number,
       c.image_url,
-      c.product_details,
+      NULL::text AS product_details,
       c.created_at,
       c.expansion_id,
       ${canJoinAuctions ? 'COUNT(a.item_id)::int' : '0::int'} AS linked_auctions,
@@ -1040,12 +1055,7 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
     ${canJoinAuctions ? 'LEFT JOIN public.tradera_auctions a ON a.item_id = l.item_id' : ''}
     ${whereClause}
     GROUP BY c.id, e.id
-    ORDER BY
-      CASE
-        WHEN c.card_number ~ '^\\d+' THEN (regexp_replace(c.card_number,'[^0-9].*',''))::int
-        ELSE 999999
-      END,
-      c.card_number
+    ORDER BY COALESCE(c.number, 999999), c.collector_number_raw
   `
   const result = await pool.query(query, params)
   const dbCards = result.rows.map(applyCardOverrides)
@@ -1230,11 +1240,11 @@ app.get('/api/linking/links', async (req, res) => {
     const { rows } = await pool.query(
       `
         SELECT
-          l.item_id,
+          l.auction_id,
           l.card_id,
           l.method,
-          l.status,
-          l.linked_at,
+          l.confidence,
+          l.created_at,
           a.title AS auction_title,
           a.item_url AS auction_url,
           a.end_date AS auction_end_date,
@@ -1242,14 +1252,14 @@ app.get('/api/linking/links', async (req, res) => {
           a.bid_count AS auction_bid_count,
           a.seller_alias AS auction_seller_alias,
           c.name AS card_name,
-          c.card_number,
-          COALESCE(e.name, c.set_name) AS set_name,
-          COALESCE(e.set_code, c.set_code) AS set_code
+          c.collector_number_raw AS card_number,
+          e.set_name AS set_name,
+          e.set_code AS set_code
         FROM public.tradera_auction_card_links l
-        LEFT JOIN public.tradera_auctions a ON a.item_id = l.item_id
+        LEFT JOIN public.tradera_auctions a ON a.item_id = l.auction_id
         LEFT JOIN public.cards c ON c.id = l.card_id
         LEFT JOIN public.expansions e ON e.id = c.expansion_id
-        ORDER BY l.linked_at DESC NULLS LAST
+        ORDER BY l.created_at DESC NULLS LAST
         LIMIT $1
       `,
       [limit]
@@ -1257,11 +1267,11 @@ app.get('/api/linking/links', async (req, res) => {
 
     res.json(
       rows.map((row) => ({
-        itemId: row.item_id,
+        itemId: row.auction_id,
         cardId: row.card_id,
         method: row.method ?? null,
-        status: row.status ?? null,
-        linkedAt: row.linked_at ?? null,
+        confidence: row.confidence ?? null,
+        linkedAt: row.created_at ?? null,
         auctionTitle: row.auction_title ?? null,
         auctionUrl: row.auction_url ?? null,
         auctionEndDate: row.auction_end_date ?? null,
@@ -1297,16 +1307,16 @@ app.get('/api/linking/stats', async (_req, res) => {
     } = await pool.query(`
       SELECT
         COUNT(*)::int AS total,
-        COUNT(l.item_id)::int AS linked,
-        (COUNT(*) - COUNT(l.item_id))::int AS unlinked
+        COUNT(l.auction_id)::int AS linked,
+        (COUNT(*) - COUNT(l.auction_id))::int AS unlinked
       FROM public.tradera_auctions a
-      LEFT JOIN public.tradera_auction_card_links l ON l.item_id = a.item_id
+      LEFT JOIN public.tradera_auction_card_links l ON l.auction_id = a.item_id
     `)
 
     const {
       rows: [latest]
     } = await pool.query(`
-      SELECT MAX(linked_at) AS last_linked_at
+      SELECT MAX(created_at) AS last_linked_at
       FROM public.tradera_auction_card_links
     `)
 

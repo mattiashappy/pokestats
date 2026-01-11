@@ -55,38 +55,40 @@ function createExpansionService({
       const cardRowsQuery = `
       SELECT
         NULL::int AS id,
-        COALESCE(e.set_code, c.set_code, c.set_name) AS set_code,
-        COALESCE(e.name, c.set_name) AS name,
-        COALESCE(er.name, e.era, c.era) AS era,
-        er.code AS era_code,
-        COALESCE(e.language, c.language) AS language,
-        COALESCE(e.set_total, c.set_total) AS set_total,
-        COALESCE(e.release_date, c.release_date) AS release_date,
-        COALESCE(e.image_url, c.image_url) AS image_url,
+        e.set_code,
+        e.set_name AS name,
+        e.era AS era,
+        NULL::text AS era_code,
+        NULL::text AS language,
+        e.base_total AS set_number,
+        e.base_total AS cards_in_set,
+        e.set_total AS set_total,
+        NULL::date AS release_date,
+        NULL::text AS image_url,
         COUNT(DISTINCT c.id)::int AS cards_total,
-        ${linksReady ? 'COUNT(l.item_id)::int' : '0::int'} AS linked_auctions
+        ${linksReady ? 'COUNT(l.auction_id)::int' : '0::int'} AS linked_auctions
       FROM public.cards c
       LEFT JOIN public.expansions e ON c.expansion_id = e.id
-      LEFT JOIN public.eras er ON er.id = e.era_id
       ${linksReady ? 'LEFT JOIN public.tradera_auction_card_links l ON l.card_id = c.id' : ''}
-      GROUP BY 2, 3, 4, 5, 6, 7, 8, 9
+      GROUP BY 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
     `
 
       const expansionsQuery = `
       SELECT
         e.id,
         e.set_code,
-        e.name,
-        COALESCE(er.name, e.era) AS era,
-        er.code AS era_code,
-        e.language,
+        e.set_name AS name,
+        e.era AS era,
+        NULL::text AS era_code,
+        NULL::text AS language,
+        e.base_total AS set_number,
+        e.base_total AS cards_in_set,
         e.set_total,
-        e.release_date,
-        e.image_url,
+        NULL::date AS release_date,
+        NULL::text AS image_url,
         0::int AS cards_total,
         0::int AS linked_auctions
       FROM public.expansions e
-      LEFT JOIN public.eras er ON er.id = e.era_id
     `
 
       const [cardRowsResult, expansionsResult] = await Promise.all([
@@ -108,6 +110,8 @@ function createExpansionService({
           era: current.era ?? incoming.era ?? null,
           era_code: current.era_code ?? incoming.era_code ?? null,
           language: current.language ?? incoming.language ?? null,
+          set_number: current.set_number ?? incoming.set_number ?? null,
+          cards_in_set: current.cards_in_set ?? incoming.cards_in_set ?? null,
           set_total: current.set_total ?? incoming.set_total ?? null,
           release_date: current.release_date ?? incoming.release_date ?? null,
           image_url: current.image_url ?? incoming.image_url ?? null,
@@ -141,6 +145,8 @@ function createExpansionService({
           era_code: eraCode,
           era_name: eraLabel,
           language: row?.language ?? fallback?.language ?? null,
+          set_number: row?.set_number ?? fallback?.set_number ?? null,
+          cards_in_set: row?.cards_in_set ?? fallback?.cards_in_set ?? null,
           set_total: row?.set_total ?? fallback?.set_total ?? null,
           release_date: row?.release_date ?? fallback?.release_date ?? null,
           image_url: row?.image_url ?? fallback?.image_url ?? null,
@@ -162,6 +168,8 @@ function createExpansionService({
           era_code: eraCode,
           era_name: eraLabel,
           language: row?.language ?? null,
+          set_number: row?.set_number ?? null,
+          cards_in_set: row?.cards_in_set ?? null,
           set_total: row?.set_total ?? null,
           release_date: row?.release_date ?? null,
           image_url: row?.image_url ?? null,
