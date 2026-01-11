@@ -59,8 +59,8 @@ export function PokemonSetPage(): JSX.Element {
 
   const headerLabel = expansion?.name ?? setCode
   const setTotal = expansion?.set_total ?? expansion?.cards_total ?? cards?.length ?? null
-  const backLink = resolvedEraCode ? `/era/${resolvedEraCode}` : '/pokemon'
-  const backLabel = resolvedEraCode ? `Back to ${expansion?.era_name ?? expansion?.era ?? resolvedEraCode}` : 'Back to sets'
+  const backLink = resolvedEraCode ? `/era/${resolvedEraCode}` : '/era'
+  const backLabel = resolvedEraCode ? `Back to ${expansion?.era_name ?? expansion?.era ?? resolvedEraCode}` : 'Back to eras'
 
   return (
     <div className="space-y-6">
@@ -168,13 +168,13 @@ export function PokemonSetPage(): JSX.Element {
                       </TableCell>
                       <TableCell className="text-right">
                         <Button asChild size="sm" variant="secondary">
-                          <Link
-                            to={
-                              resolvedEraCode
-                                ? `/pokemon/${resolvedEraCode}/${setCode}/${card.id}`
-                                : `/pokemon/cards/${card.id}`
-                            }
-                          >
+                            <Link
+                              to={
+                                resolvedEraCode
+                                ? `/era/${resolvedEraCode}/${setCode}/${card.id}`
+                                : `/cards/${card.id}`
+                              }
+                            >
                             View card
                           </Link>
                         </Button>
