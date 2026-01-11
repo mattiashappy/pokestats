@@ -8,6 +8,7 @@ const { Pool } = require('pg')
 const crypto = require('crypto')
 
 const { createExpansionService } = require('./server/routes/expansions')
+const { registerTraderaRoutes } = require('./server/routes/tradera')
 const { ERA_DEFINITIONS, getEraDefinition, normalizeEraCode, resolveEraCode } = require('./server/era')
 
 const { loadCatalog } = require('./server/catalog/catalogLoader')
@@ -1163,6 +1164,7 @@ app.get('/api/health', (_req, res) => {
 })
 
 registerExpansionRoutes(app)
+registerTraderaRoutes(app, { pool })
 
 app.get('/api/eras', async (_req, res) => {
   try {
