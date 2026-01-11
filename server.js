@@ -12,6 +12,7 @@ const { ERA_DEFINITIONS, getEraDefinition, normalizeEraCode, resolveEraCode } = 
 
 const { loadCatalog } = require('./server/catalog/catalogLoader')
 const { seedCatalog } = require('./server/catalog/catalogSeeder')
+const { parseAuctionTitle } = require('./scripts/tradera_parser')
 
 const app = express()
 const PORT = process.env.PORT || 8000
@@ -1001,6 +1002,29 @@ async function runDeterministicLinker({ limit = null } = {}) {
   }
 }
 
+async function runAuctionTitleParser({ limit = null } = {}) {
+  if (!pool) return { total: 0, withCollectorKey: 0, withSetHint: 0, bundleCount: 0 }
+
+  const auctions = await fetchUnlinkedAuctions(limit)
+  let withCollectorKey = 0
+  let withSetHint = 0
+  let bundleCount = 0
+
+  for (const auction of auctions) {
+    const parsed = parseAuctionTitle(`${auction.title || ''} ${auction.description || ''}`)
+    if (parsed.collectorKey) withCollectorKey += 1
+    if (parsed.setHint) withSetHint += 1
+    if (parsed.isBundle) bundleCount += 1
+  }
+
+  return {
+    total: auctions.length,
+    withCollectorKey,
+    withSetHint,
+    bundleCount
+  }
+}
+
 function extractImporterError(stdout, stderr) {
   const lines = `${stdout}\n${stderr}`
     .split('\n')
@@ -1400,6 +1424,19 @@ app.post('/api/linking/run', async (req, res) => {
   } catch (error) {
     console.error('Failed to run deterministic linker', error)
     res.status(500).json({ error: 'Failed to run linker' })
+  }
+})
+
+app.post('/api/linking/parse', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  try {
+    const limit = Number.isFinite(Number(req.body?.limit)) ? Number(req.body.limit) : null
+    const result = await runAuctionTitleParser({ limit })
+    res.json(result)
+  } catch (error) {
+    console.error('Failed to run auction title parser', error)
+    res.status(500).json({ error: 'Failed to run parser' })
   }
 })
 
