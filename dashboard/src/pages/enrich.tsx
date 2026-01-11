@@ -224,15 +224,23 @@ export function EnrichPage(): JSX.Element {
                           <p className="text-xs text-slate-600 dark:text-slate-400">Item #{auction.itemId}</p>
                         </div>
                       </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">Not linked</TableCell>
-                      <TableCell className="text-left text-xs text-slate-500">
-                        {auction.title ? 'Needs card link' : 'Missing title'}
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {auction.sellerAlias ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {auction.price != null ? `${auction.price.toFixed(0)} SEK` : '—'}
+                      </TableCell>
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {auction.bidCount ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {auction.endDate ? format(new Date(auction.endDate), 'PPpp') : '—'}
                       </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={3} className="text-center text-sm text-slate-500">
+                    <TableCell colSpan={5} className="text-center text-sm text-slate-500">
                       {unlinkedLoading
                         ? 'Loading unlinked auctions…'
                         : unlinkedError
