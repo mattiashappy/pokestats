@@ -101,21 +101,6 @@ export type ImportRun = {
   error_stack_preview?: string | null
 }
 
-export type ImportRun = {
-  id: number
-  source: string
-  started_at: string
-  finished_at: string | null
-  status: string
-  new_rows: number
-  pages_fetched: number
-  requests_used: number
-  message?: string | null
-  run_uuid?: string | null
-  error_stack?: string | null
-  error_stack_preview?: string | null
-}
-
 export type ImportRunResult = {
   ok: boolean
   newRows: number
