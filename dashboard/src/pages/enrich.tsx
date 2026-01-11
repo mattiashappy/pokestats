@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Link2 } from 'lucide-react'
@@ -6,11 +6,19 @@ import { Link2 } from 'lucide-react'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
-import { fetchAuctionCardLinks, fetchUnlinkedAuctions, runTraderaLink, runTraderaParse } from '../lib/api'
-import type { AuctionCardLink, TraderaLinkSummary, TraderaParseSummary, UnlinkedAuction } from '../lib/api'
+import {
+  fetchAuctionCardLinks,
+  fetchUnlinkedAuctions,
+  linkAuctionToCard,
+  runTraderaLink,
+  runTraderaParse,
+  searchCards
+} from '../lib/api'
+import type { AuctionCardLink, CardSearchResult, TraderaLinkSummary, TraderaParseSummary, UnlinkedAuction } from '../lib/api'
 
 const formatCardLabel = (link: AuctionCardLink): string => {
   const parts = [link.cardName, link.cardNumber].filter(Boolean)
@@ -76,6 +84,13 @@ export function EnrichPage(): JSX.Element {
   const [parsePending, setParsePending] = useState(false)
   const [linkPending, setLinkPending] = useState(false)
   const [traderaError, setTraderaError] = useState<string | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [selectedAuction, setSelectedAuction] = useState<UnlinkedAuction | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [manualLinkPending, setManualLinkPending] = useState(false)
+  const [manualLinkError, setManualLinkError] = useState<string | null>(null)
+  const [manualLinkSuccess, setManualLinkSuccess] = useState<string | null>(null)
 
   const handleRunParse = async (): Promise<void> => {
     setTraderaError(null)
@@ -106,12 +121,61 @@ export function EnrichPage(): JSX.Element {
 
   const links = linkData ?? []
   const unlinkedAuctions = unlinkedData ?? []
+  const {
+    data: cardSearchResults,
+    isLoading: cardSearchLoading,
+    isError: cardSearchError
+  } = useQuery<CardSearchResult[]>({
+    queryKey: ['card-search', searchQuery],
+    queryFn: () => searchCards(searchQuery),
+    enabled: searchOpen && Boolean(searchQuery)
+  })
   const counts = useMemo(() => {
     const total = links.length
     const withAuction = links.filter((link) => link.auctionTitle).length
     const withCard = links.filter((link) => link.cardName).length
     return { total, withAuction, withCard }
   }, [links])
+
+  useEffect(() => {
+    if (searchOpen) return
+    setSelectedAuction(null)
+    setSearchTerm('')
+    setSearchQuery('')
+    setManualLinkError(null)
+    setManualLinkSuccess(null)
+  }, [searchOpen])
+
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault()
+    setManualLinkError(null)
+    setManualLinkSuccess(null)
+    setSearchQuery(searchTerm.trim())
+  }
+
+  const handleOpenSearch = (auction: UnlinkedAuction): void => {
+    setSelectedAuction(auction)
+    setSearchOpen(true)
+    setManualLinkError(null)
+    setManualLinkSuccess(null)
+  }
+
+  const handleManualLink = async (cardId: number): Promise<void> => {
+    if (!selectedAuction) return
+    setManualLinkPending(true)
+    setManualLinkError(null)
+    setManualLinkSuccess(null)
+    try {
+      await linkAuctionToCard(selectedAuction.itemId, cardId)
+      setManualLinkSuccess(`Linked auction #${selectedAuction.itemId} to card #${cardId}.`)
+      await Promise.all([refetchLinks(), refetchUnlinked()])
+      setSearchOpen(false)
+    } catch (error) {
+      setManualLinkError(`Link failed: ${String(error)}`)
+    } finally {
+      setManualLinkPending(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -463,6 +527,7 @@ export function EnrichPage(): JSX.Element {
                   <TableHead className="text-left">Detected card #</TableHead>
                   <TableHead className="text-left">Detected set</TableHead>
                   <TableHead className="text-left">Diagnostics</TableHead>
+                  <TableHead className="text-left">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -531,12 +596,17 @@ export function EnrichPage(): JSX.Element {
                           <Badge variant="outline">Ready to link</Badge>
                         )}
                       </TableCell>
+                      <TableCell className="text-left">
+                        <Button variant="secondary" size="sm" onClick={() => handleOpenSearch(auction)}>
+                          Search for card
+                        </Button>
+                      </TableCell>
                     </TableRow>
                     )
                   })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center text-sm text-slate-500">
+                    <TableCell colSpan={12} className="text-center text-sm text-slate-500">
                       {unlinkedLoading
                         ? 'Loading unlinked auctions…'
                         : unlinkedError
@@ -550,6 +620,102 @@ export function EnrichPage(): JSX.Element {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Search for card</DialogTitle>
+            <DialogDescription>
+              {selectedAuction
+                ? `Match auction #${selectedAuction.itemId} to the correct card and save it.`
+                : 'Pick a card to link.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedAuction ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-200">
+              <p className="font-semibold text-slate-900 dark:text-slate-50">
+                {selectedAuction.title ?? `Auction #${selectedAuction.itemId}`}
+              </p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                Detected card # {selectedAuction.detectedCollectorNumber ?? '—'} · Detected set{' '}
+                {formatDetectedExpansion(selectedAuction)}
+              </p>
+            </div>
+          ) : null}
+
+          <form onSubmit={handleSearchSubmit} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="card-search">Search</Label>
+              <Input
+                id="card-search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search by card name, number, set name, or set code"
+              />
+            </div>
+            <Button type="submit" variant="secondary">
+              Search
+            </Button>
+          </form>
+
+          {manualLinkError ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-sm text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-100">
+              {manualLinkError}
+            </div>
+          ) : null}
+
+          {manualLinkSuccess ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-100">
+              {manualLinkSuccess}
+            </div>
+          ) : null}
+
+          <div className="space-y-2">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Results</p>
+            <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+              {searchQuery && cardSearchLoading ? (
+                <p className="text-sm text-slate-500">Searching…</p>
+              ) : cardSearchError ? (
+                <p className="text-sm text-rose-400">Failed to load search results.</p>
+              ) : cardSearchResults?.length ? (
+                cardSearchResults.map((card) => (
+                  <div
+                    key={card.id}
+                    className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-200 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div>
+                      <p className="font-semibold text-slate-900 dark:text-slate-50">{card.name ?? 'Unknown card'}</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">
+                        {card.setName ?? 'Unknown set'}
+                        {card.setCode ? ` · ${card.setCode}` : ''} · {card.cardNumber ?? 'Unnumbered'}
+                        {card.era ? ` · ${card.era}` : ''}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => handleManualLink(card.id)}
+                      disabled={manualLinkPending}
+                    >
+                      {manualLinkPending ? 'Linking…' : 'Link card'}
+                    </Button>
+                  </div>
+                ))
+              ) : searchQuery ? (
+                <p className="text-sm text-slate-500">No cards found for that search.</p>
+              ) : (
+                <p className="text-sm text-slate-500">Enter a search term to find cards.</p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="sm:justify-end">
+            <Button variant="secondary" onClick={() => setSearchOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   )

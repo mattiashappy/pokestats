@@ -1271,6 +1271,59 @@ app.get('/api/expansions/id/:id/cards', async (req, res) => {
   }
 })
 
+app.get('/api/cards/search', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  try {
+    const ok = await ensureCardInfrastructure()
+    if (!ok) return res.status(500).json({ error: 'Card tables unavailable' })
+
+    const query = String(req.query.q ?? '').trim()
+    if (!query) return res.json([])
+
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200)
+    const needle = `%${query}%`
+
+    const { rows } = await pool.query(
+      `
+        SELECT
+          c.id,
+          c.name,
+          c.collector_number_raw AS card_number,
+          e.set_name,
+          e.set_code,
+          e.era
+        FROM public.cards c
+        LEFT JOIN public.expansions e ON e.id = c.expansion_id
+        WHERE
+          c.name ILIKE $1
+          OR c.collector_number_raw ILIKE $1
+          OR e.set_name ILIKE $1
+          OR e.set_code ILIKE $1
+        ORDER BY
+          c.name NULLS LAST,
+          c.collector_number_raw NULLS LAST
+        LIMIT $2
+      `,
+      [needle, limit]
+    )
+
+    return res.json(
+      rows.map((row) => ({
+        id: row.id,
+        name: row.name ?? null,
+        cardNumber: row.card_number ?? null,
+        setName: row.set_name ?? null,
+        setCode: row.set_code ?? null,
+        era: row.era ?? null
+      }))
+    )
+  } catch (error) {
+    console.error('Failed to search cards', error)
+    return res.status(500).json({ error: 'Failed to search cards' })
+  }
+})
+
 app.get('/api/cards/:id', async (req, res) => {
   try {
     const cardId = Number(req.params.id)
@@ -1443,6 +1496,58 @@ app.post('/api/linking/parse', async (req, res) => {
   } catch (error) {
     console.error('Failed to run auction title parser', error)
     res.status(500).json({ error: 'Failed to run parser' })
+  }
+})
+
+app.post('/api/linking/manual', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  try {
+    const auctionId = Number(req.body?.auctionId)
+    const cardId = Number(req.body?.cardId)
+
+    if (!Number.isFinite(auctionId) || !Number.isFinite(cardId)) {
+      return res.status(400).json({ error: 'Invalid auction or card id' })
+    }
+
+    const [linksReady, auctionsReady, cardsReady] = await Promise.all([
+      ensureTraderaAuctionLinksTableAvailable(),
+      ensureTraderaAuctionsTableAvailable(),
+      ensureCardInfrastructure()
+    ])
+
+    if (!linksReady || !auctionsReady || !cardsReady) {
+      return res.status(500).json({ error: 'Required tables unavailable' })
+    }
+
+    const {
+      rows: [auction]
+    } = await pool.query('SELECT item_id FROM public.tradera_auctions WHERE item_id = $1', [auctionId])
+    if (!auction) return res.status(404).json({ error: 'Auction not found' })
+
+    const {
+      rows: [card]
+    } = await pool.query('SELECT id FROM public.cards WHERE id = $1', [cardId])
+    if (!card) return res.status(404).json({ error: 'Card not found' })
+
+    await pool.query(
+      `
+        INSERT INTO public.tradera_auction_card_links (auction_id, card_id, method, confidence, created_at)
+        VALUES ($1, $2, 'manual', 1.0, NOW())
+        ON CONFLICT (auction_id)
+        DO UPDATE SET
+          card_id = EXCLUDED.card_id,
+          method = 'manual',
+          confidence = 1.0,
+          created_at = NOW()
+      `,
+      [auctionId, cardId]
+    )
+
+    return res.json({ ok: true })
+  } catch (error) {
+    console.error('Failed to manually link auction', error)
+    return res.status(500).json({ error: 'Failed to link auction' })
   }
 })
 
