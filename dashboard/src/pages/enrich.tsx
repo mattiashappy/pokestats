@@ -1,9 +1,10 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Link2 } from 'lucide-react'
 
 import { Badge } from '../components/ui/badge'
+import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { fetchAuctionCardLinks, fetchUnlinkedAuctions } from '../lib/api'
@@ -252,6 +253,106 @@ export function EnrichPage(): JSX.Element {
                 )}
               </TableBody>
             </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-2 space-y-0 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <CardTitle>Not enriched auctions</CardTitle>
+            <CardDescription>Auctions without a card link in tradera_auction_card_links.</CardDescription>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge variant="outline">
+              {unlinkedTotal.toLocaleString('sv-SE')} total • page {unlinkedPage} of {unlinkedPageCount}
+            </Badge>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          <div className="overflow-hidden rounded-xl border border-slate-900/80">
+            <Table>
+              <TableHeader>
+                <TableRow className="text-xs uppercase tracking-wide text-slate-500">
+                  <TableHead className="text-left">Auction</TableHead>
+                  <TableHead className="text-left">Card ID</TableHead>
+                  <TableHead className="text-left">Card</TableHead>
+                  <TableHead className="text-left">Set</TableHead>
+                  <TableHead className="text-left">Notes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {unlinkedAuctions.length ? (
+                  unlinkedAuctions.map((auction) => (
+                    <TableRow key={auction.itemId} className="text-sm">
+                      <TableCell className="py-2 text-left">
+                        <div className="space-y-1">
+                          {auction.itemUrl ? (
+                            <a
+                              href={auction.itemUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-semibold text-indigo-600 hover:underline"
+                            >
+                              {auction.title ?? `Auction #${auction.itemId}`}
+                            </a>
+                          ) : (
+                            <p className="font-semibold text-slate-900 dark:text-slate-50">
+                              {auction.title ?? `Auction #${auction.itemId}`}
+                            </p>
+                          )}
+                          <p className="text-xs text-slate-600 dark:text-slate-400">Item #{auction.itemId}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-2 text-left text-slate-600 dark:text-slate-300">—</TableCell>
+                      <TableCell className="py-2 text-left text-slate-600 dark:text-slate-300">Not linked</TableCell>
+                      <TableCell className="py-2 text-left text-slate-600 dark:text-slate-300">—</TableCell>
+                      <TableCell className="py-2 text-left text-xs text-slate-500">
+                        {auction.title ? 'Needs card link' : 'Missing title'}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-sm text-slate-500">
+                      {unlinkedLoading
+                        ? 'Loading unlinked auctions…'
+                        : unlinkedError
+                          ? 'Unable to load unlinked auctions.'
+                          : 'No unlinked auctions found.'}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600 dark:text-slate-300">
+            <span>
+              Showing {unlinkedAuctions.length.toLocaleString('sv-SE')} of{' '}
+              {unlinkedTotal.toLocaleString('sv-SE')} auctions
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={unlinkedOffset === 0 || unlinkedLoading}
+                onClick={() => setUnlinkedOffset(Math.max(0, unlinkedOffset - unlinkedLimit))}
+              >
+                Previous
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={unlinkedPage >= unlinkedPageCount || unlinkedLoading}
+                onClick={() => setUnlinkedOffset(unlinkedOffset + unlinkedLimit)}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
