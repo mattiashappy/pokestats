@@ -557,10 +557,6 @@ export function EnrichPage(): JSX.Element {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-left">Auction</TableHead>
-                    <TableHead className="text-left">Seller</TableHead>
-                    <TableHead className="text-left">Price</TableHead>
-                    <TableHead className="text-left">Bids</TableHead>
-                    <TableHead className="text-left">Ended</TableHead>
                     <TableHead className="text-left">Era</TableHead>
                     <TableHead className="text-left">Language</TableHead>
                     <TableHead className="text-left">Condition</TableHead>
@@ -597,18 +593,6 @@ export function EnrichPage(): JSX.Element {
                                 Item #{auction.itemId}
                               </p>
                             </div>
-                          </TableCell>
-                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                            {auction.sellerAlias ?? '—'}
-                          </TableCell>
-                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                            {auction.price != null ? `${auction.price.toFixed(0)} SEK` : '—'}
-                          </TableCell>
-                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                            {auction.bidCount ?? '—'}
-                          </TableCell>
-                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                            {auction.endDate ? format(new Date(auction.endDate), 'PPpp') : '—'}
                           </TableCell>
                           <TableCell className="text-left text-slate-600 dark:text-slate-300">
                             {auction.pokemonEra ?? '—'}
@@ -648,7 +632,7 @@ export function EnrichPage(): JSX.Element {
                     })
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={12} className="text-center text-sm text-slate-500">
+                      <TableCell colSpan={8} className="text-center text-sm text-slate-500">
                         {unlinkedLoading
                           ? 'Loading unlinked auctions…'
                           : unlinkedError
