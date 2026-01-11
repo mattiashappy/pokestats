@@ -86,6 +86,12 @@ export async function fetchCardsForSet(setCode: string): Promise<CardListItem[]>
   return response.json()
 }
 
+export async function fetchCards(): Promise<CardListItem[]> {
+  const response = await fetch('/api/cards')
+  if (!response.ok) throw new Error('Failed to fetch cards')
+  return response.json()
+}
+
 export type ImportRun = {
   id: number
   source: string
