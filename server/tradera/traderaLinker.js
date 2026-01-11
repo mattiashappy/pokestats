@@ -37,7 +37,7 @@ async function parseAuctions({ client, limit } = {}) {
   }
 
   for (const row of rows) {
-    const parsed = parseAuctionTitle(`${row.title ?? ''} ${row.description ?? ''}`)
+    const parsed = parseAuctionTitle(`${row.title ?? ''}\n${row.description ?? ''}`)
 
     if (parsed.collectorKey) {
       summary.withCollectorKey += 1
@@ -77,7 +77,33 @@ async function parseAuctions({ client, limit } = {}) {
 }
 
 async function findExpansion(client, setHint) {
-  const { rows } = await client.query(
+  let { rows } = await client.query(
+    `
+      SELECT id, set_name, set_code, set_total
+      FROM public.expansions
+      WHERE UPPER(set_code) = UPPER($1)
+      LIMIT 2
+    `,
+    [setHint]
+  )
+
+  if (rows.length === 1) return rows[0]
+  if (rows.length > 1) return null
+
+  ;({ rows } = await client.query(
+    `
+      SELECT id, set_name, set_code, set_total
+      FROM public.expansions
+      WHERE set_name ILIKE $1
+      LIMIT 2
+    `,
+    [setHint]
+  ))
+
+  if (rows.length === 1) return rows[0]
+  if (rows.length > 1) return null
+
+  ;({ rows } = await client.query(
     `
       SELECT id, set_name, set_code, set_total
       FROM public.expansions
@@ -85,10 +111,9 @@ async function findExpansion(client, setHint) {
       LIMIT 2
     `,
     [`%${setHint}%`]
-  )
+  ))
 
-  if (rows.length !== 1) return null
-  return rows[0]
+  return rows.length === 1 ? rows[0] : null
 }
 
 async function findCard(client, expansionId, collectorKey) {
@@ -154,11 +179,15 @@ async function resolveLinkColumns(client) {
 
 async function linkAuctions({ client, limit } = {}) {
   const safeLimit = clampLimit(limit)
+  const linkColumns = await resolveLinkColumns(client)
   const { rows } = await client.query(
     `
-      SELECT item_id, title, description
-      FROM public.tradera_auctions
-      ORDER BY updated_at DESC NULLS LAST, item_id DESC
+      SELECT a.id, a.item_id, a.title, a.description
+      FROM public.tradera_auctions a
+      LEFT JOIN public.tradera_auction_card_links l
+        ON l.${linkColumns.itemColumn} = a.${linkColumns.itemColumn === 'auction_id' ? 'id' : 'item_id'}
+      WHERE l.${linkColumns.itemColumn} IS NULL
+      ORDER BY a.updated_at DESC NULLS LAST, a.item_id DESC
       LIMIT $1
     `,
     [safeLimit]
@@ -172,10 +201,8 @@ async function linkAuctions({ client, limit } = {}) {
     linkedExamples: []
   }
 
-  const linkColumns = await resolveLinkColumns(client)
-
   for (const row of rows) {
-    const parsed = parseAuctionTitle(`${row.title ?? ''} ${row.description ?? ''}`)
+    const parsed = parseAuctionTitle(`${row.title ?? ''}\n${row.description ?? ''}`)
 
     if (parsed.skipReason) {
       summary.skipped += 1
@@ -215,9 +242,10 @@ async function linkAuctions({ client, limit } = {}) {
       continue
     }
 
+    const linkKeyValue = linkColumns.itemColumn === 'auction_id' ? row.id : row.item_id
     const insertColumns = [linkColumns.itemColumn, 'card_id']
     const insertValues = ['$1', '$2']
-    const params = [row.item_id, card.id]
+    const params = [linkKeyValue, card.id]
 
     if (linkColumns.timestampColumn) {
       insertColumns.push(linkColumns.timestampColumn)
