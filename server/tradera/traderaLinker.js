@@ -177,17 +177,51 @@ async function resolveLinkColumns(client) {
   }
 }
 
+async function resolveAuctionColumns(client, linkColumns) {
+  const { rows } = await client.query(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'tradera_auctions'
+    `
+  )
+
+  const columnNames = new Set(rows.map((row) => row.column_name))
+  const keyColumn =
+    (linkColumns?.itemColumn && columnNames.has(linkColumns.itemColumn) && linkColumns.itemColumn) ||
+    (columnNames.has('item_id') && 'item_id') ||
+    (columnNames.has('auction_id') && 'auction_id') ||
+    (columnNames.has('id') && 'id') ||
+    null
+
+  if (!keyColumn) {
+    throw new Error('tradera_auctions is missing an id/auction_id/item_id column')
+  }
+
+  const itemIdColumn = columnNames.has('item_id') ? 'item_id' : keyColumn
+
+  return {
+    keyColumn,
+    itemIdColumn
+  }
+}
+
 async function linkAuctions({ client, limit } = {}) {
   const safeLimit = clampLimit(limit)
   const linkColumns = await resolveLinkColumns(client)
+  const auctionColumns = await resolveAuctionColumns(client, linkColumns)
   const { rows } = await client.query(
     `
-      SELECT a.id, a.item_id, a.title, a.description
+      SELECT a.${auctionColumns.keyColumn} AS auction_key,
+             a.${auctionColumns.itemIdColumn} AS item_id,
+             a.title,
+             a.description
       FROM public.tradera_auctions a
       LEFT JOIN public.tradera_auction_card_links l
-        ON l.${linkColumns.itemColumn} = a.${linkColumns.itemColumn === 'auction_id' ? 'id' : 'item_id'}
+        ON l.${linkColumns.itemColumn} = a.${auctionColumns.keyColumn}
       WHERE l.${linkColumns.itemColumn} IS NULL
-      ORDER BY a.updated_at DESC NULLS LAST, a.item_id DESC
+      ORDER BY a.updated_at DESC NULLS LAST, a.${auctionColumns.itemIdColumn} DESC
       LIMIT $1
     `,
     [safeLimit]
@@ -242,7 +276,7 @@ async function linkAuctions({ client, limit } = {}) {
       continue
     }
 
-    const linkKeyValue = linkColumns.itemColumn === 'auction_id' ? row.id : row.item_id
+    const linkKeyValue = row.auction_key
     const insertColumns = [linkColumns.itemColumn, 'card_id']
     const insertValues = ['$1', '$2']
     const params = [linkKeyValue, card.id]
