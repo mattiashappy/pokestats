@@ -80,7 +80,6 @@ Columns:
 - `card_id INT NOT NULL REFERENCES cards(id)`
 - `linked_at TIMESTAMPTZ NOT NULL DEFAULT now()`
 - `method TEXT NULL`
-- `confidence_score INT NULL`
 - `status TEXT NOT NULL DEFAULT 'linked'`
 
 Indexes:

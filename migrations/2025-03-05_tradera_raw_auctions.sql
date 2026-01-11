@@ -50,7 +50,6 @@ CREATE TABLE IF NOT EXISTS tradera_auction_card_links (
   card_id   integer NOT NULL REFERENCES cards(id),
   linked_at timestamptz NOT NULL DEFAULT now(),
   method    text,
-  confidence_score integer,
   status    text NOT NULL DEFAULT 'linked'
 );
 
