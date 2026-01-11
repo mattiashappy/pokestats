@@ -6,6 +6,7 @@ import { AdminPage } from "./pages/admin"
 import { AuctionsPage } from "./pages/auctions"
 import { BillingPage } from "./pages/billing"
 import { CardPage } from "./pages/card"
+import { EnrichPage } from "./pages/enrich"
 import { LandingPage } from "./pages/landing"
 import { LoginPage } from "./pages/login"
 import { PokemonSetPage } from "./pages/pokemon-set"
@@ -36,6 +37,7 @@ function App(): JSX.Element {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/admin/imports" element={<AuctionImportsPage />} />
+          <Route path="/admin/enrich" element={<EnrichPage />} />
         </Route>
       </Route>
 

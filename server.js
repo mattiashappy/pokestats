@@ -1213,6 +1213,81 @@ app.get('/api/sales/diagnostic', async (_req, res) => {
 // --------------------
 // Linking
 // --------------------
+app.get('/api/linking/links', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  try {
+    const [linksReady, auctionsReady, cardsReady] = await Promise.all([
+      ensureTraderaAuctionLinksTableAvailable(),
+      ensureTraderaAuctionsTableAvailable(),
+      ensureCardInfrastructure()
+    ])
+    if (!linksReady || !auctionsReady || !cardsReady) {
+      return res.status(500).json({ error: 'Required tables unavailable' })
+    }
+
+    const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000)
+    const { rows } = await pool.query(
+      `
+        SELECT
+          l.item_id,
+          l.card_id,
+          l.method,
+          l.status,
+          l.linked_at,
+          a.title AS auction_title,
+          a.item_url AS auction_url,
+          a.end_date AS auction_end_date,
+          a.price AS auction_price,
+          a.bid_count AS auction_bid_count,
+          a.seller_alias AS auction_seller_alias,
+          c.name AS card_name,
+          c.collector_number_raw,
+          c.collector_key,
+          c.number,
+          c.printed_total,
+          c.is_secret,
+          COALESCE(e.name, c.set_name) AS set_name,
+          COALESCE(e.set_code, c.set_code) AS set_code
+        FROM public.tradera_auction_card_links l
+        LEFT JOIN public.tradera_auctions a ON a.item_id = l.item_id
+        LEFT JOIN public.cards c ON c.id = l.card_id
+        LEFT JOIN public.expansions e ON e.id = c.expansion_id
+        ORDER BY l.linked_at DESC NULLS LAST
+        LIMIT $1
+      `,
+      [limit]
+    )
+
+    res.json(
+      rows.map((row) => ({
+        itemId: row.item_id,
+        cardId: row.card_id,
+        method: row.method ?? null,
+        status: row.status ?? null,
+        linkedAt: row.linked_at ?? null,
+        auctionTitle: row.auction_title ?? null,
+        auctionUrl: row.auction_url ?? null,
+        auctionEndDate: row.auction_end_date ?? null,
+        auctionPrice: row.auction_price ?? null,
+        auctionBidCount: row.auction_bid_count ?? null,
+        auctionSellerAlias: row.auction_seller_alias ?? null,
+        cardName: row.card_name ?? null,
+        collectorNumberRaw: row.collector_number_raw ?? null,
+        collectorKey: row.collector_key ?? null,
+        number: row.number ?? null,
+        printedTotal: row.printed_total ?? null,
+        isSecret: row.is_secret ?? null,
+        setName: row.set_name ?? null,
+        setCode: row.set_code ?? null
+      }))
+    )
+  } catch (error) {
+    console.error('Failed to fetch auction card links', error)
+    res.status(500).json({ error: 'Failed to load auction card links' })
+  }
+})
+
 app.get('/api/linking/stats', async (_req, res) => {
   if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
 
