@@ -134,7 +134,7 @@ function createExpansionService({
         const row = mergedRow ?? {}
         const fallback = staticByCode.get(expansion.set_code)
 
-        const eraLabel = row?.era ?? fallback?.era ?? null
+        const eraLabel = fallback?.era ?? row?.era ?? null
         const eraCode = row?.era_code ?? resolveEraCode(eraLabel)
 
         return {
