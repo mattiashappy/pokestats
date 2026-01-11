@@ -74,7 +74,7 @@ export async function fetchEraExpansions(eraCode: string): Promise<ExpansionSumm
 }
 
 /**
- * Fetch cards for a set using set_code (matches UX: sets grid -> /pokemon/sets/:setCode -> cards)
+ * Fetch cards for a set using set_code (matches UX: sets grid -> /era/:eraCode/:setCode -> cards)
  * Backend must support: GET /api/expansions/:setCode/cards
  */
 export async function fetchCardsForSet(setCode: string): Promise<CardListItem[]> {

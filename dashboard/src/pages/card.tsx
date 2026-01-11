@@ -57,9 +57,9 @@ export function CardPage(): JSX.Element {
   const backLink = resolvedEraCode && resolvedSetCode
     ? `/era/${resolvedEraCode}/${resolvedSetCode}`
     : card?.set_code
-      ? `/pokemon/sets/${card.set_code}`
-      : '/pokemon'
-  const backLabel = resolvedSetCode ? `Back to ${resolvedSetCode}` : 'Back to sets'
+      ? `/era/sets/${card.set_code}`
+      : '/era'
+  const backLabel = resolvedSetCode ? `Back to ${resolvedSetCode}` : 'Back to era sets'
 
   return (
     <div className="space-y-6">

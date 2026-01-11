@@ -8,7 +8,6 @@ import { BillingPage } from "./pages/billing"
 import { CardPage } from "./pages/card"
 import { LandingPage } from "./pages/landing"
 import { LoginPage } from "./pages/login"
-import { PokemonPage } from "./pages/pokemon"
 import { PokemonSetPage } from "./pages/pokemon-set"
 import { SettingsPage } from "./pages/settings"
 import { SignupPage } from "./pages/signup"
@@ -31,10 +30,8 @@ function App(): JSX.Element {
           <Route path="/era" element={<ErasPage />} />
           <Route path="/era/:eraCode" element={<EraSetsPage />} />
           <Route path="/era/:eraCode/:setCode" element={<PokemonSetPage />} />
-          <Route path="/pokemon" element={<PokemonPage />} />
-          <Route path="/pokemon/sets/:setCode" element={<PokemonSetPage />} />
-          <Route path="/pokemon/:eraCode/:setCode/:id" element={<CardPage />} />
-          <Route path="/pokemon/cards/:id" element={<CardPage />} />
+          <Route path="/era/:eraCode/:setCode/:id" element={<CardPage />} />
+          <Route path="/era/sets/:setCode" element={<PokemonSetPage />} />
           <Route path="/cards/:id" element={<CardPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/admin" element={<AdminPage />} />

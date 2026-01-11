@@ -23,7 +23,7 @@ export function SetCard({ expansion, eraCode }: SetCardProps): JSX.Element {
   const resolvedEraCode = normalizeEraCode(eraCode ?? expansion.era_code ?? expansion.era ?? '')
   const setLink = resolvedEraCode
     ? `/era/${resolvedEraCode}/${expansion.set_code}`
-    : `/pokemon/sets/${expansion.set_code}`
+    : `/era/sets/${expansion.set_code}`
 
   return (
     <Link to={setLink} className="group block h-full">
