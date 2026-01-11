@@ -102,6 +102,23 @@ function incrementSkip(skipReasons, reason) {
   skipReasons[reason] = (skipReasons[reason] || 0) + 1
 }
 
+async function resolveLinkItemColumn(client) {
+  const { rows } = await client.query(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'tradera_auction_card_links'
+    `
+  )
+
+  const columnNames = new Set(rows.map((row) => row.column_name))
+  if (columnNames.has('item_id')) return 'item_id'
+  if (columnNames.has('auction_id')) return 'auction_id'
+
+  throw new Error('tradera_auction_card_links is missing item_id/auction_id column')
+}
+
 async function linkAuctions({ client, limit } = {}) {
   const safeLimit = clampLimit(limit)
   const { rows } = await client.query(
@@ -121,6 +138,8 @@ async function linkAuctions({ client, limit } = {}) {
     skipReasons: {},
     linkedExamples: []
   }
+
+  const linkItemColumn = await resolveLinkItemColumn(client)
 
   for (const row of rows) {
     const parsed = parseAuctionTitle(row.title)
@@ -159,9 +178,9 @@ async function linkAuctions({ client, limit } = {}) {
 
     await client.query(
       `
-        INSERT INTO public.tradera_auction_card_links (item_id, card_id, linked_at, method, status)
+        INSERT INTO public.tradera_auction_card_links (${linkItemColumn}, card_id, linked_at, method, status)
         VALUES ($1, $2, NOW(), 'deterministic', 'linked')
-        ON CONFLICT (item_id) DO UPDATE SET
+        ON CONFLICT (${linkItemColumn}) DO UPDATE SET
           card_id = EXCLUDED.card_id,
           linked_at = NOW(),
           method = EXCLUDED.method,
