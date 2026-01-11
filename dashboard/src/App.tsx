@@ -6,6 +6,7 @@ import { AdminPage } from "./pages/admin"
 import { AuctionsPage } from "./pages/auctions"
 import { BillingPage } from "./pages/billing"
 import { CardPage } from "./pages/card"
+import { DashboardPage } from "./pages/dashboard"
 import { EnrichPage } from "./pages/enrich"
 import { LandingPage } from "./pages/landing"
 import { LoginPage } from "./pages/login"
@@ -26,6 +27,7 @@ function App(): JSX.Element {
       {/* Protected app routes – require active subscription */}
       <Route element={<ProtectedRoute requireSubscription />}>
         <Route element={<AppLayout />}>
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/auctions" element={<AuctionsPage />} />
           <Route path="/auctions/:attribute" element={<AuctionsPage />} />
           <Route path="/era" element={<ErasPage />} />
@@ -48,7 +50,7 @@ function App(): JSX.Element {
         </Route>
       </Route>
 
-      <Route path="/app/*" element={<Navigate to="/auctions" replace />} />
+      <Route path="/app/*" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
