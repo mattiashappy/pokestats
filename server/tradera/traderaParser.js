@@ -75,47 +75,67 @@ function isSpecialProductLine(title) {
   return /\b(rumble|countdown)\b/i.test(title)
 }
 
+function normalizeSetText(text) {
+  return normalize(text)
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/[^a-z0-9\s]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+const SET_ALIASES = new Map([
+  ['mega evolution', 'MEGA_EVOLUTION'],
+  ['megaevolution', 'MEGA_EVOLUTION'],
+  ['meg', 'MEGA_EVOLUTION'],
+  ['base set 2', 'Base Set 2'],
+  ['base set', 'Base Set'],
+  ['jungle', 'Jungle'],
+  ['team rocket', 'Team Rocket'],
+  ['rocket gang', 'Team Rocket'],
+  ['neo genesis', 'Neo Genesis'],
+  ['expedition', 'Expedition'],
+  ['skyridge', 'Skyridge'],
+  ['ex deoxys', 'EX Deoxys'],
+  ['delta species', 'EX_DELTA_SPECIES'],
+  ['fossil', 'Fossil'],
+  ['fire red', 'FireRed & LeafGreen'],
+  ['leaf green', 'FireRed & LeafGreen'],
+  ['lost origin', 'Lost Origin'],
+  ['paradox rift', 'Paradox Rift'],
+  ['ancient origins', 'Ancient Origins'],
+  ['twilight masquerade', 'Twilight Masquerade'],
+  ['astral radiance', 'Astral Radiance'],
+  ['paldea evolved', 'Paldea Evolved'],
+  ['journey together', 'Journey Together'],
+  ['phantasmal flames', 'Phantasmal Flames'],
+  ['destined rivals', 'Destined Rivals'],
+  ['breakthrough', 'BREAKthrough'],
+  ['breakpoint', 'BREAKpoint'],
+  ['pfl', 'PHANTASMAL_FLAMES']
+])
+
+function extractDetectedSetCode(title) {
+  const raw = String(title || '')
+  const match = raw.match(/Detected set\s+.*?[•·\-\u2022]\s*([A-Z0-9_]{2,})/i)
+  return match ? match[1].toUpperCase() : null
+}
+
 function guessSetHint(title) {
-  const text = normalize(title).toLowerCase()
-  const mappings = [
-    { needle: 'base set 2', hint: 'Base Set 2' },
-    { needle: 'base set', hint: 'Base Set' },
-    { needle: 'jungle', hint: 'Jungle' },
-    { needle: 'team rocket', hint: 'Team Rocket' },
-    { needle: "rocket gang", hint: 'Team Rocket' },
-    { needle: 'neo genesis', hint: 'Neo Genesis' },
-    { needle: 'expedition', hint: 'Expedition' },
-    { needle: 'skyridge', hint: 'Skyridge' },
-    { needle: 'ex deoxys', hint: 'EX Deoxys' },
-    { needle: 'delta species', hint: 'EX_DELTA_SPECIES' },
-    { needle: 'fossil', hint: 'Fossil' },
-    { needle: 'fire red', hint: 'FireRed & LeafGreen' },
-    { needle: 'leaf green', hint: 'FireRed & LeafGreen' },
-    { needle: 'lost origin', hint: 'Lost Origin' },
-    { needle: 'paradox rift', hint: 'Paradox Rift' },
-    { needle: 'ancient origins', hint: 'Ancient Origins' },
-    { needle: 'twilight masquerade', hint: 'Twilight Masquerade' },
-    { needle: 'astral radiance', hint: 'Astral Radiance' },
-    { needle: 'paldea evolved', hint: 'Paldea Evolved' },
-    { needle: 'journey together', hint: 'Journey Together' },
-    { needle: 'phantasmal flames', hint: 'Phantasmal Flames' },
-    { needle: 'destined rivals', hint: 'Destined Rivals' },
-    { needle: 'breakthrough', hint: 'BREAKthrough' },
-    { needle: 'breakpoint', hint: 'BREAKpoint' }
-  ]
+  if (!title) return null
 
-  for (const mapping of mappings) {
-    if (text.includes(mapping.needle)) return mapping.hint
+  const detectedCode = extractDetectedSetCode(title)
+  if (detectedCode) return detectedCode
+
+  const normalized = normalizeSetText(title)
+  if (!normalized) return null
+
+  for (const [alias, code] of SET_ALIASES.entries()) {
+    if (normalized.includes(alias)) return code
   }
 
-  const codeMatch = text.match(/\b(pfl|meg)\b/i)
-  if (codeMatch) {
-    const aliasMap = {
-      PFL: 'PHANTASMAL_FLAMES',
-      MEG: 'MEGA_EVOLUTION'
-    }
-    return aliasMap[codeMatch[1].toUpperCase()] || null
-  }
+  const tokens = new Set(normalized.split(' '))
+  if (tokens.has('meg')) return 'MEGA_EVOLUTION'
 
   return null
 }
