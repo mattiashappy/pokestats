@@ -102,7 +102,7 @@ function incrementSkip(skipReasons, reason) {
   skipReasons[reason] = (skipReasons[reason] || 0) + 1
 }
 
-async function resolveLinkItemColumn(client) {
+async function resolveLinkColumns(client) {
   const { rows } = await client.query(
     `
       SELECT column_name
@@ -113,10 +113,20 @@ async function resolveLinkItemColumn(client) {
   )
 
   const columnNames = new Set(rows.map((row) => row.column_name))
-  if (columnNames.has('item_id')) return 'item_id'
-  if (columnNames.has('auction_id')) return 'auction_id'
+  const itemColumn = columnNames.has('item_id') ? 'item_id' : columnNames.has('auction_id') ? 'auction_id' : null
 
-  throw new Error('tradera_auction_card_links is missing item_id/auction_id column')
+  if (!itemColumn) {
+    throw new Error('tradera_auction_card_links is missing item_id/auction_id column')
+  }
+
+  const timestampColumn = columnNames.has('linked_at') ? 'linked_at' : columnNames.has('created_at') ? 'created_at' : null
+
+  return {
+    itemColumn,
+    timestampColumn,
+    hasMethod: columnNames.has('method'),
+    hasStatus: columnNames.has('status')
+  }
 }
 
 async function linkAuctions({ client, limit } = {}) {
@@ -139,7 +149,7 @@ async function linkAuctions({ client, limit } = {}) {
     linkedExamples: []
   }
 
-  const linkItemColumn = await resolveLinkItemColumn(client)
+  const linkColumns = await resolveLinkColumns(client)
 
   for (const row of rows) {
     const parsed = parseAuctionTitle(row.title)
@@ -176,17 +186,49 @@ async function linkAuctions({ client, limit } = {}) {
       continue
     }
 
+    const insertColumns = [linkColumns.itemColumn, 'card_id']
+    const insertValues = ['$1', '$2']
+    const params = [row.item_id, card.id]
+
+    if (linkColumns.timestampColumn) {
+      insertColumns.push(linkColumns.timestampColumn)
+      insertValues.push('NOW()')
+    }
+
+    if (linkColumns.hasMethod) {
+      insertColumns.push('method')
+      params.push('deterministic')
+      insertValues.push(`$${params.length}`)
+    }
+
+    if (linkColumns.hasStatus) {
+      insertColumns.push('status')
+      params.push('linked')
+      insertValues.push(`$${params.length}`)
+    }
+
+    const updateClauses = ['card_id = EXCLUDED.card_id']
+
+    if (linkColumns.timestampColumn) {
+      updateClauses.push(`${linkColumns.timestampColumn} = NOW()`)
+    }
+
+    if (linkColumns.hasMethod) {
+      updateClauses.push('method = EXCLUDED.method')
+    }
+
+    if (linkColumns.hasStatus) {
+      updateClauses.push('status = EXCLUDED.status')
+    }
+
     await client.query(
       `
-        INSERT INTO public.tradera_auction_card_links (${linkItemColumn}, card_id, linked_at, method, status)
-        VALUES ($1, $2, NOW(), 'deterministic', 'linked')
-        ON CONFLICT (${linkItemColumn}) DO UPDATE SET
-          card_id = EXCLUDED.card_id,
-          linked_at = NOW(),
-          method = EXCLUDED.method,
-          status = EXCLUDED.status
+        INSERT INTO public.tradera_auction_card_links (${insertColumns.join(', ')})
+        VALUES (${insertValues.join(', ')})
+        ON CONFLICT (${linkColumns.itemColumn}) DO UPDATE SET
+          ${updateClauses.join(',\n          ')}
       `,
-      [row.item_id, card.id]
+      params
     )
 
     summary.linked += 1
