@@ -121,6 +121,15 @@ export function EnrichPage(): JSX.Element {
 
   const links = linkData ?? []
   const unlinkedAuctions = unlinkedData ?? []
+  const sortedUnlinkedAuctions = useMemo(() => {
+    return [...unlinkedAuctions].sort((left, right) => {
+      const leftTitle = left.title?.trim() ?? ''
+      const rightTitle = right.title?.trim() ?? ''
+      const titleOrder = leftTitle.localeCompare(rightTitle, 'sv-SE', { sensitivity: 'base' })
+      if (titleOrder !== 0) return titleOrder
+      return left.itemId - right.itemId
+    })
+  }, [unlinkedAuctions])
   const {
     data: cardSearchResults,
     isLoading: cardSearchLoading,
@@ -531,8 +540,8 @@ export function EnrichPage(): JSX.Element {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {unlinkedAuctions.length ? (
-                  unlinkedAuctions.map((auction) => {
+                {sortedUnlinkedAuctions.length ? (
+                  sortedUnlinkedAuctions.map((auction) => {
                     const diagnostics = buildDiagnostics(auction)
 
                     return (
