@@ -91,6 +91,7 @@ export function EnrichPage(): JSX.Element {
   const [manualLinkPending, setManualLinkPending] = useState(false)
   const [manualLinkError, setManualLinkError] = useState<string | null>(null)
   const [manualLinkSuccess, setManualLinkSuccess] = useState<string | null>(null)
+  const [activeLinkView, setActiveLinkView] = useState<'linked' | 'unlinked' | 'ready'>('linked')
 
   const handleRunParse = async (): Promise<void> => {
     setTraderaError(null)
@@ -130,6 +131,9 @@ export function EnrichPage(): JSX.Element {
       return left.itemId - right.itemId
     })
   }, [unlinkedAuctions])
+  const sortedReadyToLinkAuctions = useMemo(() => {
+    return sortedUnlinkedAuctions.filter((auction) => buildDiagnostics(auction).length === 0)
+  }, [sortedUnlinkedAuctions])
   const {
     data: cardSearchResults,
     isLoading: cardSearchLoading,
@@ -139,17 +143,26 @@ export function EnrichPage(): JSX.Element {
     queryFn: () => searchCards(searchQuery),
     enabled: searchOpen && Boolean(searchQuery)
   })
-  const readyToLinkAuctions = useMemo(() => {
-    return unlinkedAuctions.filter((auction) => buildDiagnostics(auction).length === 0)
-  }, [unlinkedAuctions])
   const counts = useMemo(() => {
     const linkedCards = links.filter((link) => link.cardId).length
     return {
       linkedCards,
       unlinkedCards: unlinkedAuctions.length,
-      readyToLink: readyToLinkAuctions.length
+      readyToLink: sortedReadyToLinkAuctions.length
     }
-  }, [links, unlinkedAuctions, readyToLinkAuctions])
+  }, [links, unlinkedAuctions, sortedReadyToLinkAuctions])
+  const visibleUnlinkedAuctions =
+    activeLinkView === 'ready' ? sortedReadyToLinkAuctions : sortedUnlinkedAuctions
+  const activeCount = activeLinkView === 'linked'
+    ? counts.linkedCards
+    : activeLinkView === 'ready'
+      ? counts.readyToLink
+      : counts.unlinkedCards
+  const activeCountLabel = activeLinkView === 'linked'
+    ? 'linked cards'
+    : activeLinkView === 'ready'
+      ? 'ready to link'
+      : 'unlinked auctions'
 
   useEffect(() => {
     if (searchOpen) return
@@ -415,223 +428,241 @@ export function EnrichPage(): JSX.Element {
             <CardDescription>Snapshots of the enrichment table linking auctions to cards.</CardDescription>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <Badge variant="outline">{counts.linkedCards.toLocaleString('sv-SE')} linked cards</Badge>
+            <Badge variant="outline">
+              {activeCount.toLocaleString('sv-SE')} {activeCountLabel}
+            </Badge>
           </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
+            <button
+              type="button"
+              onClick={() => setActiveLinkView('linked')}
+              className={`rounded-lg p-3 text-left text-sm text-slate-700 transition dark:text-slate-200 ${
+                activeLinkView === 'linked'
+                  ? 'bg-white shadow-sm ring-2 ring-indigo-500 dark:bg-slate-950/70'
+                  : 'bg-slate-100 hover:bg-slate-200/70 dark:bg-slate-900/60 dark:hover:bg-slate-900'
+              }`}
+            >
               <p className="text-xs uppercase tracking-wide text-slate-500">Linked cards</p>
               <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
                 {counts.linkedCards.toLocaleString('sv-SE')}
               </p>
               <p className="text-xs text-slate-600 dark:text-slate-400">Rows with card metadata.</p>
-            </div>
+            </button>
 
-            <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
+            <button
+              type="button"
+              onClick={() => setActiveLinkView('unlinked')}
+              className={`rounded-lg p-3 text-left text-sm text-slate-700 transition dark:text-slate-200 ${
+                activeLinkView === 'unlinked'
+                  ? 'bg-white shadow-sm ring-2 ring-indigo-500 dark:bg-slate-950/70'
+                  : 'bg-slate-100 hover:bg-slate-200/70 dark:bg-slate-900/60 dark:hover:bg-slate-900'
+              }`}
+            >
               <p className="text-xs uppercase tracking-wide text-slate-500">Not Linked Cards</p>
               <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
                 {counts.unlinkedCards.toLocaleString('sv-SE')}
               </p>
               <p className="text-xs text-slate-600 dark:text-slate-400">Auctions that are not linked.</p>
-            </div>
+            </button>
 
-            <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
+            <button
+              type="button"
+              onClick={() => setActiveLinkView('ready')}
+              className={`rounded-lg p-3 text-left text-sm text-slate-700 transition dark:text-slate-200 ${
+                activeLinkView === 'ready'
+                  ? 'bg-white shadow-sm ring-2 ring-indigo-500 dark:bg-slate-950/70'
+                  : 'bg-slate-100 hover:bg-slate-200/70 dark:bg-slate-900/60 dark:hover:bg-slate-900'
+              }`}
+            >
               <p className="text-xs uppercase tracking-wide text-slate-500">Ready to Link</p>
               <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
                 {counts.readyToLink.toLocaleString('sv-SE')}
               </p>
               <p className="text-xs text-slate-600 dark:text-slate-400">Auctions that are ready to link.</p>
-            </div>
+            </button>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-slate-900/80">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-left">Auction</TableHead>
-                  <TableHead className="text-left">Card</TableHead>
-                  <TableHead className="text-left">Set</TableHead>
-                  <TableHead className="text-left">Method</TableHead>
-                  <TableHead className="text-left">Confidence</TableHead>
-                  <TableHead className="text-left">Linked</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {links.length ? (
-                  links.map((link) => (
-                    <TableRow key={`${link.itemId}-${link.cardId}`}>
-                      <TableCell className="text-left">
-                        <div className="space-y-1">
-                          {link.auctionUrl ? (
-                            <a
-                              href={link.auctionUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="font-semibold text-indigo-600 hover:underline"
-                            >
-                              {link.auctionTitle ?? `Auction #${link.itemId}`}
-                            </a>
-                          ) : (
-                            <p className="font-semibold text-slate-900 dark:text-slate-50">
-                              {link.auctionTitle ?? `Auction #${link.itemId}`}
-                            </p>
-                          )}
-                          <p className="text-xs text-slate-600 dark:text-slate-400">Item #{link.itemId}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-left text-slate-700 dark:text-slate-200">
-                        <div className="space-y-1">
-                          <p className="font-semibold text-slate-900 dark:text-slate-50">{formatCardLabel(link)}</p>
-                          <p className="text-xs text-slate-600 dark:text-slate-400">Card #{link.cardId}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {formatSetLabel(link)}
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {link.method ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {formatConfidence(link.confidence)}
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {link.linkedAt ? format(new Date(link.linkedAt), 'PPpp') : '—'}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
+          {activeLinkView === 'linked' ? (
+            <div className="overflow-hidden rounded-xl border border-slate-900/80">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-sm text-slate-500">
-                      {linksLoading ? 'Loading auction links…' : 'No auction links found.'}
-                    </TableCell>
+                    <TableHead className="text-left">Auction</TableHead>
+                    <TableHead className="text-left">Card</TableHead>
+                    <TableHead className="text-left">Set</TableHead>
+                    <TableHead className="text-left">Method</TableHead>
+                    <TableHead className="text-left">Confidence</TableHead>
+                    <TableHead className="text-left">Linked</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-col gap-2 space-y-0 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <CardTitle>Not enriched auctions</CardTitle>
-            <CardDescription>Auctions without a card link in tradera_auction_card_links.</CardDescription>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Badge variant="outline">{unlinkedAuctions.length.toLocaleString('sv-SE')} showing</Badge>
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          <div className="overflow-hidden rounded-xl border border-slate-900/80">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-left">Auction</TableHead>
-                  <TableHead className="text-left">Seller</TableHead>
-                  <TableHead className="text-left">Price</TableHead>
-                  <TableHead className="text-left">Bids</TableHead>
-                  <TableHead className="text-left">Ended</TableHead>
-                  <TableHead className="text-left">Era</TableHead>
-                  <TableHead className="text-left">Language</TableHead>
-                  <TableHead className="text-left">Condition</TableHead>
-                  <TableHead className="text-left">Detected card #</TableHead>
-                  <TableHead className="text-left">Detected set</TableHead>
-                  <TableHead className="text-left">Diagnostics</TableHead>
-                  <TableHead className="text-left">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedUnlinkedAuctions.length ? (
-                  sortedUnlinkedAuctions.map((auction) => {
-                    const diagnostics = buildDiagnostics(auction)
-
-                    return (
-                      <TableRow key={auction.itemId}>
-                      <TableCell className="text-left">
-                        <div className="space-y-1">
-                          {auction.itemUrl ? (
-                            <a
-                              href={auction.itemUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="font-semibold text-indigo-600 hover:underline"
-                            >
-                              {auction.title ?? `Auction #${auction.itemId}`}
-                            </a>
-                          ) : (
-                            <p className="font-semibold text-slate-900 dark:text-slate-50">
-                              {auction.title ?? `Auction #${auction.itemId}`}
-                            </p>
-                          )}
-                          <p className="text-xs text-slate-600 dark:text-slate-400">Item #{auction.itemId}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {auction.sellerAlias ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {auction.price != null ? `${auction.price.toFixed(0)} SEK` : '—'}
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {auction.bidCount ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {auction.endDate ? format(new Date(auction.endDate), 'PPpp') : '—'}
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {auction.pokemonEra ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {auction.pokemonLanguage ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {auction.itemCondition ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {auction.detectedCollectorNumber ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {formatDetectedExpansion(auction)}
-                      </TableCell>
-                      <TableCell className="text-left">
-                        {diagnostics.length ? (
-                          <div className="flex flex-wrap gap-2">
-                            {diagnostics.map((note) => (
-                              <Badge key={note} variant="secondary" className="whitespace-nowrap">
-                                {note}
-                              </Badge>
-                            ))}
+                </TableHeader>
+                <TableBody>
+                  {links.length ? (
+                    links.map((link) => (
+                      <TableRow key={`${link.itemId}-${link.cardId}`}>
+                        <TableCell className="text-left">
+                          <div className="space-y-1">
+                            {link.auctionUrl ? (
+                              <a
+                                href={link.auctionUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-semibold text-indigo-600 hover:underline"
+                              >
+                                {link.auctionTitle ?? `Auction #${link.itemId}`}
+                              </a>
+                            ) : (
+                              <p className="font-semibold text-slate-900 dark:text-slate-50">
+                                {link.auctionTitle ?? `Auction #${link.itemId}`}
+                              </p>
+                            )}
+                            <p className="text-xs text-slate-600 dark:text-slate-400">Item #{link.itemId}</p>
                           </div>
-                        ) : (
-                          <Badge variant="outline">Ready to link</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-left">
-                        <Button variant="secondary" size="sm" onClick={() => handleOpenSearch(auction)}>
-                          Search for card
-                        </Button>
+                        </TableCell>
+                        <TableCell className="text-left text-slate-700 dark:text-slate-200">
+                          <div className="space-y-1">
+                            <p className="font-semibold text-slate-900 dark:text-slate-50">{formatCardLabel(link)}</p>
+                            <p className="text-xs text-slate-600 dark:text-slate-400">Card #{link.cardId}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                          {formatSetLabel(link)}
+                        </TableCell>
+                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                          {link.method ?? '—'}
+                        </TableCell>
+                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                          {formatConfidence(link.confidence)}
+                        </TableCell>
+                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                          {link.linkedAt ? format(new Date(link.linkedAt), 'PPpp') : '—'}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-sm text-slate-500">
+                        {linksLoading ? 'Loading auction links…' : 'No auction links found.'}
                       </TableCell>
                     </TableRow>
-                    )
-                  })
-                ) : (
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-slate-900/80">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={12} className="text-center text-sm text-slate-500">
-                      {unlinkedLoading
-                        ? 'Loading unlinked auctions…'
-                        : unlinkedError
-                          ? 'Unable to load unlinked auctions.'
-                          : 'No unlinked auctions found.'}
-                    </TableCell>
+                    <TableHead className="text-left">Auction</TableHead>
+                    <TableHead className="text-left">Seller</TableHead>
+                    <TableHead className="text-left">Price</TableHead>
+                    <TableHead className="text-left">Bids</TableHead>
+                    <TableHead className="text-left">Ended</TableHead>
+                    <TableHead className="text-left">Era</TableHead>
+                    <TableHead className="text-left">Language</TableHead>
+                    <TableHead className="text-left">Condition</TableHead>
+                    <TableHead className="text-left">Detected card #</TableHead>
+                    <TableHead className="text-left">Detected set</TableHead>
+                    <TableHead className="text-left">Diagnostics</TableHead>
+                    <TableHead className="text-left">Actions</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {visibleUnlinkedAuctions.length ? (
+                    visibleUnlinkedAuctions.map((auction) => {
+                      const diagnostics = buildDiagnostics(auction)
+
+                      return (
+                        <TableRow key={auction.itemId}>
+                          <TableCell className="text-left">
+                            <div className="space-y-1">
+                              {auction.itemUrl ? (
+                                <a
+                                  href={auction.itemUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="font-semibold text-indigo-600 hover:underline"
+                                >
+                                  {auction.title ?? `Auction #${auction.itemId}`}
+                                </a>
+                              ) : (
+                                <p className="font-semibold text-slate-900 dark:text-slate-50">
+                                  {auction.title ?? `Auction #${auction.itemId}`}
+                                </p>
+                              )}
+                              <p className="text-xs text-slate-600 dark:text-slate-400">
+                                Item #{auction.itemId}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                            {auction.sellerAlias ?? '—'}
+                          </TableCell>
+                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                            {auction.price != null ? `${auction.price.toFixed(0)} SEK` : '—'}
+                          </TableCell>
+                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                            {auction.bidCount ?? '—'}
+                          </TableCell>
+                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                            {auction.endDate ? format(new Date(auction.endDate), 'PPpp') : '—'}
+                          </TableCell>
+                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                            {auction.pokemonEra ?? '—'}
+                          </TableCell>
+                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                            {auction.pokemonLanguage ?? '—'}
+                          </TableCell>
+                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                            {auction.itemCondition ?? '—'}
+                          </TableCell>
+                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                            {auction.detectedCollectorNumber ?? '—'}
+                          </TableCell>
+                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                            {formatDetectedExpansion(auction)}
+                          </TableCell>
+                          <TableCell className="text-left">
+                            {diagnostics.length ? (
+                              <div className="flex flex-wrap gap-2">
+                                {diagnostics.map((note) => (
+                                  <Badge key={note} variant="secondary" className="whitespace-nowrap">
+                                    {note}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <Badge variant="outline">Ready to link</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-left">
+                            <Button variant="secondary" size="sm" onClick={() => handleOpenSearch(auction)}>
+                              Search for card
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={12} className="text-center text-sm text-slate-500">
+                        {unlinkedLoading
+                          ? 'Loading unlinked auctions…'
+                          : unlinkedError
+                            ? 'Unable to load unlinked auctions.'
+                            : activeLinkView === 'ready'
+                              ? 'No ready-to-link auctions found.'
+                              : 'No unlinked auctions found.'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
