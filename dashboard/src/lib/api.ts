@@ -128,6 +128,24 @@ export type ImportRunResult = {
   error?: string | null
 }
 
+export type AuctionCardLink = {
+  itemId: number
+  cardId: number
+  method: string | null
+  status: string | null
+  linkedAt: string | null
+  auctionTitle: string | null
+  auctionUrl: string | null
+  auctionEndDate: string | null
+  auctionPrice: number | null
+  auctionBidCount: number | null
+  auctionSellerAlias: string | null
+  cardName: string | null
+  cardNumber: string | null
+  setName: string | null
+  setCode: string | null
+}
+
 const fetchImportRuns = async (limit = 10): Promise<ImportRun[]> => {
   const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100)
   const params = new URLSearchParams({ limit: String(safeLimit) })
@@ -146,6 +164,14 @@ const runImporter = async (): Promise<ImportRunResult> => {
   const res = await fetch('/api/import/run', { method: 'POST' })
   if (!res.ok) throw new Error('Failed to run importer')
   return res.json()
+}
+
+export async function fetchAuctionCardLinks(limit = 500): Promise<AuctionCardLink[]> {
+  const safeLimit = Math.min(Math.max(Number(limit) || 500, 1), 2000)
+  const params = new URLSearchParams({ limit: String(safeLimit) })
+  const response = await fetch(`/api/linking/links?${params.toString()}`)
+  if (!response.ok) throw new Error('Failed to load auction card links')
+  return response.json()
 }
 
 /**
