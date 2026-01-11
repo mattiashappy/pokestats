@@ -132,6 +132,65 @@ async function findCard(client, expansionId, collectorKey) {
   return rows[0]
 }
 
+async function findCardsByCollectorKey(client, collectorKey) {
+  const { rows } = await client.query(
+    `
+      SELECT id, name, expansion_id
+      FROM public.cards
+      WHERE collector_key = $1
+      LIMIT 3
+    `,
+    [collectorKey]
+  )
+
+  return rows
+}
+
+async function findCardsByCollectorKeyAndName(client, collectorKey, namePrefix) {
+  const { rows } = await client.query(
+    `
+      SELECT id, name, expansion_id
+      FROM public.cards
+      WHERE collector_key = $1
+        AND name ILIKE $2
+      LIMIT 3
+    `,
+    [collectorKey, namePrefix]
+  )
+
+  return rows
+}
+
+function buildNamePrefix(title) {
+  const cleaned = String(title || '')
+  const withoutCollectorKey = cleaned
+    .replace(/\b([A-Za-z]{1,3})?\s*\d{1,3}\s*\/\s*\d{1,3}\b/gi, ' ')
+    .replace(/(?:#|no\.?\s*)\d{1,4}\b/gi, ' ')
+  const normalized = withoutCollectorKey.replace(/[^a-zA-Z0-9\s]/g, ' ').toLowerCase()
+  const tokens = normalized.split(/\s+/).filter(Boolean)
+  const filtered = tokens.filter(
+    (token) =>
+      !/^(ex|v|vmax|vstar|gx)$/.test(token) &&
+      !['pokemon', 'pokémon', 'pokemonkort', 'pokémonkort', 'kort', 'card', 'cards'].includes(token)
+  )
+
+  if (!filtered.length) return null
+  return `${filtered[0]}%`
+}
+
+async function findUniqueCardByCollectorKey(client, collectorKey, title) {
+  let rows = await findCardsByCollectorKey(client, collectorKey)
+  if (rows.length === 1) return rows[0]
+  if (!rows.length) return null
+
+  const namePrefix = buildNamePrefix(title)
+  if (!namePrefix) return null
+
+  rows = await findCardsByCollectorKeyAndName(client, collectorKey, namePrefix)
+  if (rows.length === 1) return rows[0]
+  return null
+}
+
 function incrementSkip(skipReasons, reason) {
   skipReasons[reason] = (skipReasons[reason] || 0) + 1
 }
@@ -250,30 +309,36 @@ async function linkAuctions({ client, limit } = {}) {
       continue
     }
 
+    let card = null
+    let expansion = null
+
     if (!parsed.setHint) {
-      summary.skipped += 1
-      incrementSkip(summary.skipReasons, 'missing_set_hint')
-      continue
-    }
+      card = await findUniqueCardByCollectorKey(client, parsed.collectorKey.value, row.title ?? '')
+      if (!card) {
+        summary.skipped += 1
+        incrementSkip(summary.skipReasons, 'missing_set_hint')
+        continue
+      }
+    } else {
+      expansion = await findExpansion(client, parsed.setHint)
+      if (!expansion) {
+        summary.skipped += 1
+        incrementSkip(summary.skipReasons, 'expansion_not_unique')
+        continue
+      }
 
-    const expansion = await findExpansion(client, parsed.setHint)
-    if (!expansion) {
-      summary.skipped += 1
-      incrementSkip(summary.skipReasons, 'expansion_not_unique')
-      continue
-    }
+      if (!isSetTotalMatch(parsed.collectorKey, expansion)) {
+        summary.skipped += 1
+        incrementSkip(summary.skipReasons, 'set_total_mismatch')
+        continue
+      }
 
-    if (!isSetTotalMatch(parsed.collectorKey, expansion)) {
-      summary.skipped += 1
-      incrementSkip(summary.skipReasons, 'set_total_mismatch')
-      continue
-    }
-
-    const card = await findCard(client, expansion.id, parsed.collectorKey.value)
-    if (!card) {
-      summary.skipped += 1
-      incrementSkip(summary.skipReasons, 'card_not_unique')
-      continue
+      card = await findCard(client, expansion.id, parsed.collectorKey.value)
+      if (!card) {
+        summary.skipped += 1
+        incrementSkip(summary.skipReasons, 'card_not_unique')
+        continue
+      }
     }
 
     const linkKeyValue = row.auction_key
@@ -329,7 +394,7 @@ async function linkAuctions({ client, limit } = {}) {
         title: row.title ?? null,
         cardId: card.id,
         cardName: card.name ?? null,
-        setName: expansion.set_name ?? null
+        setName: expansion?.set_name ?? null
       })
     }
   }
