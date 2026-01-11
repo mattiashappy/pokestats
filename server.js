@@ -1135,7 +1135,7 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
     FROM public.cards c
     LEFT JOIN public.expansions e ON e.id = c.expansion_id
     ${canJoinAuctions ? 'LEFT JOIN public.tradera_auction_card_links l ON l.card_id = c.id' : ''}
-    ${canJoinAuctions ? 'LEFT JOIN public.tradera_auctions a ON a.item_id = l.item_id' : ''}
+    ${canJoinAuctions ? 'LEFT JOIN public.tradera_auctions a ON a.item_id = l.auction_id' : ''}
     ${whereClause}
     GROUP BY c.id, e.id
     ORDER BY COALESCE(c.number, 999999), c.collector_number_raw
