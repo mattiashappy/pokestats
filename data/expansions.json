@@ -1237,13 +1237,13 @@
   },
   {
     "set_code": "POKEMON_GO",
-    "name": "Pok\u00e9mon GO",
+    "name": "Pokémon GO",
     "era": "Sword & Shield",
     "language": "EN",
     "set_total": 78,
     "release_date": "2022-07-01",
     "image_url": "/sets/Pokemon_Go_Logo.png",
-    "cards_file": "Pok\u00e9mongo.json",
+    "cards_file": "Pokémongo.json",
     "set_number": 78,
     "cards_in_set": 88
   },
@@ -1321,7 +1321,7 @@
   },
   {
     "set_code": "SV_151",
-    "name": "Scarlet & Violet\u2014151",
+    "name": "Scarlet & Violet—151",
     "era": "Scarlet & Violet",
     "language": "EN",
     "set_total": 165,
@@ -1413,7 +1413,7 @@
     "name": "Surging Sparks",
     "era": "Scarlet & Violet",
     "language": "EN",
-    "set_total": 182,
+    "set_total": 191,
     "release_date": null,
     "image_url": null,
     "cards_file": "Surgingsparks.json",
@@ -1470,7 +1470,7 @@
   },
   {
     "set_code": "WHITE_FLARE",
-    "name": "Scarlet & Violet\u2014White Flare",
+    "name": "Scarlet & Violet—White Flare",
     "era": "Scarlet & Violet",
     "language": "EN",
     "set_total": 86,
@@ -1482,7 +1482,7 @@
   },
   {
     "set_code": "BLACK_BOLT",
-    "name": "Scarlet & Violet\u2014Black Bolt",
+    "name": "Scarlet & Violet—Black Bolt",
     "era": "Scarlet & Violet",
     "language": "EN",
     "set_total": 86,
