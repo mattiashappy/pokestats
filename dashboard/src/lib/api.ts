@@ -204,6 +204,13 @@ export type UnlinkedAuction = {
   detectedExpansionCode: string | null
 }
 
+export type LinkingStats = {
+  total: number
+  linked: number
+  unlinked: number
+  lastLinkedAt: string | null
+}
+
 export async function searchCards(query: string, limit = 50): Promise<CardSearchResult[]> {
   const q = (query || '').trim()
   if (!q) return []
@@ -290,6 +297,12 @@ export async function fetchUnlinkedAuctions(limit = 500): Promise<UnlinkedAuctio
   const params = new URLSearchParams({ limit: String(safeLimit) })
   const response = await fetch(`/api/linking/unlinked?${params.toString()}`)
   if (!response.ok) throw new Error('Failed to load unlinked auctions')
+  return response.json()
+}
+
+export async function fetchLinkingStats(): Promise<LinkingStats> {
+  const response = await fetch('/api/linking/stats')
+  if (!response.ok) throw new Error('Failed to load linking stats')
   return response.json()
 }
 
