@@ -895,11 +895,15 @@ async function fetchUnlinkedAuctionSummaries(limit = 500) {
       SELECT
         a.item_id,
         a.title,
+        a.description,
         a.end_date,
         a.price,
         a.bid_count,
         a.item_url,
-        a.seller_alias
+        a.seller_alias,
+        a.pokemon_era,
+        a.pokemon_language,
+        a.item_condition
       FROM public.tradera_auctions a
       LEFT JOIN public.tradera_auction_card_links l ON l.auction_id = a.item_id
       WHERE l.auction_id IS NULL
@@ -909,7 +913,30 @@ async function fetchUnlinkedAuctionSummaries(limit = 500) {
     [safeLimit]
   )
 
-  return rows
+  const expansions = await fetchLinkingExpansions()
+
+  return rows.map((row) => {
+    const text = normalizeAuctionText(`${row.title ?? ''} ${row.description ?? ''}`)
+    const collectorNumber = extractCardNumber(text)
+    const expansion = matchExpansion(expansions, text)
+
+    return {
+      item_id: row.item_id,
+      title: row.title ?? null,
+      description: row.description ?? null,
+      end_date: row.end_date ?? null,
+      price: row.price ?? null,
+      bid_count: row.bid_count ?? null,
+      item_url: row.item_url ?? null,
+      seller_alias: row.seller_alias ?? null,
+      pokemon_era: row.pokemon_era ?? null,
+      pokemon_language: row.pokemon_language ?? null,
+      item_condition: row.item_condition ?? null,
+      detected_collector_number: collectorNumber ?? null,
+      detected_expansion_name: expansion?.name ?? null,
+      detected_expansion_code: expansion?.set_code ?? null
+    }
+  })
 }
 
 async function runDeterministicLinker({ limit = null } = {}) {
@@ -1386,11 +1413,18 @@ app.get('/api/linking/unlinked', async (req, res) => {
       auctions.map((row) => ({
         itemId: row.item_id,
         title: row.title ?? null,
+        description: row.description ?? null,
         endDate: row.end_date ?? null,
         price: row.price ?? null,
         bidCount: row.bid_count ?? null,
         itemUrl: row.item_url ?? null,
-        sellerAlias: row.seller_alias ?? null
+        sellerAlias: row.seller_alias ?? null,
+        pokemonEra: row.pokemon_era ?? null,
+        pokemonLanguage: row.pokemon_language ?? null,
+        itemCondition: row.item_condition ?? null,
+        detectedCollectorNumber: row.detected_collector_number ?? null,
+        detectedExpansionName: row.detected_expansion_name ?? null,
+        detectedExpansionCode: row.detected_expansion_code ?? null
       }))
     )
   } catch (error) {

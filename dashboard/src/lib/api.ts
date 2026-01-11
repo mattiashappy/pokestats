@@ -134,11 +134,18 @@ export type AuctionCardLink = {
 export type UnlinkedAuction = {
   itemId: number
   title: string | null
+  description: string | null
   endDate: string | null
   price: number | null
   bidCount: number | null
   itemUrl: string | null
   sellerAlias: string | null
+  pokemonEra: string | null
+  pokemonLanguage: string | null
+  itemCondition: string | null
+  detectedCollectorNumber: string | null
+  detectedExpansionName: string | null
+  detectedExpansionCode: string | null
 }
 
 const fetchImportRuns = async (limit = 10): Promise<ImportRun[]> => {
