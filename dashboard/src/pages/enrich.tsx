@@ -139,12 +139,17 @@ export function EnrichPage(): JSX.Element {
     queryFn: () => searchCards(searchQuery),
     enabled: searchOpen && Boolean(searchQuery)
   })
+  const readyToLinkAuctions = useMemo(() => {
+    return unlinkedAuctions.filter((auction) => buildDiagnostics(auction).length === 0)
+  }, [unlinkedAuctions])
   const counts = useMemo(() => {
-    const total = links.length
-    const withAuction = links.filter((link) => link.auctionTitle).length
-    const withCard = links.filter((link) => link.cardName).length
-    return { total, withAuction, withCard }
-  }, [links])
+    const linkedCards = links.filter((link) => link.cardId).length
+    return {
+      linkedCards,
+      unlinkedCards: unlinkedAuctions.length,
+      readyToLink: readyToLinkAuctions.length
+    }
+  }, [links, unlinkedAuctions, readyToLinkAuctions])
 
   useEffect(() => {
     if (searchOpen) return
@@ -410,34 +415,34 @@ export function EnrichPage(): JSX.Element {
             <CardDescription>Snapshots of the enrichment table linking auctions to cards.</CardDescription>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <Badge variant="outline">{counts.total.toLocaleString('sv-SE')} total</Badge>
+            <Badge variant="outline">{counts.linkedCards.toLocaleString('sv-SE')} linked cards</Badge>
           </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Linked auctions</p>
-              <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                {counts.withAuction.toLocaleString('sv-SE')}
-              </p>
-              <p className="text-xs text-slate-600 dark:text-slate-400">Rows with auction metadata.</p>
-            </div>
-
-            <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
               <p className="text-xs uppercase tracking-wide text-slate-500">Linked cards</p>
               <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                {counts.withCard.toLocaleString('sv-SE')}
+                {counts.linkedCards.toLocaleString('sv-SE')}
               </p>
               <p className="text-xs text-slate-600 dark:text-slate-400">Rows with card metadata.</p>
             </div>
 
             <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Status</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500">Not Linked Cards</p>
               <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                {linksLoading ? 'Loading…' : linksError ? 'Error' : 'Ready'}
+                {counts.unlinkedCards.toLocaleString('sv-SE')}
               </p>
-              <p className="text-xs text-slate-600 dark:text-slate-400">Current fetch status.</p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">Auctions that are not linked.</p>
+            </div>
+
+            <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Ready to Link</p>
+              <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
+                {counts.readyToLink.toLocaleString('sv-SE')}
+              </p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">Auctions that are ready to link.</p>
             </div>
           </div>
 
