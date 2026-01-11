@@ -676,6 +676,45 @@ function normalizeTraderaAuctionRow(row) {
   }
 }
 
+function normalizeAuctionText(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9/]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function extractCardNumber(text) {
+  const match = text.match(/(\d{1,3})\s*\/\s*(\d{1,3})/)
+  if (!match) return null
+  return `${match[1]}/${match[2]}`
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function matchExpansion(expansions, text) {
+  let bestMatch = null
+  let bestScore = 0
+
+  for (const expansion of expansions) {
+    const candidates = [expansion.normalizedName, expansion.normalizedCode].filter(Boolean)
+    for (const candidate of candidates) {
+      const regex = new RegExp(`\\b${escapeRegex(candidate)}\\b`)
+      if (regex.test(text)) {
+        const score = candidate.length
+        if (score > bestScore) {
+          bestScore = score
+          bestMatch = expansion
+        }
+      }
+    }
+  }
+
+  return bestMatch
+}
+
 async function fetchAuctionsFromDatabase(filters = {}) {
   if (!pool) return []
   const ok = await ensureTraderaAuctionsTableAvailable()
@@ -778,6 +817,115 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
   `
   const result = await pool.query(query, [cardId, limit])
   return result.rows.map(normalizeTraderaAuctionRow)
+}
+
+async function fetchLinkingExpansions() {
+  if (!pool) return []
+  const ok = await ensureExpansionsTableAvailable()
+  if (!ok) return []
+
+  const { rows } = await pool.query(`
+    SELECT id, name, set_code
+    FROM public.expansions
+    WHERE name IS NOT NULL OR set_code IS NOT NULL
+  `)
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    set_code: row.set_code,
+    normalizedName: row.name ? normalizeAuctionText(row.name) : null,
+    normalizedCode: row.set_code ? normalizeAuctionText(row.set_code) : null
+  }))
+}
+
+async function fetchUnlinkedAuctions(limit = null) {
+  if (!pool) return []
+  const [linksReady, auctionsReady] = await Promise.all([
+    ensureTraderaAuctionLinksTableAvailable(),
+    ensureTraderaAuctionsTableAvailable()
+  ])
+  if (!linksReady || !auctionsReady) return []
+
+  let query = `
+    SELECT a.item_id, a.title, a.description
+    FROM public.tradera_auctions a
+    LEFT JOIN public.tradera_auction_card_links l ON l.item_id = a.item_id
+    WHERE l.item_id IS NULL
+    ORDER BY a.end_date DESC
+  `
+  const params = []
+
+  if (Number.isFinite(limit)) {
+    params.push(limit)
+    query += ` LIMIT $${params.length}`
+  }
+
+  const { rows } = await pool.query(query, params)
+  return rows
+}
+
+async function runDeterministicLinker({ limit = null } = {}) {
+  if (!pool) return { total: 0, linked: 0, skipped: 0 }
+
+  const expansions = await fetchLinkingExpansions()
+  const auctions = await fetchUnlinkedAuctions(limit)
+  let linked = 0
+  let skipped = 0
+
+  for (const auction of auctions) {
+    const text = normalizeAuctionText(`${auction.title || ''} ${auction.description || ''}`)
+    const cardNumber = extractCardNumber(text)
+    if (!cardNumber) {
+      skipped += 1
+      continue
+    }
+
+    const expansion = matchExpansion(expansions, text)
+    if (!expansion) {
+      skipped += 1
+      continue
+    }
+
+    const { rows } = await pool.query(
+      `
+        SELECT id, name
+        FROM public.cards
+        WHERE expansion_id = $1
+          AND card_number = $2
+          AND position(lower(name) in $3) > 0
+      `,
+      [expansion.id, cardNumber, text]
+    )
+
+    if (rows.length !== 1) {
+      skipped += 1
+      continue
+    }
+
+    const cardId = rows[0].id
+    await pool.query(
+      `
+        INSERT INTO public.tradera_auction_card_links (item_id, card_id, method, status, linked_at)
+        VALUES ($1, $2, 'deterministic', 'linked', NOW())
+        ON CONFLICT (item_id)
+        DO UPDATE SET
+          card_id = EXCLUDED.card_id,
+          method = 'deterministic',
+          status = 'linked',
+          linked_at = NOW()
+      `,
+      [auction.item_id, cardId]
+    )
+
+    linked += 1
+  }
+
+  return {
+    total: auctions.length,
+    linked,
+    skipped
+  }
 }
 
 function extractImporterError(stdout, stderr) {
@@ -1059,6 +1207,64 @@ app.get('/api/sales/diagnostic', async (_req, res) => {
     return res.json({ source: 'database', count: auctions.length, auctions })
   } catch (error) {
     res.status(500).json({ source: 'database', error: error?.message || String(error) })
+  }
+})
+
+// --------------------
+// Linking
+// --------------------
+app.get('/api/linking/stats', async (_req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  try {
+    const [linksReady, auctionsReady] = await Promise.all([
+      ensureTraderaAuctionLinksTableAvailable(),
+      ensureTraderaAuctionsTableAvailable()
+    ])
+    if (!linksReady || !auctionsReady) {
+      return res.status(500).json({ error: 'Required tables unavailable' })
+    }
+
+    const {
+      rows: [counts]
+    } = await pool.query(`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(l.item_id)::int AS linked,
+        (COUNT(*) - COUNT(l.item_id))::int AS unlinked
+      FROM public.tradera_auctions a
+      LEFT JOIN public.tradera_auction_card_links l ON l.item_id = a.item_id
+    `)
+
+    const {
+      rows: [latest]
+    } = await pool.query(`
+      SELECT MAX(linked_at) AS last_linked_at
+      FROM public.tradera_auction_card_links
+    `)
+
+    res.json({
+      total: counts?.total ?? 0,
+      linked: counts?.linked ?? 0,
+      unlinked: counts?.unlinked ?? 0,
+      lastLinkedAt: latest?.last_linked_at ?? null
+    })
+  } catch (error) {
+    console.error('Failed to fetch linking stats', error)
+    res.status(500).json({ error: 'Failed to load linking stats' })
+  }
+})
+
+app.post('/api/linking/run', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  try {
+    const limit = Number.isFinite(Number(req.body?.limit)) ? Number(req.body.limit) : null
+    const result = await runDeterministicLinker({ limit })
+    res.json(result)
+  } catch (error) {
+    console.error('Failed to run deterministic linker', error)
+    res.status(500).json({ error: 'Failed to run linker' })
   }
 })
 
