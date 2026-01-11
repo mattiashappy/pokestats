@@ -27,6 +27,26 @@ const formatConfidence = (confidence: number | null): string => {
   return `${(confidence * 100).toFixed(1)}%`
 }
 
+const formatDetectedExpansion = (auction: UnlinkedAuction): string => {
+  const parts = [auction.detectedExpansionName, auction.detectedExpansionCode].filter(Boolean)
+  if (parts.length) return parts.join(' • ')
+  return '—'
+}
+
+const buildDiagnostics = (auction: UnlinkedAuction): string[] => {
+  const diagnostics: string[] = []
+
+  if (!auction.title) diagnostics.push('Missing title')
+  if (!auction.description) diagnostics.push('Missing description')
+  if (!auction.detectedCollectorNumber) diagnostics.push('No card #')
+  if (!auction.detectedExpansionName && !auction.detectedExpansionCode) diagnostics.push('No set match')
+  if (!auction.pokemonEra) diagnostics.push('No era')
+  if (!auction.pokemonLanguage) diagnostics.push('No language')
+  if (!auction.itemCondition) diagnostics.push('No condition')
+
+  return diagnostics
+}
+
 export function EnrichPage(): JSX.Element {
   const {
     data: linkData,
@@ -197,14 +217,25 @@ export function EnrichPage(): JSX.Element {
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-left">Auction</TableHead>
-                  <TableHead className="text-left">Card link</TableHead>
-                  <TableHead className="text-left">Notes</TableHead>
+                  <TableHead className="text-left">Seller</TableHead>
+                  <TableHead className="text-left">Price</TableHead>
+                  <TableHead className="text-left">Bids</TableHead>
+                  <TableHead className="text-left">Ended</TableHead>
+                  <TableHead className="text-left">Era</TableHead>
+                  <TableHead className="text-left">Language</TableHead>
+                  <TableHead className="text-left">Condition</TableHead>
+                  <TableHead className="text-left">Detected card #</TableHead>
+                  <TableHead className="text-left">Detected set</TableHead>
+                  <TableHead className="text-left">Diagnostics</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {unlinkedAuctions.length ? (
-                  unlinkedAuctions.map((auction) => (
-                    <TableRow key={auction.itemId}>
+                  unlinkedAuctions.map((auction) => {
+                    const diagnostics = buildDiagnostics(auction)
+
+                    return (
+                      <TableRow key={auction.itemId}>
                       <TableCell className="text-left">
                         <div className="space-y-1">
                           {auction.itemUrl ? (
@@ -236,11 +267,40 @@ export function EnrichPage(): JSX.Element {
                       <TableCell className="text-left text-slate-600 dark:text-slate-300">
                         {auction.endDate ? format(new Date(auction.endDate), 'PPpp') : '—'}
                       </TableCell>
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {auction.pokemonEra ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {auction.pokemonLanguage ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {auction.itemCondition ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {auction.detectedCollectorNumber ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {formatDetectedExpansion(auction)}
+                      </TableCell>
+                      <TableCell className="text-left">
+                        {diagnostics.length ? (
+                          <div className="flex flex-wrap gap-2">
+                            {diagnostics.map((note) => (
+                              <Badge key={note} variant="secondary" className="whitespace-nowrap">
+                                {note}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <Badge variant="outline">Ready to link</Badge>
+                        )}
+                      </TableCell>
                     </TableRow>
-                  ))
+                    )
+                  })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-sm text-slate-500">
+                    <TableCell colSpan={11} className="text-center text-sm text-slate-500">
                       {unlinkedLoading
                         ? 'Loading unlinked auctions…'
                         : unlinkedError
