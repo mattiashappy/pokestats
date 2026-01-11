@@ -113,6 +113,13 @@ export type ImportRunResult = {
   error?: string | null
 }
 
+export type ParserRunResult = {
+  total: number
+  withCollectorKey: number
+  withSetHint: number
+  bundleCount: number
+}
+
 export type AuctionCardLink = {
   itemId: number
   cardId: number
@@ -165,6 +172,17 @@ const fetchImportRun = async (id: number): Promise<ImportRun> => {
 const runImporter = async (): Promise<ImportRunResult> => {
   const res = await fetch('/api/import/run', { method: 'POST' })
   if (!res.ok) throw new Error('Failed to run importer')
+  return res.json()
+}
+
+export async function runAuctionTitleParser(limit?: number | null): Promise<ParserRunResult> {
+  const body = Number.isFinite(Number(limit)) ? { limit: Number(limit) } : {}
+  const res = await fetch('/api/linking/parse', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  if (!res.ok) throw new Error('Failed to run parser')
   return res.json()
 }
 

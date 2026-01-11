@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Link2 } from 'lucide-react'
@@ -7,7 +7,7 @@ import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
-import { fetchAuctionCardLinks, fetchUnlinkedAuctions } from '../lib/api'
+import { fetchAuctionCardLinks, fetchUnlinkedAuctions, runAuctionTitleParser } from '../lib/api'
 import type { AuctionCardLink, UnlinkedAuction } from '../lib/api'
 
 const formatCardLabel = (link: AuctionCardLink): string => {
@@ -51,7 +51,8 @@ export function EnrichPage(): JSX.Element {
   const {
     data: linkData,
     isLoading: linksLoading,
-    isError: linksError
+    isError: linksError,
+    refetch: refetchLinks
   } = useQuery<AuctionCardLink[]>({
     queryKey: ['linking-links'],
     queryFn: () => fetchAuctionCardLinks(500)
@@ -60,11 +61,31 @@ export function EnrichPage(): JSX.Element {
   const {
     data: unlinkedData,
     isLoading: unlinkedLoading,
-    isError: unlinkedError
+    isError: unlinkedError,
+    refetch: refetchUnlinked
   } = useQuery<UnlinkedAuction[]>({
     queryKey: ['linking-unlinked'],
     queryFn: () => fetchUnlinkedAuctions(500)
   })
+
+  const [parserPending, setParserPending] = useState(false)
+  const [parserResult, setParserResult] = useState<string | null>(null)
+
+  const handleRunParser = async (): Promise<void> => {
+    setParserResult(null)
+    setParserPending(true)
+    try {
+      const result = await runAuctionTitleParser()
+      setParserResult(
+        `Parsed ${result.total.toLocaleString('sv-SE')} auctions • ${result.withCollectorKey.toLocaleString('sv-SE')} with card # • ${result.withSetHint.toLocaleString('sv-SE')} with set hints • ${result.bundleCount.toLocaleString('sv-SE')} flagged as bundles.`
+      )
+      await Promise.all([refetchLinks(), refetchUnlinked()])
+    } catch (e) {
+      setParserResult(`Parser failed: ${String(e)}`)
+    } finally {
+      setParserPending(false)
+    }
+  }
 
   const links = linkData ?? []
   const unlinkedAuctions = unlinkedData ?? []
@@ -85,11 +106,30 @@ export function EnrichPage(): JSX.Element {
             Review how Tradera auctions are linked to cards and track enrichment coverage.
           </p>
         </div>
-        <Badge variant="secondary" className="inline-flex items-center gap-2">
-          <Link2 className="h-4 w-4" />
-          Auction links
-        </Badge>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            onClick={handleRunParser}
+            variant="secondary"
+            size="sm"
+            className="gap-2"
+            disabled={parserPending}
+          >
+            <Link2 className="h-4 w-4" />
+            {parserPending ? 'Running…' : 'Run parser'}
+          </Button>
+          <Badge variant="secondary" className="inline-flex items-center gap-2">
+            <Link2 className="h-4 w-4" />
+            Auction links
+          </Badge>
+        </div>
       </div>
+
+      {parserResult ? (
+        <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Latest parser run</p>
+          <p className="mt-1 text-slate-900 dark:text-slate-50">{parserResult}</p>
+        </div>
+      ) : null}
 
       <Card>
         <CardHeader className="flex flex-col gap-2 space-y-0 sm:flex-row sm:items-start sm:justify-between">
