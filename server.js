@@ -1242,11 +1242,7 @@ app.get('/api/linking/links', async (req, res) => {
           a.bid_count AS auction_bid_count,
           a.seller_alias AS auction_seller_alias,
           c.name AS card_name,
-          c.collector_number_raw,
-          c.collector_key,
-          c.number,
-          c.printed_total,
-          c.is_secret,
+          c.card_number,
           COALESCE(e.name, c.set_name) AS set_name,
           COALESCE(e.set_code, c.set_code) AS set_code
         FROM public.tradera_auction_card_links l
@@ -1273,11 +1269,7 @@ app.get('/api/linking/links', async (req, res) => {
         auctionBidCount: row.auction_bid_count ?? null,
         auctionSellerAlias: row.auction_seller_alias ?? null,
         cardName: row.card_name ?? null,
-        collectorNumberRaw: row.collector_number_raw ?? null,
-        collectorKey: row.collector_key ?? null,
-        number: row.number ?? null,
-        printedTotal: row.printed_total ?? null,
-        isSecret: row.is_secret ?? null,
+        cardNumber: row.card_number ?? null,
         setName: row.set_name ?? null,
         setCode: row.set_code ?? null
       }))

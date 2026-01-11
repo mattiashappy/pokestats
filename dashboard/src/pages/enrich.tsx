@@ -9,17 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { fetchAuctionCardLinks } from '../lib/api'
 import type { AuctionCardLink } from '../lib/api'
 
-const formatCollectorLabel = (link: AuctionCardLink): string => {
-  if (link.collectorNumberRaw) return link.collectorNumberRaw
-  if (link.collectorKey) return link.collectorKey
-  if (link.number != null && link.printedTotal != null) {
-    return `${link.number}/${link.printedTotal}`
-  }
-  return '—'
-}
-
 const formatCardLabel = (link: AuctionCardLink): string => {
-  const parts = [link.cardName, formatCollectorLabel(link) !== '—' ? formatCollectorLabel(link) : null].filter(Boolean)
+  const parts = [link.cardName, link.cardNumber].filter(Boolean)
   if (parts.length) return parts.join(' • ')
   return link.cardId ? `Card #${link.cardId}` : '—'
 }
@@ -107,7 +98,6 @@ export function EnrichPage(): JSX.Element {
                 <TableRow>
                   <TableHead className="text-left">Auction</TableHead>
                   <TableHead className="text-left">Card</TableHead>
-                  <TableHead className="text-left">Collector</TableHead>
                   <TableHead className="text-left">Set</TableHead>
                   <TableHead className="text-left">Method</TableHead>
                   <TableHead className="text-left">Status</TableHead>
@@ -144,16 +134,6 @@ export function EnrichPage(): JSX.Element {
                         </div>
                       </TableCell>
                       <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        <div className="space-y-1">
-                          <p>{formatCollectorLabel(link)}</p>
-                          {link.isSecret ? (
-                            <Badge variant="secondary" className="text-[10px] uppercase">
-                              Secret
-                            </Badge>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
                         {formatSetLabel(link)}
                       </TableCell>
                       <TableCell className="text-left text-slate-600 dark:text-slate-300">
@@ -169,7 +149,7 @@ export function EnrichPage(): JSX.Element {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-sm text-slate-500">
+                    <TableCell colSpan={6} className="text-center text-sm text-slate-500">
                       {isLoading ? 'Loading auction links…' : 'No auction links found.'}
                     </TableCell>
                   </TableRow>

@@ -126,11 +126,7 @@ export type AuctionCardLink = {
   auctionBidCount: number | null
   auctionSellerAlias: string | null
   cardName: string | null
-  collectorNumberRaw: string | null
-  collectorKey: string | null
-  number: number | null
-  printedTotal: number | null
-  isSecret: boolean | null
+  cardNumber: string | null
   setName: string | null
   setCode: string | null
 }
