@@ -700,12 +700,16 @@ function normalizeAuctionText(text) {
 }
 
 function extractCardNumber(text) {
-  const match = text.match(/(\d+)\s*\/\s*(\d+)/)
-  if (!match) return null
-  const number = Number.parseInt(match[1], 10)
-  const total = Number.parseInt(match[2], 10)
-  if (!Number.isFinite(number) || !Number.isFinite(total)) return null
-  return `${number}/${total}`
+  const match = text.match(/\b([A-Za-z]{1,3})?\s*(\d{1,4})\s*\/\s*(\d{1,4})\b/)
+  if (match) {
+    const prefix = match[1] ? String(match[1]).toUpperCase().trim() : ''
+    return `${prefix}${match[2]}/${match[3]}`
+  }
+
+  const hashMatch = text.match(/(?:#|no\.?\s*)(\d{1,4})\b/i)
+  if (hashMatch) return hashMatch[1]
+
+  return null
 }
 
 function escapeRegex(value) {

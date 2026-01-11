@@ -15,7 +15,7 @@ async function parseAuctions({ client, limit } = {}) {
   const safeLimit = clampLimit(limit)
   const { rows } = await client.query(
     `
-      SELECT item_id, title
+      SELECT item_id, title, description
       FROM public.tradera_auctions
       ORDER BY updated_at DESC NULLS LAST, item_id DESC
       LIMIT $1
@@ -36,7 +36,7 @@ async function parseAuctions({ client, limit } = {}) {
   }
 
   for (const row of rows) {
-    const parsed = parseAuctionTitle(row.title)
+    const parsed = parseAuctionTitle(`${row.title ?? ''} ${row.description ?? ''}`)
 
     if (parsed.collectorKey) {
       summary.withCollectorKey += 1
@@ -72,7 +72,7 @@ async function findExpansion(client, setHint) {
     `
       SELECT id, set_name
       FROM public.expansions
-      WHERE set_name ILIKE $1
+      WHERE set_name ILIKE $1 OR set_code ILIKE $1
       LIMIT 2
     `,
     [`%${setHint}%`]
@@ -133,7 +133,7 @@ async function linkAuctions({ client, limit } = {}) {
   const safeLimit = clampLimit(limit)
   const { rows } = await client.query(
     `
-      SELECT item_id, title
+      SELECT item_id, title, description
       FROM public.tradera_auctions
       ORDER BY updated_at DESC NULLS LAST, item_id DESC
       LIMIT $1
@@ -152,7 +152,7 @@ async function linkAuctions({ client, limit } = {}) {
   const linkColumns = await resolveLinkColumns(client)
 
   for (const row of rows) {
-    const parsed = parseAuctionTitle(row.title)
+    const parsed = parseAuctionTitle(`${row.title ?? ''} ${row.description ?? ''}`)
 
     if (parsed.isBundle) {
       summary.skipped += 1
