@@ -1,52 +1,13 @@
 const { Pool } = require('pg')
-
 const { loadCatalog } = require('../server/catalog/catalogLoader')
 
 const DEFAULT_BATCH_SIZE = 500
 
-function parseCollectorNumber(rawValue) {
+function normalizeCardNumber(rawValue) {
   const normalized = String(rawValue || '').trim()
-  if (!normalized) {
-    return {
-      collectorNumberRaw: null,
-      collectorKey: null,
-      number: null,
-      printedTotal: null,
-      isSecret: null
-    }
-  }
-
-  const match = normalized.match(/^(\d+)\s*\/\s*(\d+)$/)
-  if (!match) {
-    return {
-      collectorNumberRaw: normalized,
-      collectorKey: null,
-      number: null,
-      printedTotal: null,
-      isSecret: null
-    }
-  }
-
-  const normalizedCollectorKey = normalized.replace(/\s+/g, '')
-  const number = Number.parseInt(match[1], 10)
-  const printedTotal = Number.parseInt(match[2], 10)
-  if (!Number.isFinite(number) || !Number.isFinite(printedTotal)) {
-    return {
-      collectorNumberRaw: normalized,
-      collectorKey: null,
-      number: null,
-      printedTotal: null,
-      isSecret: null
-    }
-  }
-
-  return {
-    collectorNumberRaw: normalized,
-    collectorKey: normalizedCollectorKey,
-    number,
-    printedTotal,
-    isSecret: number > printedTotal
-  }
+  if (!normalized) return null
+  // Remove spaces around slashes etc. "10 / 16" -> "10/16"
+  return normalized.replace(/\s+/g, '')
 }
 
 function chunkArray(items, size) {
@@ -62,75 +23,97 @@ async function upsertExpansions(client, expansions) {
   const expansionIdByCode = {}
 
   for (const expansion of expansions) {
+    const setCode = expansion.set_code
+    if (!setCode) continue
+
+    // Map whatever your catalog loader provides to your DB schema
+    const name = expansion.name ?? expansion.set_name ?? null
+    const era = expansion.era ?? null
+    const language = expansion.language ?? 'EN'
+    const setTotal =
+      expansion.set_total ??
+      expansion.set_number ??
+      expansion.cards_in_set ??
+      null
+
+    const releaseDate = expansion.release_date ?? null
+    const imageUrl = expansion.image_url ?? null
+
     const result = await client.query(
       `
-        INSERT INTO public.expansions (set_code, set_name, era, base_total, set_total)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO public.expansions (set_code, name, era, language, set_total, release_date, image_url)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         ON CONFLICT (set_code) DO UPDATE SET
-          set_name = EXCLUDED.set_name,
-          era = EXCLUDED.era,
-          base_total = EXCLUDED.base_total,
-          set_total = EXCLUDED.set_total
+          name = EXCLUDED.name,
+          era = COALESCE(EXCLUDED.era, public.expansions.era),
+          language = COALESCE(EXCLUDED.language, public.expansions.language),
+          set_total = COALESCE(EXCLUDED.set_total, public.expansions.set_total),
+          release_date = COALESCE(EXCLUDED.release_date, public.expansions.release_date),
+          image_url = COALESCE(EXCLUDED.image_url, public.expansions.image_url)
         RETURNING id
       `,
-      [
-        expansion.set_code,
-        expansion.name ?? null,
-        expansion.era ?? null,
-        expansion.set_number ?? expansion.cards_in_set ?? null,
-        expansion.set_total ?? null
-      ]
+      [setCode, name, era, language, setTotal, releaseDate, imageUrl]
     )
 
-    expansionIdByCode[expansion.set_code] = result.rows[0].id
+    expansionIdByCode[setCode] = result.rows[0].id
   }
 
   return expansionIdByCode
 }
 
 function buildCardRows(expansion, cardsEntry, expansionId) {
-  const setTotal = cardsEntry.set_total ?? expansion.set_total ?? expansion.set_number ?? null
-  return cardsEntry.cards.map((card) => {
-    const parsed = parseCollectorNumber(card.card_number)
+  const setCode = expansion.set_code
+  const setName =
+    cardsEntry.set_name ??
+    expansion.name ??
+    expansion.set_name ??
+    null
 
+  const setTotal =
+    cardsEntry.set_total ??
+    expansion.set_total ??
+    expansion.set_number ??
+    expansion.cards_in_set ??
+    null
+
+  return (cardsEntry.cards || []).map((card) => {
+    const cardNumber = normalizeCardNumber(card.card_number)
     return {
       expansion_id: expansionId,
       name: card.name ?? null,
-      collector_number_raw: parsed.collectorNumberRaw,
-      collector_key: parsed.collectorKey,
-      number: parsed.number,
-      printed_total: parsed.printedTotal,
-      is_secret: parsed.isSecret,
-      image_url: card.image_url ?? null,
-      source: 'json',
-      set_code: expansion.set_code,
+      era: card.era ?? expansion.era ?? null,
+      set_name: setName,
+      card_number: cardNumber,
+      set_code: setCode,
       set_total: setTotal,
-      product_details: card.product_details ?? null,
-      card_number: card.card_number ? String(card.card_number) : null
+      source: 'json',
+      image_url: card.image_url ?? null,
+      product_details: card.product_details ?? null
     }
   })
 }
 
 async function insertCards(client, cardRows, batchSize) {
-  if (!cardRows.length) return
+  // Only insert rows that have the minimum keys to satisfy NOT NULL + uniqueness
+  const filtered = cardRows.filter((r) => r.set_code && r.card_number && r.set_name && r.name)
+  if (!filtered.length) return 0
 
   const columns = [
     'expansion_id',
     'name',
-    'collector_number_raw',
-    'collector_key',
-    'number',
-    'printed_total',
-    'is_secret',
-    'image_url',
-    'source',
+    'era',
+    'set_name',
+    'card_number',
     'set_code',
     'set_total',
-    'product_details',
-    'card_number'
+    'source',
+    'image_url',
+    'product_details'
   ]
 
-  const chunks = chunkArray(cardRows, batchSize)
+  const chunks = chunkArray(filtered, batchSize)
+  let insertedOrUpdated = 0
+
   for (const chunk of chunks) {
     const values = []
     const params = []
@@ -139,30 +122,32 @@ async function insertCards(client, cardRows, batchSize) {
     for (const row of chunk) {
       values.push(`(${columns.map(() => `$${index++}`).join(', ')})`)
       for (const column of columns) {
-        params.push(row[column])
+        params.push(row[column] ?? null)
       }
     }
 
+    // Your table has UNIQUE (set_code, card_number)
     await client.query(
       `
         INSERT INTO public.cards (${columns.join(', ')})
         VALUES ${values.join(', ')}
-        ON CONFLICT (expansion_id, card_number) DO UPDATE SET
+        ON CONFLICT (set_code, card_number) DO UPDATE SET
           name = EXCLUDED.name,
-          collector_number_raw = EXCLUDED.collector_number_raw,
-          collector_key = EXCLUDED.collector_key,
-          number = EXCLUDED.number,
-          printed_total = EXCLUDED.printed_total,
-          is_secret = EXCLUDED.is_secret,
-          image_url = EXCLUDED.image_url,
+          era = COALESCE(EXCLUDED.era, public.cards.era),
+          set_name = EXCLUDED.set_name,
+          set_total = COALESCE(EXCLUDED.set_total, public.cards.set_total),
           source = EXCLUDED.source,
-          set_code = EXCLUDED.set_code,
-          set_total = EXCLUDED.set_total,
-          product_details = EXCLUDED.product_details
+          expansion_id = COALESCE(EXCLUDED.expansion_id, public.cards.expansion_id),
+          image_url = COALESCE(EXCLUDED.image_url, public.cards.image_url),
+          product_details = COALESCE(EXCLUDED.product_details, public.cards.product_details)
       `,
       params
     )
+
+    insertedOrUpdated += chunk.length
   }
+
+  return insertedOrUpdated
 }
 
 async function run() {
@@ -172,10 +157,13 @@ async function run() {
   }
 
   const batchSize = Number.parseInt(process.env.CARDS_IMPORT_BATCH_SIZE || '', 10) || DEFAULT_BATCH_SIZE
+
+  // ✅ Heroku-friendly SSL. Works on Heroku Postgres.
   const pool = new Pool({
     connectionString: databaseUrl,
     ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false }
   })
+
   const client = await pool.connect()
 
   try {
@@ -185,22 +173,26 @@ async function run() {
     const expansionIdByCode = await upsertExpansions(client, expansions)
 
     let totalCards = 0
+
     for (const expansion of expansions) {
-      const cardsEntry = cardsBySetCode[expansion.set_code]
+      const setCode = expansion.set_code
+      if (!setCode) continue
+
+      const cardsEntry = cardsBySetCode[setCode]
       if (!cardsEntry?.cards?.length) continue
 
-      const expansionId = expansionIdByCode[expansion.set_code]
+      const expansionId = expansionIdByCode[setCode]
       if (!expansionId) {
-        throw new Error(`Missing expansion_id for set_code ${expansion.set_code}`)
+        throw new Error(`Missing expansion_id for set_code ${setCode}`)
       }
 
       const cardRows = buildCardRows(expansion, cardsEntry, expansionId)
-      totalCards += cardRows.length
-      await insertCards(client, cardRows, batchSize)
+      const processed = await insertCards(client, cardRows, batchSize)
+      totalCards += processed
     }
 
     await client.query('COMMIT')
-    console.info(`Imported ${totalCards} cards from JSON files.`)
+    console.info(`Imported/updated ${totalCards} cards from JSON files.`)
   } catch (error) {
     await client.query('ROLLBACK')
     throw error
