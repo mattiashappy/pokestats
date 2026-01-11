@@ -3,8 +3,8 @@ function normalize(str) {
 }
 
 function normalizeCollectorNumber(prefix, number, total) {
-  const cleanedNumber = String(number || '').trim()
-  const cleanedTotal = String(total || '').trim()
+  const cleanedNumber = normalizeCollectorPart(number)
+  const cleanedTotal = normalizeCollectorPart(total)
   if (!cleanedNumber) return null
   if (cleanedTotal) {
     const cleanedPrefix = prefix ? String(prefix).toUpperCase().trim() : ''
@@ -13,13 +13,19 @@ function normalizeCollectorNumber(prefix, number, total) {
   return cleanedNumber
 }
 
+function normalizeCollectorPart(value) {
+  const cleaned = String(value || '').trim()
+  if (!cleaned) return ''
+  return cleaned.replace(/^0+(?=\d)/, '')
+}
+
 function parseCollectorKey(title) {
   const cleaned = normalize(title)
   const tgMatch = cleaned.match(/\b(TG|GG)\s*(\d{1,2})\s*\/\s*\1\s*(\d{1,2})\b/i)
   if (tgMatch) {
     const prefix = tgMatch[1].toUpperCase()
-    const number = tgMatch[2]
-    const total = tgMatch[3]
+    const number = normalizeCollectorPart(tgMatch[2])
+    const total = normalizeCollectorPart(tgMatch[3])
     return {
       value: `${prefix}${number}/${prefix}${total}`,
       prefix,
@@ -32,11 +38,13 @@ function parseCollectorKey(title) {
 
   const ratioMatch = cleaned.match(/\b([A-Za-z]{1,3})?\s*(\d{1,3})\s*\/\s*(\d{1,3})\b/)
   if (ratioMatch) {
+    const normalizedNumber = normalizeCollectorPart(ratioMatch[2])
+    const normalizedTotal = normalizeCollectorPart(ratioMatch[3])
     return {
-      value: normalizeCollectorNumber(ratioMatch[1], ratioMatch[2], ratioMatch[3]),
+      value: normalizeCollectorNumber(ratioMatch[1], normalizedNumber, normalizedTotal),
       prefix: ratioMatch[1] ? ratioMatch[1].toUpperCase().trim() : '',
-      number: ratioMatch[2],
-      total: ratioMatch[3],
+      number: normalizedNumber,
+      total: normalizedTotal,
       strength: 'strong',
       kind: 'ratio'
     }
@@ -45,9 +53,9 @@ function parseCollectorKey(title) {
   const hashMatch = cleaned.match(/(?:#|no\.?\s*)(\d{1,4})\b/i)
   if (hashMatch) {
     return {
-      value: normalizeCollectorNumber(null, hashMatch[1], null),
+      value: normalizeCollectorNumber(null, normalizeCollectorPart(hashMatch[1]), null),
       prefix: '',
-      number: hashMatch[1],
+      number: normalizeCollectorPart(hashMatch[1]),
       total: null,
       strength: 'weak',
       kind: 'hash'
