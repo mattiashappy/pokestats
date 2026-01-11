@@ -117,7 +117,7 @@ export type AuctionCardLink = {
   itemId: number
   cardId: number
   method: string | null
-  status: string | null
+  confidence: number | null
   linkedAt: string | null
   auctionTitle: string | null
   auctionUrl: string | null
