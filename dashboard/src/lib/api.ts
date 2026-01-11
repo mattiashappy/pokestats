@@ -172,6 +172,15 @@ export type AuctionCardLink = {
   setCode: string | null
 }
 
+export type CardSearchResult = {
+  id: number
+  name: string | null
+  cardNumber: string | null
+  setName: string | null
+  setCode: string | null
+  era: string | null
+}
+
 export type UnlinkedAuction = {
   itemId: number
   title: string | null
@@ -187,6 +196,26 @@ export type UnlinkedAuction = {
   detectedCollectorNumber: string | null
   detectedExpansionName: string | null
   detectedExpansionCode: string | null
+}
+
+export async function searchCards(query: string, limit = 50): Promise<CardSearchResult[]> {
+  const q = (query || '').trim()
+  if (!q) return []
+
+  const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200)
+  const params = new URLSearchParams({ q, limit: String(safeLimit) })
+  const response = await fetch(`/api/cards/search?${params.toString()}`)
+  if (!response.ok) throw new Error('Failed to search cards')
+  return response.json()
+}
+
+export async function linkAuctionToCard(auctionId: number, cardId: number): Promise<void> {
+  const response = await fetch('/api/linking/manual', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ auctionId, cardId })
+  })
+  if (!response.ok) throw new Error('Failed to link auction')
 }
 
 const fetchImportRuns = async (limit = 10): Promise<ImportRun[]> => {
