@@ -84,6 +84,7 @@ def map_item(item: ET.Element) -> Optional[Dict[str, Any]]:
         return None
 
     attributes = parse_attributes(item)
+    image_urls = parse_image_urls(item)
 
     return {
         "item_id": item_id,
