@@ -68,15 +68,10 @@ def parse_attributes(item: ET.Element) -> Dict[str, Optional[str]]:
 
 
 def iter_items(root: ET.Element) -> Iterable[ET.Element]:
-    for items_node in root.iter():
-        if strip_ns(items_node.tag) != "Items":
-            continue
-        children = [child for child in list(items_node) if strip_ns(child.tag) != "Items"]
-        if children:
-            for child in children:
-                yield child
-        else:
-            yield items_node
+    # In Tradera SearchAdvancedResult, each item is represented by an <Items> element.
+    for node in root.iter():
+        if strip_ns(node.tag) == "Items":
+            yield node
 
 
 def map_item(item: ET.Element) -> Optional[Dict[str, Any]]:
