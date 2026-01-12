@@ -1,6 +1,6 @@
 const { parseAuctions, linkAuctions } = require('../tradera/traderaLinker')
 
-function parseLimit(value, fallback = 500) {
+function parseLimit(value, fallback = null) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return fallback
   return Math.min(Math.max(numeric, 1), 5000)
@@ -10,7 +10,7 @@ function registerTraderaRoutes(app, { pool }) {
   app.post('/api/tradera/parse', async (req, res) => {
     if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
 
-    const limit = parseLimit(req.body?.limit)
+    const limit = parseLimit(req.body?.limit, null)
     const client = await pool.connect()
 
     try {
@@ -27,7 +27,7 @@ function registerTraderaRoutes(app, { pool }) {
   app.post('/api/tradera/link', async (req, res) => {
     if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
 
-    const limit = parseLimit(req.body?.limit)
+    const limit = parseLimit(req.body?.limit, 500)
     const client = await pool.connect()
 
     try {
