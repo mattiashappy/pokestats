@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom"
 
 import { AppLayout } from "./components/layout/app-layout"
+import { PublicLayout } from "./components/layout/public-layout"
 import { ProtectedRoute } from "./components/protected-route"
 import { AdminPage } from "./pages/admin"
 import { AuctionsPage } from "./pages/auctions"
@@ -8,7 +9,6 @@ import { BillingPage } from "./pages/billing"
 import { CardPage } from "./pages/card"
 import { DashboardPage } from "./pages/dashboard"
 import { EnrichPage } from "./pages/enrich"
-import { LandingPage } from "./pages/landing"
 import { LoginPage } from "./pages/login"
 import { PokemonSetPage } from "./pages/pokemon-set"
 import { SettingsPage } from "./pages/settings"
@@ -20,7 +20,9 @@ import { EraSetsPage } from "./pages/era-sets"
 function App(): JSX.Element {
   return (
     <Routes>
-      <Route path="/" element={<LandingPage />} />
+      <Route element={<PublicLayout />}>
+        <Route path="/" element={<DashboardPage />} />
+      </Route>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
 
