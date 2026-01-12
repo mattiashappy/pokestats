@@ -745,7 +745,8 @@ async function fetchUnlinkedAuctionSummaries(limit = null) {
   ])
   if (!linksReady || !auctionsReady) return []
 
-  const safeLimit = Number.isFinite(Number(limit)) ? Math.min(Math.max(Number(limit), 1), 2000) : null
+  const hasLimit = typeof limit === 'number' && Number.isFinite(limit)
+  const safeLimit = hasLimit ? Math.min(Math.max(limit, 1), 2000) : null
   const limitClause = safeLimit ? 'LIMIT $1' : ''
   const params = safeLimit ? [safeLimit] : []
   const { rows } = await pool.query(
@@ -1222,7 +1223,8 @@ app.get('/api/linking/links', async (req, res) => {
     }
 
     const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : null
-    const safeLimit = Number.isFinite(Number(limit)) ? Math.min(Math.max(Number(limit), 1), 2000) : null
+    const hasLimit = typeof limit === 'number' && Number.isFinite(limit)
+    const safeLimit = hasLimit ? Math.min(Math.max(limit, 1), 2000) : null
     const limitClause = safeLimit ? 'LIMIT $1' : ''
     const params = safeLimit ? [safeLimit] : []
     const { rows } = await pool.query(
