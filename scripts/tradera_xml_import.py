@@ -97,7 +97,7 @@ def map_item(item: ET.Element) -> Optional[Dict[str, Any]]:
         "item_url": normalize_string(find_text(item, "ItemUrl")),
         "thumbnail_url": normalize_string(find_text(item, "ThumbnailLink")),
         "tradera_attributes": Json(attributes) if attributes else None,
-        "image_urls": parse_image_urls(item),
+        "image_urls": Json(image_urls) if image_urls else None,
         "description": normalize_string(find_text(item, "LongDescription")),
         "item_condition": attributes.get("condition"),
         "pokemon_era": attributes.get("pokemon_era"),
