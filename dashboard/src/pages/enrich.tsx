@@ -43,6 +43,16 @@ const formatDetectedExpansion = (auction: UnlinkedAuction): string => {
   return '—'
 }
 
+const orderedSkipReasons = [
+  'card_not_unique',
+  'bundle_or_bulk',
+  'missing_collector_key',
+  'missing_set_hint',
+  'set_total_mismatch',
+  'special_product_line',
+  'non_tcg_topps'
+]
+
 const buildDiagnostics = (auction: UnlinkedAuction): string[] => {
   const diagnostics: string[] = []
 
@@ -151,6 +161,14 @@ export function EnrichPage(): JSX.Element {
     : activeLinkView === 'ready'
       ? 'ready to link'
       : 'unlinked auctions'
+  const skipReasonEntries = useMemo(() => {
+    if (!linkSummary) return []
+    const knownReasons = orderedSkipReasons.map((reason) => [reason, linkSummary.skipReasons[reason] ?? 0] as const)
+    const additionalReasons = Object.entries(linkSummary.skipReasons).filter(
+      ([reason]) => !orderedSkipReasons.includes(reason)
+    )
+    return [...knownReasons, ...additionalReasons]
+  }, [linkSummary])
 
   useEffect(() => {
     if (searchOpen) return
@@ -261,8 +279,8 @@ export function EnrichPage(): JSX.Element {
               <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Skip reasons</p>
                 <ul className="mt-2 space-y-1">
-                  {Object.entries(linkSummary.skipReasons).length ? (
-                    Object.entries(linkSummary.skipReasons).map(([reason, count]) => (
+                  {skipReasonEntries.length ? (
+                    skipReasonEntries.map(([reason, count]) => (
                       <li key={reason}>
                         <span className="font-semibold">{reason}</span>: {count}
                       </li>
