@@ -737,7 +737,7 @@ async function fetchUnlinkedAuctions(limit = null) {
   return rows
 }
 
-async function fetchUnlinkedAuctionSummaries(limit = 500) {
+async function fetchUnlinkedAuctionSummaries(limit = null) {
   if (!pool) return []
   const [linksReady, auctionsReady] = await Promise.all([
     ensureTraderaAuctionLinksTableAvailable(),
@@ -745,7 +745,9 @@ async function fetchUnlinkedAuctionSummaries(limit = 500) {
   ])
   if (!linksReady || !auctionsReady) return []
 
-  const safeLimit = Math.min(Math.max(Number(limit) || 500, 1), 2000)
+  const safeLimit = Number.isFinite(Number(limit)) ? Math.min(Math.max(Number(limit), 1), 2000) : null
+  const limitClause = safeLimit ? 'LIMIT $1' : ''
+  const params = safeLimit ? [safeLimit] : []
   const { rows } = await pool.query(
     `
       SELECT
@@ -764,9 +766,9 @@ async function fetchUnlinkedAuctionSummaries(limit = 500) {
       LEFT JOIN public.tradera_auction_card_links l ON l.auction_id = a.item_id
       WHERE l.auction_id IS NULL
       ORDER BY a.end_date DESC
-      LIMIT $1
+      ${limitClause}
     `,
-    [safeLimit]
+    params
   )
 
   const expansions = await fetchLinkingExpansions()
@@ -1219,7 +1221,10 @@ app.get('/api/linking/links', async (req, res) => {
       return res.status(500).json({ error: 'Required tables unavailable' })
     }
 
-    const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000)
+    const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : null
+    const safeLimit = Number.isFinite(Number(limit)) ? Math.min(Math.max(Number(limit), 1), 2000) : null
+    const limitClause = safeLimit ? 'LIMIT $1' : ''
+    const params = safeLimit ? [safeLimit] : []
     const { rows } = await pool.query(
       `
         SELECT
@@ -1243,9 +1248,9 @@ app.get('/api/linking/links', async (req, res) => {
         LEFT JOIN public.cards c ON c.id = l.card_id
         LEFT JOIN public.expansions e ON e.id = c.expansion_id
         ORDER BY l.created_at DESC NULLS LAST
-        LIMIT $1
+        ${limitClause}
       `,
-      [limit]
+      params
     )
 
     res.json(
@@ -1397,7 +1402,7 @@ app.get('/api/linking/unlinked', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
 
   try {
-    const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000)
+    const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : null
     const auctions = await fetchUnlinkedAuctionSummaries(limit)
     res.json(
       auctions.map((row) => ({

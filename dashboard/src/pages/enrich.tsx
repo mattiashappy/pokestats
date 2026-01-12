@@ -16,17 +16,9 @@ import {
   fetchUnlinkedAuctions,
   linkAuctionToCard,
   runTraderaLink,
-  runTraderaParse,
   searchCards
 } from '../lib/api'
-import type {
-  AuctionCardLink,
-  CardSearchResult,
-  LinkingStats,
-  TraderaLinkSummary,
-  TraderaParseSummary,
-  UnlinkedAuction
-} from '../lib/api'
+import type { AuctionCardLink, CardSearchResult, LinkingStats, TraderaLinkSummary, UnlinkedAuction } from '../lib/api'
 
 const formatCardLabel = (link: AuctionCardLink): string => {
   const parts = [link.cardName, link.cardNumber].filter(Boolean)
@@ -51,6 +43,16 @@ const formatDetectedExpansion = (auction: UnlinkedAuction): string => {
   return '—'
 }
 
+const orderedSkipReasons = [
+  'card_not_unique',
+  'bundle_or_bulk',
+  'missing_collector_key',
+  'missing_set_hint',
+  'set_total_mismatch',
+  'special_product_line',
+  'non_tcg_topps'
+]
+
 const buildDiagnostics = (auction: UnlinkedAuction): string[] => {
   const diagnostics: string[] = []
 
@@ -73,7 +75,7 @@ export function EnrichPage(): JSX.Element {
     refetch: refetchLinks
   } = useQuery<AuctionCardLink[]>({
     queryKey: ['linking-links'],
-    queryFn: () => fetchAuctionCardLinks(500)
+    queryFn: () => fetchAuctionCardLinks()
   })
 
   const {
@@ -83,17 +85,14 @@ export function EnrichPage(): JSX.Element {
     refetch: refetchUnlinked
   } = useQuery<UnlinkedAuction[]>({
     queryKey: ['linking-unlinked'],
-    queryFn: () => fetchUnlinkedAuctions(500)
+    queryFn: () => fetchUnlinkedAuctions()
   })
   const { data: linkingStats } = useQuery<LinkingStats>({
     queryKey: ['linking-stats'],
     queryFn: fetchLinkingStats
   })
 
-  const [traderaLimit, setTraderaLimit] = useState(500)
-  const [parseSummary, setParseSummary] = useState<TraderaParseSummary | null>(null)
   const [linkSummary, setLinkSummary] = useState<TraderaLinkSummary | null>(null)
-  const [parsePending, setParsePending] = useState(false)
   const [linkPending, setLinkPending] = useState(false)
   const [traderaError, setTraderaError] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -105,24 +104,11 @@ export function EnrichPage(): JSX.Element {
   const [manualLinkSuccess, setManualLinkSuccess] = useState<string | null>(null)
   const [activeLinkView, setActiveLinkView] = useState<'linked' | 'unlinked' | 'ready'>('linked')
 
-  const handleRunParse = async (): Promise<void> => {
-    setTraderaError(null)
-    setParsePending(true)
-    try {
-      const result = await runTraderaParse(traderaLimit)
-      setParseSummary(result)
-    } catch (e) {
-      setTraderaError(`Parse failed: ${String(e)}`)
-    } finally {
-      setParsePending(false)
-    }
-  }
-
   const handleRunLink = async (): Promise<void> => {
     setTraderaError(null)
     setLinkPending(true)
     try {
-      const result = await runTraderaLink(traderaLimit)
+      const result = await runTraderaLink()
       setLinkSummary(result)
       await Promise.all([refetchLinks(), refetchUnlinked()])
     } catch (e) {
@@ -175,6 +161,14 @@ export function EnrichPage(): JSX.Element {
     : activeLinkView === 'ready'
       ? 'ready to link'
       : 'unlinked auctions'
+  const skipReasonEntries = useMemo(() => {
+    if (!linkSummary) return []
+    const knownReasons = orderedSkipReasons.map((reason) => [reason, linkSummary.skipReasons[reason] ?? 0] as const)
+    const additionalReasons = Object.entries(linkSummary.skipReasons).filter(
+      ([reason]) => !orderedSkipReasons.includes(reason)
+    )
+    return [...knownReasons, ...additionalReasons]
+  }, [linkSummary])
 
   useEffect(() => {
     if (searchOpen) return
@@ -240,30 +234,13 @@ export function EnrichPage(): JSX.Element {
           <CardDescription>Review deterministic matches before writing links into the database.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div className="space-y-2">
-              <Label htmlFor="tradera-limit">Limit</Label>
-              <Input
-                id="tradera-limit"
-                type="number"
-                min={1}
-                max={5000}
-                value={traderaLimit}
-                onChange={(event) => {
-                  const value = Number(event.target.value)
-                  setTraderaLimit(Number.isFinite(value) ? value : 0)
-                }}
-                className="w-40"
-              />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={handleRunParse} variant="secondary" disabled={parsePending || linkPending}>
-                {parsePending ? 'Parsing…' : 'Parse auctions (dry run)'}
-              </Button>
-              <Button onClick={handleRunLink} disabled={parsePending || linkPending}>
-                {linkPending ? 'Linking…' : 'Link auctions'}
-              </Button>
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Linking runs across all unlinked auctions.
+            </p>
+            <Button onClick={handleRunLink} disabled={linkPending}>
+              {linkPending ? 'Linking…' : 'Link auctions'}
+            </Button>
           </div>
 
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100">
@@ -273,79 +250,6 @@ export function EnrichPage(): JSX.Element {
           {traderaError ? (
             <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-100">
               {traderaError}
-            </div>
-          ) : null}
-
-          {parseSummary ? (
-            <div className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-4">
-                <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Total parsed</p>
-                  <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                    {parseSummary.total.toLocaleString('sv-SE')}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">With card #</p>
-                  <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                    {parseSummary.withCollectorKey.toLocaleString('sv-SE')}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">With set hints</p>
-                  <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                    {parseSummary.withSetHints.toLocaleString('sv-SE')}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Bundles</p>
-                  <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                    {parseSummary.bundles.toLocaleString('sv-SE')}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid gap-3 lg:grid-cols-3">
-                <details className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
-                  <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Example card numbers
-                  </summary>
-                  <ul className="mt-2 space-y-1">
-                    {parseSummary.examples.collectorKey.map((example) => (
-                      <li key={example.itemId}>
-                        <span className="font-semibold">#{example.itemId}</span> — {example.title ?? 'Untitled'}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-
-                <details className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
-                  <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Example set hints
-                  </summary>
-                  <ul className="mt-2 space-y-1">
-                    {parseSummary.examples.setHints.map((example) => (
-                      <li key={example.itemId}>
-                        <span className="font-semibold">#{example.itemId}</span> — {example.title ?? 'Untitled'}
-                        {example.setHint ? ` (${example.setHint})` : ''}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-
-                <details className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
-                  <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Example bundles
-                  </summary>
-                  <ul className="mt-2 space-y-1">
-                    {parseSummary.examples.bundles.map((example) => (
-                      <li key={example.itemId}>
-                        <span className="font-semibold">#{example.itemId}</span> — {example.title ?? 'Untitled'}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              </div>
             </div>
           ) : null}
 
@@ -375,8 +279,8 @@ export function EnrichPage(): JSX.Element {
               <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Skip reasons</p>
                 <ul className="mt-2 space-y-1">
-                  {Object.entries(linkSummary.skipReasons).length ? (
-                    Object.entries(linkSummary.skipReasons).map(([reason, count]) => (
+                  {skipReasonEntries.length ? (
+                    skipReasonEntries.map(([reason, count]) => (
                       <li key={reason}>
                         <span className="font-semibold">{reason}</span>: {count}
                       </li>
