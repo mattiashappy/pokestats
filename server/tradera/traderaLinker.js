@@ -274,9 +274,11 @@ async function resolveAuctionColumns(client, linkColumns) {
 }
 
 async function linkAuctions({ client, limit } = {}) {
-  const safeLimit = clampLimit(limit)
+  const safeLimit = Number.isFinite(Number(limit)) ? clampLimit(limit) : null
   const linkColumns = await resolveLinkColumns(client)
   const auctionColumns = await resolveAuctionColumns(client, linkColumns)
+  const limitClause = safeLimit ? 'LIMIT $1' : ''
+  const params = safeLimit ? [safeLimit] : []
   const { rows } = await client.query(
     `
       SELECT a.${auctionColumns.keyColumn} AS auction_key,
@@ -288,9 +290,9 @@ async function linkAuctions({ client, limit } = {}) {
         ON l.${linkColumns.itemColumn} = a.${auctionColumns.keyColumn}
       WHERE l.${linkColumns.itemColumn} IS NULL
       ORDER BY a.updated_at DESC NULLS LAST, a.${auctionColumns.itemIdColumn} DESC
-      LIMIT $1
+      ${limitClause}
     `,
-    [safeLimit]
+    params
   )
 
   const summary = {
