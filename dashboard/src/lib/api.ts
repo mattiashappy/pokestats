@@ -152,11 +152,17 @@ export type TraderaLinkedExample = {
   setName: string | null
 }
 
+export type TraderaSkippedExample = {
+  itemId: number
+  title: string | null
+}
+
 export type TraderaLinkSummary = {
   scanned: number
   linked: number
   skipped: number
   skipReasons: Record<string, number>
+  skippedExamples: Record<string, TraderaSkippedExample[]>
   linkedExamples: TraderaLinkedExample[]
 }
 

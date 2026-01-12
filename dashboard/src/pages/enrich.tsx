@@ -95,6 +95,7 @@ export function EnrichPage(): JSX.Element {
   const [linkSummary, setLinkSummary] = useState<TraderaLinkSummary | null>(null)
   const [linkPending, setLinkPending] = useState(false)
   const [traderaError, setTraderaError] = useState<string | null>(null)
+  const [selectedSkipReason, setSelectedSkipReason] = useState('set_total_mismatch')
   const [searchOpen, setSearchOpen] = useState(false)
   const [selectedAuction, setSelectedAuction] = useState<UnlinkedAuction | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -169,6 +170,23 @@ export function EnrichPage(): JSX.Element {
     )
     return [...knownReasons, ...additionalReasons]
   }, [linkSummary])
+  const skipReasonOptions = useMemo(() => {
+    if (!linkSummary) return []
+    return skipReasonEntries.filter(([, count]) => count > 0).map(([reason]) => reason)
+  }, [linkSummary, skipReasonEntries])
+  const skipReasonRows = useMemo(() => {
+    if (!linkSummary) return []
+    return linkSummary.skippedExamples?.[selectedSkipReason] ?? []
+  }, [linkSummary, selectedSkipReason])
+
+  useEffect(() => {
+    if (!skipReasonOptions.length) return
+    if (skipReasonOptions.includes('set_total_mismatch')) {
+      setSelectedSkipReason('set_total_mismatch')
+      return
+    }
+    setSelectedSkipReason(skipReasonOptions[0])
+  }, [skipReasonOptions])
 
   useEffect(() => {
     if (searchOpen) return
@@ -289,6 +307,56 @@ export function EnrichPage(): JSX.Element {
                     <li>No skips.</li>
                   )}
                 </ul>
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Skipped auctions</p>
+                  <label className="flex items-center gap-2 text-xs text-slate-500">
+                    Reason
+                    <select
+                      className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
+                      value={selectedSkipReason}
+                      onChange={(event) => setSelectedSkipReason(event.target.value)}
+                    >
+                      {skipReasonOptions.map((reason) => (
+                        <option key={reason} value={reason}>
+                          {reason}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-left">Item</TableHead>
+                        <TableHead className="text-left">Auction title</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {skipReasonRows.length ? (
+                        skipReasonRows.map((example) => (
+                          <TableRow key={`${selectedSkipReason}-${example.itemId}`}>
+                            <TableCell className="text-left text-slate-700 dark:text-slate-200">
+                              #{example.itemId}
+                            </TableCell>
+                            <TableCell className="text-left text-slate-700 dark:text-slate-200">
+                              {example.title ?? 'Untitled'}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={2} className="text-center text-sm text-slate-500">
+                            No skipped auctions for this reason.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
 
               <div className="overflow-hidden rounded-xl border border-slate-900/80">
