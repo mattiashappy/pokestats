@@ -12,7 +12,8 @@ function addExample(list, entry, max = 5) {
 }
 
 async function parseAuctions({ client, limit } = {}) {
-  const safeLimit = Number.isFinite(Number(limit)) ? clampLimit(limit) : null
+  const hasLimit = typeof limit === 'number' && Number.isFinite(limit)
+  const safeLimit = hasLimit ? clampLimit(limit) : null
   const linkColumns = await resolveLinkColumns(client)
   const auctionColumns = await resolveAuctionColumns(client, linkColumns)
   const limitClause = safeLimit ? 'LIMIT $1' : ''
@@ -274,7 +275,8 @@ async function resolveAuctionColumns(client, linkColumns) {
 }
 
 async function linkAuctions({ client, limit } = {}) {
-  const safeLimit = Number.isFinite(Number(limit)) ? clampLimit(limit) : null
+  const hasLimit = typeof limit === 'number' && Number.isFinite(limit)
+  const safeLimit = hasLimit ? clampLimit(limit) : null
   const linkColumns = await resolveLinkColumns(client)
   const auctionColumns = await resolveAuctionColumns(client, linkColumns)
   const limitClause = safeLimit ? 'LIMIT $1' : ''
