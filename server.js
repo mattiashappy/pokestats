@@ -9,10 +9,8 @@ const crypto = require('crypto')
 
 const { createExpansionService } = require('./server/routes/expansions')
 const { registerTraderaRoutes } = require('./server/routes/tradera')
-const { ERA_DEFINITIONS, getEraDefinition, normalizeEraCode, resolveEraCode } = require('./server/era')
+const { normalizeEraCode, resolveEraCode } = require('./server/era')
 
-const { loadCatalog } = require('./server/catalog/catalogLoader')
-const { seedCatalog } = require('./server/catalog/catalogSeeder')
 const { parseAuctionTitle } = require('./scripts/tradera_parser')
 
 const app = express()
@@ -91,113 +89,6 @@ function applyCardOverrides(card) {
     image_url: overrides?.image_url ?? card.image_url ?? null,
     product_details: overrides?.product_details ?? card.product_details ?? null
   }
-}
-
-// --------------------
-// Static catalog cache
-// --------------------
-let cachedCatalogPromise = null
-let cachedStaticCardsIndex = null
-
-async function getStaticCatalog() {
-  if (!cachedCatalogPromise) {
-    cachedCatalogPromise = loadCatalog()
-  }
-  return cachedCatalogPromise
-}
-
-function computeStaticCardId(setCode, cardNumber, fallbackSeed = '') {
-  const normalizedSetCode = String(setCode || '').trim().toUpperCase() || 'UNKNOWN'
-  const normalizedCardNumber = String(cardNumber || fallbackSeed || '0')
-
-  // Use a deterministic hash to ensure stable IDs across requests and deployments
-  const hash = crypto
-    .createHash('md5')
-    .update(`${normalizedSetCode}::${normalizedCardNumber}`)
-    .digest('hex')
-    .slice(0, 12)
-
-  return Number.parseInt(hash, 16)
-}
-
-async function getStaticCardsForSet(setCode) {
-  const code = String(setCode || '').trim()
-  if (!code) return []
-
-  const normalized = code.toLowerCase()
-  const { expansions, cardsBySetCode } = await getStaticCatalog()
-
-  const expansion = expansions.find((expansion) => expansion.set_code?.toLowerCase() === normalized) ?? null
-  const cardsEntry =
-    Object.entries(cardsBySetCode || {}).find(([key]) => key.toLowerCase() === normalized)?.[1] ?? null
-
-  if (!cardsEntry?.cards?.length) return []
-
-  const setTotal = cardsEntry.set_total ?? expansion?.set_number ?? expansion?.set_total ?? null
-
-  return cardsEntry.cards.map((card, index) => {
-    const setCodeValue = cardsEntry.set_code ?? expansion?.set_code ?? code
-    const stableId = Number.isFinite(card.id) ? card.id : computeStaticCardId(setCodeValue, card.card_number, `${index}`)
-
-    return applyCardOverrides({
-      id: stableId,
-      name: card.name ?? 'Unknown card',
-      era: expansion?.era ?? null,
-      set_name: expansion?.name ?? cardsEntry.set_name ?? null,
-      set_code: setCodeValue,
-      set_total: card.set_total ?? setTotal ?? null,
-      card_number: card.card_number ?? null,
-      image_url: card.image_url ?? null,
-      product_details: card.product_details ?? null,
-      expansion_id: null,
-      created_at: new Date(0).toISOString(),
-      linked_auctions: 0,
-      last_seen: null
-    })
-  })
-}
-
-async function getStaticCardsIndex() {
-  if (cachedStaticCardsIndex) return cachedStaticCardsIndex
-
-  const { expansions } = await getStaticCatalog()
-  const index = new Map()
-
-  for (const expansion of expansions || []) {
-    const cards = await getStaticCardsForSet(expansion.set_code)
-    for (const card of cards) {
-      index.set(card.id, card)
-    }
-  }
-
-  cachedStaticCardsIndex = index
-  return index
-}
-
-async function getStaticCardById(cardId) {
-  const index = await getStaticCardsIndex()
-  return index.get(cardId) || null
-}
-
-async function getStaticExpansionSummaries() {
-  const { expansions, cardsBySetCode } = await getStaticCatalog()
-
-  return expansions.map((expansion, index) => ({
-    id: index + 1,
-    set_code: expansion.set_code,
-    name: expansion.name ?? null,
-    era: expansion.era ?? null,
-    era_code: resolveEraCode(expansion.era ?? null),
-    era_name: expansion.era ?? null,
-    language: expansion.language ?? null,
-    set_number: expansion.set_number ?? null,
-    cards_in_set: expansion.cards_in_set ?? null,
-    set_total: expansion.set_number ?? expansion.set_total ?? cardsBySetCode?.[expansion.set_code]?.set_total ?? null,
-    release_date: expansion.release_date ?? null,
-    image_url: expansion.image_url ?? null,
-    cards_total: cardsBySetCode?.[expansion.set_code]?.cards?.length ?? 0,
-    linked_auctions: 0
-  }))
 }
 
 // --------------------
@@ -619,49 +510,9 @@ async function fetchErasFromDatabase() {
   })
 }
 
-async function fetchErasFromStaticCatalog() {
-  const expansions = await getStaticExpansionSummaries()
-  const eraMap = new Map()
-
-  for (const expansion of expansions) {
-    const eraLabel = expansion.era ?? 'Unknown era'
-    const code = resolveEraCode(eraLabel)
-    if (!code) continue
-
-    const normalized = normalizeEraCode(code)
-    const existing = eraMap.get(normalized)
-    if (existing) {
-      existing.sets_total += 1
-      continue
-    }
-
-    const definition = getEraDefinition(code)
-    eraMap.set(normalized, {
-      id: null,
-      code,
-      name: definition?.name ?? eraLabel,
-      sort_order: definition?.sort_order ?? 999,
-      start_year: definition?.start_year ?? null,
-      end_year: definition?.end_year ?? null,
-      sets_total: 1
-    })
-  }
-
-  for (const era of ERA_DEFINITIONS) {
-    if (!eraMap.has(normalizeEraCode(era.code))) {
-      eraMap.set(normalizeEraCode(era.code), { ...era, id: null, sets_total: 0 })
-    }
-  }
-
-  return Array.from(eraMap.values()).sort((a, b) => a.sort_order - b.sort_order)
-}
-
 async function fetchErasList() {
-  if (pool) {
-    const rows = await fetchErasFromDatabase()
-    if (rows.length) return rows
-  }
-  return fetchErasFromStaticCatalog()
+  if (!pool) return []
+  return fetchErasFromDatabase()
 }
 
 // --------------------
@@ -671,7 +522,6 @@ async function fetchErasList() {
 const { registerRoutes: registerExpansionRoutes, fetchExpansionSummaries } = createExpansionService({
   pool,
   ensureCardInfrastructure,
-  getStaticExpansionSummaries,
   ensureTraderaAuctionLinksTableAvailable
 })
 
@@ -783,10 +633,10 @@ async function fetchAuctionsFromDatabase(filters = {}) {
 
 async function fetchCard(cardId) {
   if (!Number.isFinite(cardId)) return null
-  if (!pool) return getStaticCardById(cardId)
+  if (!pool) return null
 
   const ok = await ensureCardInfrastructure()
-  if (!ok) return getStaticCardById(cardId)
+  if (!ok) return null
 
   const query = `
     SELECT
@@ -1097,9 +947,9 @@ function runImporterScript(runUuid) {
 }
 
 async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
-  if (!pool) return getStaticCardsForSet(setCode)
+  if (!pool) return []
   const ok = await ensureCardInfrastructure()
-  if (!ok) return getStaticCardsForSet(setCode)
+  if (!ok) return []
 
   const [linksReady, auctionsReady] = await Promise.all([
     ensureTraderaAuctionLinksTableAvailable(),
@@ -1145,15 +995,7 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
     ORDER BY COALESCE(c.number, 999999), c.collector_number_raw
   `
   const result = await pool.query(query, params)
-  const dbCards = result.rows.map(applyCardOverrides)
-
-  // If the database has no cards for this set, fall back to the static catalog so set pages still render.
-  if (dbCards.length === 0 && setCode) {
-    const staticCards = await getStaticCardsForSet(setCode)
-    if (staticCards.length) return staticCards
-  }
-
-  return dbCards
+  return result.rows.map(applyCardOverrides)
 }
 
 // --------------------
@@ -1700,14 +1542,9 @@ app.post('/api/import/run', async (_req, res) => {
 
 // Bootstrap seed
 if (pool) {
-  ensureCardInfrastructure()
-    .then((ok) => {
-      if (!ok) return null
-      return seedCatalog(pool)
-    })
-    .catch((error) => {
-      console.error('Failed to bootstrap Pokémon catalog', error)
-    })
+  ensureCardInfrastructure().catch((error) => {
+    console.error('Failed to bootstrap Pokémon catalog', error)
+  })
 }
 
 // --------------------
