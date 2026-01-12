@@ -71,7 +71,7 @@ API_URL = "https://api.tradera.com/v3/SearchService.asmx"
 SOAP_ACTION = "http://api.tradera.com/SearchAdvanced"
 
 CATEGORY_ID = int(os.getenv("TRADERA_CATEGORY_ID", "1001337"))
-ITEMS_PER_PAGE = 50
+ITEMS_PER_PAGE = 500
 START_PAGE = 1
 
 MAX_REQUESTS = int(os.getenv("MAX_REQUESTS", "10"))
