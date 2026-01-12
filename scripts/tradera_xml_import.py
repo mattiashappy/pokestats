@@ -68,9 +68,10 @@ def parse_attributes(item: ET.Element) -> Dict[str, Optional[str]]:
 
 
 def iter_items(root: ET.Element) -> Iterable[ET.Element]:
-    # In Tradera SearchAdvancedResult, each item is represented by an <Items> element.
     for node in root.iter():
-        if strip_ns(node.tag) == "Items":
+        if strip_ns(node.tag) != "Items":
+            continue
+        if find_text(node, "Id"):  # only treat as an item record if it has an Id inside
             yield node
 
 
