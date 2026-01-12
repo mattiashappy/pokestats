@@ -90,7 +90,7 @@ export function EnrichPage(): JSX.Element {
     queryFn: fetchLinkingStats
   })
 
-  const [traderaLimit, setTraderaLimit] = useState(500)
+  const [linkLimit, setLinkLimit] = useState(500)
   const [parseSummary, setParseSummary] = useState<TraderaParseSummary | null>(null)
   const [linkSummary, setLinkSummary] = useState<TraderaLinkSummary | null>(null)
   const [parsePending, setParsePending] = useState(false)
@@ -109,7 +109,7 @@ export function EnrichPage(): JSX.Element {
     setTraderaError(null)
     setParsePending(true)
     try {
-      const result = await runTraderaParse(traderaLimit)
+      const result = await runTraderaParse()
       setParseSummary(result)
     } catch (e) {
       setTraderaError(`Parse failed: ${String(e)}`)
@@ -122,7 +122,7 @@ export function EnrichPage(): JSX.Element {
     setTraderaError(null)
     setLinkPending(true)
     try {
-      const result = await runTraderaLink(traderaLimit)
+      const result = await runTraderaLink(linkLimit)
       setLinkSummary(result)
       await Promise.all([refetchLinks(), refetchUnlinked()])
     } catch (e) {
@@ -242,19 +242,20 @@ export function EnrichPage(): JSX.Element {
         <CardContent className="space-y-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="space-y-2">
-              <Label htmlFor="tradera-limit">Limit</Label>
+              <Label htmlFor="tradera-limit">Link limit</Label>
               <Input
                 id="tradera-limit"
                 type="number"
                 min={1}
                 max={5000}
-                value={traderaLimit}
+                value={linkLimit}
                 onChange={(event) => {
                   const value = Number(event.target.value)
-                  setTraderaLimit(Number.isFinite(value) ? value : 0)
+                  setLinkLimit(Number.isFinite(value) ? value : 0)
                 }}
                 className="w-40"
               />
+              <p className="text-xs text-slate-500">Parse runs against all unlinked auctions.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button onClick={handleRunParse} variant="secondary" disabled={parsePending || linkPending}>

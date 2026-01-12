@@ -12,15 +12,22 @@ function addExample(list, entry, max = 5) {
 }
 
 async function parseAuctions({ client, limit } = {}) {
-  const safeLimit = clampLimit(limit)
+  const safeLimit = Number.isFinite(Number(limit)) ? clampLimit(limit) : null
+  const linkColumns = await resolveLinkColumns(client)
+  const auctionColumns = await resolveAuctionColumns(client, linkColumns)
+  const limitClause = safeLimit ? 'LIMIT $1' : ''
+  const params = safeLimit ? [safeLimit] : []
   const { rows } = await client.query(
     `
-      SELECT item_id, title, description
-      FROM public.tradera_auctions
-      ORDER BY updated_at DESC NULLS LAST, item_id DESC
-      LIMIT $1
+      SELECT a.${auctionColumns.itemIdColumn} AS item_id, a.title, a.description
+      FROM public.tradera_auctions a
+      LEFT JOIN public.tradera_auction_card_links l
+        ON l.${linkColumns.itemColumn} = a.${auctionColumns.keyColumn}
+      WHERE l.${linkColumns.itemColumn} IS NULL
+      ORDER BY a.updated_at DESC NULLS LAST, a.${auctionColumns.itemIdColumn} DESC
+      ${limitClause}
     `,
-    [safeLimit]
+    params
   )
 
   const summary = {
