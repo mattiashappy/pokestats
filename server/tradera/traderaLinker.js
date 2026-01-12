@@ -12,15 +12,23 @@ function addExample(list, entry, max = 5) {
 }
 
 async function parseAuctions({ client, limit } = {}) {
-  const safeLimit = clampLimit(limit)
+  const hasLimit = typeof limit === 'number' && Number.isFinite(limit)
+  const safeLimit = hasLimit ? clampLimit(limit) : null
+  const linkColumns = await resolveLinkColumns(client)
+  const auctionColumns = await resolveAuctionColumns(client, linkColumns)
+  const limitClause = safeLimit ? 'LIMIT $1' : ''
+  const params = safeLimit ? [safeLimit] : []
   const { rows } = await client.query(
     `
-      SELECT item_id, title, description
-      FROM public.tradera_auctions
-      ORDER BY updated_at DESC NULLS LAST, item_id DESC
-      LIMIT $1
+      SELECT a.${auctionColumns.itemIdColumn} AS item_id, a.title, a.description
+      FROM public.tradera_auctions a
+      LEFT JOIN public.tradera_auction_card_links l
+        ON l.${linkColumns.itemColumn} = a.${auctionColumns.keyColumn}
+      WHERE l.${linkColumns.itemColumn} IS NULL
+      ORDER BY a.updated_at DESC NULLS LAST, a.${auctionColumns.itemIdColumn} DESC
+      ${limitClause}
     `,
-    [safeLimit]
+    params
   )
 
   const summary = {
@@ -195,6 +203,12 @@ function incrementSkip(skipReasons, reason) {
   skipReasons[reason] = (skipReasons[reason] || 0) + 1
 }
 
+function addSkipExample(skipExamples, reason, entry, max = 2000) {
+  if (!skipExamples[reason]) skipExamples[reason] = []
+  if (skipExamples[reason].length >= max) return
+  skipExamples[reason].push(entry)
+}
+
 function shouldValidateSetTotal(collectorKey) {
   if (!collectorKey || !collectorKey.total) return false
   if (collectorKey.kind === 'TG' || collectorKey.kind === 'GG') return false
@@ -267,9 +281,12 @@ async function resolveAuctionColumns(client, linkColumns) {
 }
 
 async function linkAuctions({ client, limit } = {}) {
-  const safeLimit = clampLimit(limit)
+  const hasLimit = typeof limit === 'number' && Number.isFinite(limit)
+  const safeLimit = hasLimit ? clampLimit(limit) : null
   const linkColumns = await resolveLinkColumns(client)
   const auctionColumns = await resolveAuctionColumns(client, linkColumns)
+  const limitClause = safeLimit ? 'LIMIT $1' : ''
+  const params = safeLimit ? [safeLimit] : []
   const { rows } = await client.query(
     `
       SELECT a.${auctionColumns.keyColumn} AS auction_key,
@@ -281,9 +298,9 @@ async function linkAuctions({ client, limit } = {}) {
         ON l.${linkColumns.itemColumn} = a.${auctionColumns.keyColumn}
       WHERE l.${linkColumns.itemColumn} IS NULL
       ORDER BY a.updated_at DESC NULLS LAST, a.${auctionColumns.itemIdColumn} DESC
-      LIMIT $1
+      ${limitClause}
     `,
-    [safeLimit]
+    params
   )
 
   const summary = {
@@ -291,6 +308,7 @@ async function linkAuctions({ client, limit } = {}) {
     linked: 0,
     skipped: 0,
     skipReasons: {},
+    skippedExamples: {},
     linkedExamples: []
   }
 
@@ -300,12 +318,20 @@ async function linkAuctions({ client, limit } = {}) {
     if (parsed.skipReason) {
       summary.skipped += 1
       incrementSkip(summary.skipReasons, parsed.skipReason)
+      addSkipExample(summary.skippedExamples, parsed.skipReason, {
+        itemId: row.item_id,
+        title: row.title ?? null
+      })
       continue
     }
 
     if (!parsed.collectorKey) {
       summary.skipped += 1
       incrementSkip(summary.skipReasons, 'missing_collector_key')
+      addSkipExample(summary.skippedExamples, 'missing_collector_key', {
+        itemId: row.item_id,
+        title: row.title ?? null
+      })
       continue
     }
 
@@ -317,6 +343,10 @@ async function linkAuctions({ client, limit } = {}) {
       if (!card) {
         summary.skipped += 1
         incrementSkip(summary.skipReasons, 'missing_set_hint')
+        addSkipExample(summary.skippedExamples, 'missing_set_hint', {
+          itemId: row.item_id,
+          title: row.title ?? null
+        })
         continue
       }
     } else {
@@ -324,12 +354,20 @@ async function linkAuctions({ client, limit } = {}) {
       if (!expansion) {
         summary.skipped += 1
         incrementSkip(summary.skipReasons, 'expansion_not_unique')
+        addSkipExample(summary.skippedExamples, 'expansion_not_unique', {
+          itemId: row.item_id,
+          title: row.title ?? null
+        })
         continue
       }
 
       if (!isSetTotalMatch(parsed.collectorKey, expansion)) {
         summary.skipped += 1
         incrementSkip(summary.skipReasons, 'set_total_mismatch')
+        addSkipExample(summary.skippedExamples, 'set_total_mismatch', {
+          itemId: row.item_id,
+          title: row.title ?? null
+        })
         continue
       }
 
@@ -337,6 +375,10 @@ async function linkAuctions({ client, limit } = {}) {
       if (!card) {
         summary.skipped += 1
         incrementSkip(summary.skipReasons, 'card_not_unique')
+        addSkipExample(summary.skippedExamples, 'card_not_unique', {
+          itemId: row.item_id,
+          title: row.title ?? null
+        })
         continue
       }
     }
