@@ -22,19 +22,19 @@ function createExpansionService({
           e.set_code,
           e.set_name AS name,
           e.era AS era,
-          e.language AS language,
+          NULL::text AS language,
           e.base_total AS set_number,
           e.base_total AS cards_in_set,
           e.set_total AS set_total,
-          e.release_date AS release_date,
-          e.image_url AS image_url,
+          NULL::date AS release_date,
+          NULL::text AS image_url,
           COUNT(DISTINCT c.id)::int AS cards_total,
           ${linksReady ? 'COUNT(DISTINCT l.auction_id)::int' : '0::int'} AS linked_auctions
         FROM public.expansions e
         LEFT JOIN public.cards c ON c.expansion_id = e.id
         ${linksReady ? 'LEFT JOIN public.tradera_auction_card_links l ON l.card_id = c.id' : ''}
         GROUP BY e.id
-        ORDER BY e.release_date NULLS LAST, e.set_name NULLS LAST
+        ORDER BY e.set_name NULLS LAST, e.set_code NULLS LAST
       `
 
       const { rows } = await pool.query(query)
