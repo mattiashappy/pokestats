@@ -293,7 +293,8 @@ export async function fetchAuctionCardLinks(limit = 500): Promise<AuctionCardLin
 }
 
 export async function fetchUnlinkedAuctions(limit: number | null = null): Promise<UnlinkedAuction[]> {
-  const params = Number.isFinite(Number(limit)) ? new URLSearchParams({ limit: String(limit) }) : null
+  const hasLimit = typeof limit === 'number' && Number.isFinite(limit)
+  const params = hasLimit ? new URLSearchParams({ limit: String(limit) }) : null
   const response = await fetch(params ? `/api/linking/unlinked?${params.toString()}` : '/api/linking/unlinked')
   if (!response.ok) throw new Error('Failed to load unlinked auctions')
   return response.json()

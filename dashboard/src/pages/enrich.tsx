@@ -85,7 +85,7 @@ export function EnrichPage(): JSX.Element {
     refetch: refetchUnlinked
   } = useQuery<UnlinkedAuction[]>({
     queryKey: ['linking-unlinked'],
-    queryFn: () => fetchUnlinkedAuctions(null)
+    queryFn: () => fetchUnlinkedAuctions()
   })
   const { data: linkingStats } = useQuery<LinkingStats>({
     queryKey: ['linking-stats'],
