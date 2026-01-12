@@ -75,7 +75,7 @@ export function EnrichPage(): JSX.Element {
     refetch: refetchLinks
   } = useQuery<AuctionCardLink[]>({
     queryKey: ['linking-links'],
-    queryFn: () => fetchAuctionCardLinks(500)
+    queryFn: () => fetchAuctionCardLinks()
   })
 
   const {

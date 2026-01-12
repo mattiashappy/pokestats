@@ -284,10 +284,10 @@ export async function runTraderaLink(limit?: number | null): Promise<TraderaLink
   return res.json()
 }
 
-export async function fetchAuctionCardLinks(limit = 500): Promise<AuctionCardLink[]> {
-  const safeLimit = Math.min(Math.max(Number(limit) || 500, 1), 2000)
-  const params = new URLSearchParams({ limit: String(safeLimit) })
-  const response = await fetch(`/api/linking/links?${params.toString()}`)
+export async function fetchAuctionCardLinks(limit: number | null = null): Promise<AuctionCardLink[]> {
+  const hasLimit = typeof limit === 'number' && Number.isFinite(limit)
+  const params = hasLimit ? new URLSearchParams({ limit: String(limit) }) : null
+  const response = await fetch(params ? `/api/linking/links?${params.toString()}` : '/api/linking/links')
   if (!response.ok) throw new Error('Failed to load auction card links')
   return response.json()
 }

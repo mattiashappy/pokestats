@@ -1221,7 +1221,10 @@ app.get('/api/linking/links', async (req, res) => {
       return res.status(500).json({ error: 'Required tables unavailable' })
     }
 
-    const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000)
+    const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : null
+    const safeLimit = Number.isFinite(Number(limit)) ? Math.min(Math.max(Number(limit), 1), 2000) : null
+    const limitClause = safeLimit ? 'LIMIT $1' : ''
+    const params = safeLimit ? [safeLimit] : []
     const { rows } = await pool.query(
       `
         SELECT
@@ -1245,9 +1248,9 @@ app.get('/api/linking/links', async (req, res) => {
         LEFT JOIN public.cards c ON c.id = l.card_id
         LEFT JOIN public.expansions e ON e.id = c.expansion_id
         ORDER BY l.created_at DESC NULLS LAST
-        LIMIT $1
+        ${limitClause}
       `,
-      [limit]
+      params
     )
 
     res.json(
