@@ -112,6 +112,7 @@ export function EnrichPage(): JSX.Element {
   const [aiSummary, setAiSummary] = useState<AiMatchSummary | null>(null)
   const [aiPending, setAiPending] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
+  const [aiProgress, setAiProgress] = useState<{ completed: number; total: number } | null>(null)
   const [selectedAiAuctionIds, setSelectedAiAuctionIds] = useState<number[]>([])
   const [selectedSkipReason, setSelectedSkipReason] = useState('set_total_mismatch')
   const [searchOpen, setSearchOpen] = useState(false)
@@ -145,15 +146,45 @@ export function EnrichPage(): JSX.Element {
     if (!selectedAiAuctionIds.length) return
     setAiError(null)
     setAiPending(true)
+    setAiSummary(null)
+    setAiProgress({ completed: 0, total: selectedAiAuctionIds.length })
     try {
-      const result = await runAiMatch(selectedAiAuctionIds)
-      setAiSummary(result)
+      const batchSize = 10
+      const batches = []
+      for (let i = 0; i < selectedAiAuctionIds.length; i += batchSize) {
+        batches.push(selectedAiAuctionIds.slice(i, i + batchSize))
+      }
+
+      const combined: AiMatchSummary = {
+        scanned: 0,
+        matched: 0,
+        skipped: 0,
+        skipReasons: {},
+        matchedExamples: []
+      }
+
+      for (const batch of batches) {
+        const result = await runAiMatch(batch)
+        combined.scanned += result.scanned
+        combined.matched += result.matched
+        combined.skipped += result.skipped
+        for (const [reason, count] of Object.entries(result.skipReasons)) {
+          combined.skipReasons[reason] = (combined.skipReasons[reason] || 0) + count
+        }
+        combined.matchedExamples.push(...result.matchedExamples)
+        setAiProgress((prev) =>
+          prev ? { ...prev, completed: Math.min(prev.total, prev.completed + batch.length) } : prev
+        )
+      }
+
+      setAiSummary(combined)
       setSelectedAiAuctionIds([])
       await Promise.all([refetchLinks(), refetchUnlinked()])
     } catch (error) {
       setAiError(`AI matching failed: ${String(error)}`)
     } finally {
       setAiPending(false)
+      setAiProgress(null)
     }
   }
 
@@ -499,7 +530,8 @@ export function EnrichPage(): JSX.Element {
         <CardHeader>
           <CardTitle>AI Matching</CardTitle>
           <CardDescription>
-            Run the AI model on selected unlinked auctions so you control spend and scope.
+            Run the AI model on selected unlinked auctions so you control spend and scope. Requests are batched
+            to avoid timeouts.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -513,6 +545,13 @@ export function EnrichPage(): JSX.Element {
               {aiPending ? 'Matching…' : 'Run AI matching'}
             </Button>
           </div>
+
+          {aiProgress ? (
+            <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
+              Processed {aiProgress.completed.toLocaleString('sv-SE')} of{' '}
+              {aiProgress.total.toLocaleString('sv-SE')} selected auctions.
+            </div>
+          ) : null}
 
           {aiError ? (
             <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-100">
