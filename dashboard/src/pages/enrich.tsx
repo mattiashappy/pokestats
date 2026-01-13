@@ -43,6 +43,12 @@ const formatDetectedExpansion = (auction: UnlinkedAuction): string => {
   return '—'
 }
 
+const normalizeLanguage = (language?: string | null): string => {
+  const trimmed = language?.trim()
+  if (!trimmed) return 'Unknown'
+  return trimmed
+}
+
 const orderedSkipReasons = [
   'card_not_unique',
   'bundle_or_bulk',
@@ -104,6 +110,10 @@ export function EnrichPage(): JSX.Element {
   const [manualLinkError, setManualLinkError] = useState<string | null>(null)
   const [manualLinkSuccess, setManualLinkSuccess] = useState<string | null>(null)
   const [activeLinkView, setActiveLinkView] = useState<'linked' | 'unlinked' | 'ready'>('linked')
+  const [languageFilter, setLanguageFilter] = useState('all')
+  const [unlinkedPage, setUnlinkedPage] = useState(1)
+
+  const pageSize = 50
 
   const handleRunLink = async (): Promise<void> => {
     setTraderaError(null)
@@ -150,8 +160,20 @@ export function EnrichPage(): JSX.Element {
       readyToLink: sortedReadyToLinkAuctions.length
     }
   }, [links, linkingStats?.unlinked, unlinkedAuctions.length, sortedReadyToLinkAuctions.length])
-  const visibleUnlinkedAuctions =
-    activeLinkView === 'ready' ? sortedReadyToLinkAuctions : sortedUnlinkedAuctions
+  const visibleUnlinkedAuctions = useMemo(() => {
+    const base = activeLinkView === 'ready' ? sortedReadyToLinkAuctions : sortedUnlinkedAuctions
+    if (languageFilter === 'all') return base
+    const normalizedFilter = languageFilter.toLowerCase()
+    return base.filter((auction) => {
+      const normalizedLanguage = normalizeLanguage(auction.pokemonLanguage).toLowerCase()
+      return normalizedLanguage === normalizedFilter
+    })
+  }, [activeLinkView, languageFilter, sortedReadyToLinkAuctions, sortedUnlinkedAuctions])
+  const pagedUnlinkedAuctions = useMemo(() => {
+    const start = (unlinkedPage - 1) * pageSize
+    return visibleUnlinkedAuctions.slice(start, start + pageSize)
+  }, [pageSize, unlinkedPage, visibleUnlinkedAuctions])
+  const totalUnlinkedPages = Math.max(1, Math.ceil(visibleUnlinkedAuctions.length / pageSize))
   const activeCount = activeLinkView === 'linked'
     ? counts.linkedCards
     : activeLinkView === 'ready'
@@ -179,6 +201,14 @@ export function EnrichPage(): JSX.Element {
     return linkSummary.skippedExamples?.[selectedSkipReason] ?? []
   }, [linkSummary, selectedSkipReason])
 
+  const languageOptions = useMemo(() => {
+    const values = new Set<string>()
+    sortedUnlinkedAuctions.forEach((auction) => {
+      values.add(normalizeLanguage(auction.pokemonLanguage))
+    })
+    return Array.from(values).sort((left, right) => left.localeCompare(right, 'sv-SE'))
+  }, [sortedUnlinkedAuctions])
+
   useEffect(() => {
     if (!skipReasonOptions.length) return
     if (skipReasonOptions.includes('set_total_mismatch')) {
@@ -196,6 +226,15 @@ export function EnrichPage(): JSX.Element {
     setManualLinkError(null)
     setManualLinkSuccess(null)
   }, [searchOpen])
+
+  useEffect(() => {
+    setUnlinkedPage(1)
+  }, [activeLinkView, languageFilter])
+
+  useEffect(() => {
+    if (unlinkedPage <= totalUnlinkedPages) return
+    setUnlinkedPage(totalUnlinkedPages)
+  }, [totalUnlinkedPages, unlinkedPage])
 
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
@@ -537,6 +576,56 @@ export function EnrichPage(): JSX.Element {
             </div>
           ) : (
             <div className="overflow-hidden rounded-xl border border-slate-900/80">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-300">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Label htmlFor="language-filter" className="text-xs uppercase tracking-wide text-slate-500">
+                    Language
+                  </Label>
+                  <select
+                    id="language-filter"
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
+                    value={languageFilter}
+                    onChange={(event) => setLanguageFilter(event.target.value)}
+                  >
+                    <option value="all">All languages</option>
+                    {languageOptions.map((language) => (
+                      <option key={language} value={language}>
+                        {language}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <span>
+                    Showing {(pagedUnlinkedAuctions.length
+                      ? (unlinkedPage - 1) * pageSize + 1
+                      : 0).toLocaleString('sv-SE')}
+                    –
+                    {Math.min(unlinkedPage * pageSize, visibleUnlinkedAuctions.length).toLocaleString('sv-SE')} of{' '}
+                    {visibleUnlinkedAuctions.length.toLocaleString('sv-SE')}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={unlinkedPage <= 1}
+                      onClick={() => setUnlinkedPage((prev) => Math.max(1, prev - 1))}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={unlinkedPage >= totalUnlinkedPages}
+                      onClick={() => setUnlinkedPage((prev) => Math.min(totalUnlinkedPages, prev + 1))}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -551,8 +640,8 @@ export function EnrichPage(): JSX.Element {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {visibleUnlinkedAuctions.length ? (
-                    visibleUnlinkedAuctions.map((auction) => {
+                  {pagedUnlinkedAuctions.length ? (
+                    pagedUnlinkedAuctions.map((auction) => {
                       const diagnostics = buildDiagnostics(auction)
 
                       return (
