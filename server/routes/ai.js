@@ -6,6 +6,13 @@ function parseLimit(value, fallback = null) {
   return Math.min(Math.max(numeric, 1), 5000)
 }
 
+function parseItemIds(value) {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((entry) => Number(entry))
+    .filter((entry) => Number.isFinite(entry))
+}
+
 function registerAiRoutes(app, { pool }) {
   app.post('/api/ai/tradera/match', async (req, res) => {
     if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
@@ -16,6 +23,7 @@ function registerAiRoutes(app, { pool }) {
     }
 
     const limit = parseLimit(req.body?.limit, null)
+    const itemIds = parseItemIds(req.body?.itemIds)
     const model = req.body?.model || DEFAULT_MODEL
     const client = await pool.connect()
 
@@ -24,7 +32,8 @@ function registerAiRoutes(app, { pool }) {
         client,
         limit,
         apiKey,
-        model
+        model,
+        itemIds
       })
       return res.json(result)
     } catch (error) {

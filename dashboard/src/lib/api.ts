@@ -166,6 +166,22 @@ export type TraderaLinkSummary = {
   linkedExamples: TraderaLinkedExample[]
 }
 
+export type AiMatchExample = {
+  itemId: number
+  title: string | null
+  cardId: number
+  confidence: number
+  rationale: string | null
+}
+
+export type AiMatchSummary = {
+  scanned: number
+  matched: number
+  skipped: number
+  skipReasons: Record<string, number>
+  matchedExamples: AiMatchExample[]
+}
+
 export type AuctionCardLink = {
   itemId: number
   cardId: number
@@ -287,6 +303,21 @@ export async function runTraderaLink(limit?: number | null): Promise<TraderaLink
     body: JSON.stringify(body)
   })
   if (!res.ok) throw new Error('Failed to link Tradera auctions')
+  return res.json()
+}
+
+export async function runAiMatch(itemIds: number[], model?: string): Promise<AiMatchSummary> {
+  const normalizedIds = Array.from(new Set(itemIds)).filter((id) => Number.isFinite(Number(id)))
+  const body = {
+    itemIds: normalizedIds,
+    model
+  }
+  const res = await fetch('/api/ai/tradera/match', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  if (!res.ok) throw new Error('Failed to run AI match')
   return res.json()
 }
 

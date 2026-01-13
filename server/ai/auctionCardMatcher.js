@@ -59,7 +59,8 @@ async function resolveLinkColumns(client) {
     itemColumn,
     timestampColumn,
     hasMethod: columnNames.has('method'),
-    hasStatus: columnNames.has('status')
+    hasStatus: columnNames.has('status'),
+    hasConfidence: columnNames.has('confidence')
   }
 }
 
@@ -326,11 +327,30 @@ async function matchAuction({ client, auction, apiKey, model, confidenceThreshol
   }
 }
 
-async function matchAuctionsWithAi({ client, limit, apiKey, model } = {}) {
+async function matchAuctionsWithAi({ client, limit, apiKey, model, itemIds } = {}) {
   const safeLimit = clampLimit(limit, DEFAULT_MAX_MATCHES)
   const resolvedModel = model || DEFAULT_MODEL
   const linkColumns = await resolveLinkColumns(client)
   const auctionColumns = await resolveAuctionColumns(client, linkColumns)
+  const normalizedItemIds = Array.isArray(itemIds)
+    ? itemIds.map((value) => Number(value)).filter((value) => Number.isFinite(value))
+    : []
+  const uniqueItemIds = Array.from(new Set(normalizedItemIds))
+  const hasItemIds = uniqueItemIds.length > 0
+  const params = []
+  const whereClauses = [`l.${linkColumns.itemColumn} IS NULL`]
+
+  if (hasItemIds) {
+    params.push(uniqueItemIds)
+    whereClauses.push(`a.${auctionColumns.itemIdColumn} = ANY($${params.length})`)
+  }
+
+  if (!hasItemIds) {
+    params.push(safeLimit)
+  }
+
+  const limitClause = hasItemIds ? '' : `LIMIT $${params.length}`
+
   const { rows } = await client.query(
     `
       SELECT a.${auctionColumns.keyColumn} AS auction_key,
@@ -340,11 +360,11 @@ async function matchAuctionsWithAi({ client, limit, apiKey, model } = {}) {
       FROM public.tradera_auctions a
       LEFT JOIN public.tradera_auction_card_links l
         ON l.${linkColumns.itemColumn} = a.${auctionColumns.keyColumn}
-      WHERE l.${linkColumns.itemColumn} IS NULL
+      WHERE ${whereClauses.join(' AND ')}
       ORDER BY a.updated_at DESC NULLS LAST, a.${auctionColumns.itemIdColumn} DESC
-      LIMIT $1
+      ${limitClause}
     `,
-    [safeLimit]
+    params
   )
 
   const summary = {
@@ -387,6 +407,12 @@ async function matchAuctionsWithAi({ client, limit, apiKey, model } = {}) {
       insertValues.push(`$${params.length}`)
     }
 
+    if (linkColumns.hasConfidence) {
+      insertColumns.push('confidence')
+      params.push(result.details.confidence)
+      insertValues.push(`$${params.length}`)
+    }
+
     if (linkColumns.hasStatus) {
       insertColumns.push('status')
       params.push('linked')
@@ -401,6 +427,10 @@ async function matchAuctionsWithAi({ client, limit, apiKey, model } = {}) {
 
     if (linkColumns.hasMethod) {
       updateClauses.push('method = EXCLUDED.method')
+    }
+
+    if (linkColumns.hasConfidence) {
+      updateClauses.push('confidence = EXCLUDED.confidence')
     }
 
     if (linkColumns.hasStatus) {
