@@ -9,6 +9,7 @@ const crypto = require('crypto')
 
 const { createExpansionService } = require('./server/routes/expansions')
 const { registerTraderaRoutes } = require('./server/routes/tradera')
+const { registerAiRoutes } = require('./server/routes/ai')
 const { normalizeEraCode, resolveEraCode } = require('./server/era')
 
 const { parseAuctionTitle } = require('./scripts/tradera_parser')
@@ -1014,6 +1015,7 @@ app.get('/api/health', (_req, res) => {
 
 registerExpansionRoutes(app)
 registerTraderaRoutes(app, { pool })
+registerAiRoutes(app, { pool })
 
 app.get('/api/eras', async (_req, res) => {
   try {
