@@ -17,9 +17,9 @@ function registerAiRoutes(app, { pool }) {
   app.post('/api/ai/tradera/match', async (req, res) => {
     if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
 
-    const apiKey = process.env.OPENAI_API_KEY
+    const apiKey = process.env.OPEN_AI || process.env.OPENAI_API_KEY
     if (!apiKey) {
-      return res.status(500).json({ error: 'OPENAI_API_KEY not set' })
+      return res.status(500).json({ error: 'OPEN_AI not set' })
     }
 
     const limit = parseLimit(req.body?.limit, null)
