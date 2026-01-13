@@ -142,17 +142,17 @@ export function EnrichPage(): JSX.Element {
     }
   }
 
-  const handleRunAiMatch = async (): Promise<void> => {
-    if (!selectedAiAuctionIds.length) return
+  const runAiMatchForIds = async (auctionIds: number[]): Promise<void> => {
+    if (!auctionIds.length) return
     setAiError(null)
     setAiPending(true)
     setAiSummary(null)
-    setAiProgress({ completed: 0, total: selectedAiAuctionIds.length })
+    setAiProgress({ completed: 0, total: auctionIds.length })
     try {
       const batchSize = 10
       const batches = []
-      for (let i = 0; i < selectedAiAuctionIds.length; i += batchSize) {
-        batches.push(selectedAiAuctionIds.slice(i, i + batchSize))
+      for (let i = 0; i < auctionIds.length; i += batchSize) {
+        batches.push(auctionIds.slice(i, i + batchSize))
       }
 
       const combined: AiMatchSummary = {
@@ -178,7 +178,6 @@ export function EnrichPage(): JSX.Element {
       }
 
       setAiSummary(combined)
-      setSelectedAiAuctionIds([])
       await Promise.all([refetchLinks(), refetchUnlinked()])
     } catch (error) {
       setAiError(`AI matching failed: ${String(error)}`)
@@ -186,6 +185,23 @@ export function EnrichPage(): JSX.Element {
       setAiPending(false)
       setAiProgress(null)
     }
+  }
+
+  const handleRunAiMatch = async (): Promise<void> => {
+    if (!selectedAiAuctionIds.length) return
+    await runAiMatchForIds(selectedAiAuctionIds)
+    setSelectedAiAuctionIds([])
+  }
+
+  const handleRunAllAiMatch = async (): Promise<void> => {
+    const allIds = unlinkedAuctions.map((auction) => auction.itemId)
+    if (!allIds.length) return
+    const confirmed = window.confirm(
+      `Run AI matching for all ${allIds.length.toLocaleString('sv-SE')} unlinked auctions?`
+    )
+    if (!confirmed) return
+    setSelectedAiAuctionIds([])
+    await runAiMatchForIds(allIds)
   }
 
   const links = linkData ?? []
@@ -541,9 +557,18 @@ export function EnrichPage(): JSX.Element {
                 ? `${selectedAiAuctionIds.length.toLocaleString('sv-SE')} auction(s) selected.`
                 : 'Select auctions from the list below to run the AI matcher.'}
             </p>
-            <Button onClick={handleRunAiMatch} disabled={aiPending || selectedAiAuctionIds.length === 0}>
-              {aiPending ? 'Matching…' : 'Run AI matching'}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={handleRunAiMatch} disabled={aiPending || selectedAiAuctionIds.length === 0}>
+                {aiPending ? 'Matching…' : 'Run AI matching'}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={handleRunAllAiMatch}
+                disabled={aiPending || !unlinkedAuctions.length}
+              >
+                Run all unlinked
+              </Button>
+            </div>
           </div>
 
           {aiProgress ? (
