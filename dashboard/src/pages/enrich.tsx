@@ -15,10 +15,18 @@ import {
   fetchLinkingStats,
   fetchUnlinkedAuctions,
   linkAuctionToCard,
+  runAiMatch,
   runTraderaLink,
   searchCards
 } from '../lib/api'
-import type { AuctionCardLink, CardSearchResult, LinkingStats, TraderaLinkSummary, UnlinkedAuction } from '../lib/api'
+import type {
+  AiMatchSummary,
+  AuctionCardLink,
+  CardSearchResult,
+  LinkingStats,
+  TraderaLinkSummary,
+  UnlinkedAuction
+} from '../lib/api'
 
 const formatCardLabel = (link: AuctionCardLink): string => {
   const parts = [link.cardName, link.cardNumber].filter(Boolean)
@@ -101,6 +109,11 @@ export function EnrichPage(): JSX.Element {
   const [linkSummary, setLinkSummary] = useState<TraderaLinkSummary | null>(null)
   const [linkPending, setLinkPending] = useState(false)
   const [traderaError, setTraderaError] = useState<string | null>(null)
+  const [aiSummary, setAiSummary] = useState<AiMatchSummary | null>(null)
+  const [aiPending, setAiPending] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const [aiProgress, setAiProgress] = useState<{ completed: number; total: number } | null>(null)
+  const [selectedAiAuctionIds, setSelectedAiAuctionIds] = useState<number[]>([])
   const [selectedSkipReason, setSelectedSkipReason] = useState('set_total_mismatch')
   const [searchOpen, setSearchOpen] = useState(false)
   const [selectedAuction, setSelectedAuction] = useState<UnlinkedAuction | null>(null)
@@ -126,6 +139,52 @@ export function EnrichPage(): JSX.Element {
       setTraderaError(`Linking failed: ${String(e)}`)
     } finally {
       setLinkPending(false)
+    }
+  }
+
+  const handleRunAiMatch = async (): Promise<void> => {
+    if (!selectedAiAuctionIds.length) return
+    setAiError(null)
+    setAiPending(true)
+    setAiSummary(null)
+    setAiProgress({ completed: 0, total: selectedAiAuctionIds.length })
+    try {
+      const batchSize = 10
+      const batches = []
+      for (let i = 0; i < selectedAiAuctionIds.length; i += batchSize) {
+        batches.push(selectedAiAuctionIds.slice(i, i + batchSize))
+      }
+
+      const combined: AiMatchSummary = {
+        scanned: 0,
+        matched: 0,
+        skipped: 0,
+        skipReasons: {},
+        matchedExamples: []
+      }
+
+      for (const batch of batches) {
+        const result = await runAiMatch(batch)
+        combined.scanned += result.scanned
+        combined.matched += result.matched
+        combined.skipped += result.skipped
+        for (const [reason, count] of Object.entries(result.skipReasons)) {
+          combined.skipReasons[reason] = (combined.skipReasons[reason] || 0) + count
+        }
+        combined.matchedExamples.push(...result.matchedExamples)
+        setAiProgress((prev) =>
+          prev ? { ...prev, completed: Math.min(prev.total, prev.completed + batch.length) } : prev
+        )
+      }
+
+      setAiSummary(combined)
+      setSelectedAiAuctionIds([])
+      await Promise.all([refetchLinks(), refetchUnlinked()])
+    } catch (error) {
+      setAiError(`AI matching failed: ${String(error)}`)
+    } finally {
+      setAiPending(false)
+      setAiProgress(null)
     }
   }
 
@@ -173,6 +232,9 @@ export function EnrichPage(): JSX.Element {
     const start = (unlinkedPage - 1) * pageSize
     return visibleUnlinkedAuctions.slice(start, start + pageSize)
   }, [pageSize, unlinkedPage, visibleUnlinkedAuctions])
+  const visiblePageIds = useMemo(() => pagedUnlinkedAuctions.map((auction) => auction.itemId), [pagedUnlinkedAuctions])
+  const selectedAiSet = useMemo(() => new Set(selectedAiAuctionIds), [selectedAiAuctionIds])
+  const allPageSelected = visiblePageIds.length > 0 && visiblePageIds.every((id) => selectedAiSet.has(id))
   const totalUnlinkedPages = Math.max(1, Math.ceil(visibleUnlinkedAuctions.length / pageSize))
   const activeCount = activeLinkView === 'linked'
     ? counts.linkedCards
@@ -229,6 +291,9 @@ export function EnrichPage(): JSX.Element {
 
   useEffect(() => {
     setUnlinkedPage(1)
+    if (activeLinkView === 'linked') {
+      setSelectedAiAuctionIds([])
+    }
   }, [activeLinkView, languageFilter])
 
   useEffect(() => {
@@ -265,6 +330,26 @@ export function EnrichPage(): JSX.Element {
     } finally {
       setManualLinkPending(false)
     }
+  }
+
+  const toggleAiSelection = (auctionId: number): void => {
+    setSelectedAiAuctionIds((prev) => {
+      if (prev.includes(auctionId)) {
+        return prev.filter((id) => id !== auctionId)
+      }
+      return [...prev, auctionId]
+    })
+  }
+
+  const toggleSelectAllPage = (): void => {
+    setSelectedAiAuctionIds((prev) => {
+      if (allPageSelected) {
+        return prev.filter((id) => !visiblePageIds.includes(id))
+      }
+      const next = new Set(prev)
+      visiblePageIds.forEach((id) => next.add(id))
+      return Array.from(next)
+    })
   }
 
   return (
@@ -442,6 +527,64 @@ export function EnrichPage(): JSX.Element {
       </Card>
 
       <Card>
+        <CardHeader>
+          <CardTitle>AI Matching</CardTitle>
+          <CardDescription>
+            Run the AI model on selected unlinked auctions so you control spend and scope. Requests are batched
+            to avoid timeouts.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              {selectedAiAuctionIds.length
+                ? `${selectedAiAuctionIds.length.toLocaleString('sv-SE')} auction(s) selected.`
+                : 'Select auctions from the list below to run the AI matcher.'}
+            </p>
+            <Button onClick={handleRunAiMatch} disabled={aiPending || selectedAiAuctionIds.length === 0}>
+              {aiPending ? 'Matching…' : 'Run AI matching'}
+            </Button>
+          </div>
+
+          {aiProgress ? (
+            <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
+              Processed {aiProgress.completed.toLocaleString('sv-SE')} of{' '}
+              {aiProgress.total.toLocaleString('sv-SE')} selected auctions.
+            </div>
+          ) : null}
+
+          {aiError ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-100">
+              {aiError}
+            </div>
+          ) : null}
+
+          {aiSummary ? (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Matched</p>
+                <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
+                  {aiSummary.matched.toLocaleString('sv-SE')}
+                </p>
+              </div>
+              <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Skipped</p>
+                <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
+                  {aiSummary.skipped.toLocaleString('sv-SE')}
+                </p>
+              </div>
+              <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Scanned</p>
+                <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
+                  {aiSummary.scanned.toLocaleString('sv-SE')}
+                </p>
+              </div>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader className="flex flex-col gap-2 space-y-0 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <CardTitle className="flex items-center gap-2">
@@ -594,6 +737,16 @@ export function EnrichPage(): JSX.Element {
                       </option>
                     ))}
                   </select>
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300"
+                      checked={allPageSelected}
+                      onChange={toggleSelectAllPage}
+                      aria-label="Select all auctions on this page"
+                    />
+                    <span>Select page</span>
+                  </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                   <span>
@@ -629,6 +782,7 @@ export function EnrichPage(): JSX.Element {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10 text-left">Select</TableHead>
                     <TableHead className="text-left">Auction</TableHead>
                     <TableHead className="text-left">Era</TableHead>
                     <TableHead className="text-left">Language</TableHead>
@@ -643,9 +797,19 @@ export function EnrichPage(): JSX.Element {
                   {pagedUnlinkedAuctions.length ? (
                     pagedUnlinkedAuctions.map((auction) => {
                       const diagnostics = buildDiagnostics(auction)
+                      const isSelected = selectedAiSet.has(auction.itemId)
 
                       return (
                         <TableRow key={auction.itemId}>
+                          <TableCell className="text-left">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-slate-300"
+                              checked={isSelected}
+                              onChange={() => toggleAiSelection(auction.itemId)}
+                              aria-label={`Select auction ${auction.itemId}`}
+                            />
+                          </TableCell>
                           <TableCell className="text-left">
                             <div className="space-y-1">
                               {auction.itemUrl ? (
@@ -705,7 +869,7 @@ export function EnrichPage(): JSX.Element {
                     })
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-sm text-slate-500">
+                      <TableCell colSpan={9} className="text-center text-sm text-slate-500">
                         {unlinkedLoading
                           ? 'Loading unlinked auctions…'
                           : unlinkedError
