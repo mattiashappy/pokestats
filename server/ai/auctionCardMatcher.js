@@ -30,6 +30,30 @@ function buildNameTokens(title) {
   return Array.from(new Set(tokens)).slice(0, 4)
 }
 
+function normalizeCollectorPart(value) {
+  if (!value) return null
+  return String(value).replace(/^0+(?=\d)/, '')
+}
+
+function buildCollectorNumberCandidates(collectorKey) {
+  if (!collectorKey) return []
+  const candidates = new Set()
+
+  if (collectorKey.number) {
+    const normalizedNumber = normalizeCollectorPart(collectorKey.number)
+    if (normalizedNumber) candidates.add(normalizedNumber)
+    if (collectorKey.prefix) {
+      candidates.add(`${collectorKey.prefix}${normalizedNumber}`)
+    }
+  }
+
+  if (collectorKey.value && !collectorKey.value.includes('/')) {
+    candidates.add(normalizeCollectorPart(collectorKey.value))
+  }
+
+  return Array.from(candidates).filter(Boolean)
+}
+
 function coerceConfidence(value) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return 0
@@ -53,14 +77,35 @@ async function resolveLinkColumns(client) {
     throw new Error('tradera_auction_card_links is missing item_id/auction_id column')
   }
 
-  const timestampColumn = columnNames.has('linked_at') ? 'linked_at' : columnNames.has('created_at') ? 'created_at' : null
+  const timestampColumn = columnNames.has('matched_at')
+    ? 'matched_at'
+    : columnNames.has('linked_at')
+      ? 'linked_at'
+      : columnNames.has('created_at')
+        ? 'created_at'
+        : null
+
+  const cardColumn = columnNames.has('pt_card_id') ? 'pt_card_id' : columnNames.has('card_id') ? 'card_id' : null
+
+  if (!cardColumn) {
+    throw new Error('tradera_auction_card_links is missing pt_card_id/card_id column')
+  }
+
+  const methodColumn = columnNames.has('match_method') ? 'match_method' : columnNames.has('method') ? 'method' : null
+  const confidenceColumn = columnNames.has('confidence_score')
+    ? 'confidence_score'
+    : columnNames.has('confidence')
+      ? 'confidence'
+      : null
+  const statusColumn = columnNames.has('status') ? 'status' : null
 
   return {
     itemColumn,
     timestampColumn,
-    hasMethod: columnNames.has('method'),
-    hasStatus: columnNames.has('status'),
-    hasConfidence: columnNames.has('confidence')
+    cardColumn,
+    methodColumn,
+    statusColumn,
+    confidenceColumn
   }
 }
 
@@ -94,28 +139,7 @@ async function resolveAuctionColumns(client, linkColumns) {
   }
 }
 
-async function fetchCandidateEras(client, title) {
-  const tokens = buildNameTokens(title)
-  if (!tokens.length) return []
-
-  const clauses = tokens.map((_, index) => `(code ILIKE $${index + 1} OR name ILIKE $${index + 1})`)
-  const params = tokens.map((token) => `%${token}%`)
-
-  const { rows } = await client.query(
-    `
-      SELECT code, name
-      FROM public.eras
-      WHERE ${clauses.join(' OR ')}
-      ORDER BY sort_order NULLS LAST, name
-      LIMIT 8
-    `,
-    params
-  )
-
-  return rows
-}
-
-async function fetchCandidateExpansions(client, { setHint, title, max = 12 } = {}) {
+async function fetchCandidateSets(client, { setHint, title, max = 12 } = {}) {
   const hints = []
   if (setHint) hints.push(setHint)
 
@@ -126,15 +150,20 @@ async function fetchCandidateExpansions(client, { setHint, title, max = 12 } = {
 
   if (!hints.length) return []
 
-  const clauses = hints.map((_, index) => `(set_code ILIKE $${index + 1} OR set_name ILIKE $${index + 1})`)
+  const clauses = hints.map(
+    (_, index) => `(name ILIKE $${index + 1} OR series ILIKE $${index + 1} OR pt_set_id ILIKE $${index + 1})`
+  )
   const params = hints.map((hint) => `%${hint}%`)
 
   const { rows } = await client.query(
     `
-      SELECT id, set_code, set_name, era
-      FROM public.expansions
+      SELECT pt_set_id,
+             name,
+             series,
+             card_count
+      FROM public.pt_sets
       WHERE ${clauses.join(' OR ')}
-      ORDER BY set_name
+      ORDER BY name
       LIMIT ${Math.max(1, Math.min(max, 40))}
     `,
     params
@@ -143,29 +172,30 @@ async function fetchCandidateExpansions(client, { setHint, title, max = 12 } = {
   return rows
 }
 
-async function fetchCandidateCards(client, { collectorKey, title, expansionIds, max = DEFAULT_MAX_CANDIDATES } = {}) {
+async function fetchCandidateCards(client, { collectorKey, title, setIds, max = DEFAULT_MAX_CANDIDATES } = {}) {
   const candidates = new Map()
+  const numberCandidates = buildCollectorNumberCandidates(collectorKey)
 
-  if (collectorKey) {
+  if (numberCandidates.length) {
     const { rows } = await client.query(
       `
-        SELECT c.id,
+        SELECT c.pt_card_id,
                c.name,
-               c.collector_number_raw,
-               c.collector_key,
-               e.set_code,
-               e.set_name,
-               e.era
-        FROM public.cards c
-        JOIN public.expansions e ON e.id = c.expansion_id
-        WHERE c.collector_key = $1 OR c.collector_number_raw = $1
+               c.card_number,
+               c.total_set_number,
+               COALESCE(s.name, c.set_name) AS set_name,
+               s.series
+        FROM public.pt_cards c
+        LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
+        WHERE c.card_number = ANY($1)
+           OR regexp_replace(c.card_number, '^0+(?=\\d)', '') = ANY($1)
         LIMIT $2
       `,
-      [collectorKey, Math.max(1, Math.min(max, 100))]
+      [numberCandidates, Math.max(1, Math.min(max, 100))]
     )
 
     for (const row of rows) {
-      candidates.set(row.id, row)
+      candidates.set(row.pt_card_id, row)
     }
   }
 
@@ -174,25 +204,24 @@ async function fetchCandidateCards(client, { collectorKey, title, expansionIds, 
     const clauses = tokens.map((_, index) => `c.name ILIKE $${index + 1}`).join(' OR ')
     const params = tokens.map((token) => `${token}%`)
 
-    let expansionFilter = ''
-    if (expansionIds && expansionIds.length) {
-      expansionFilter = `AND c.expansion_id = ANY($${params.length + 1})`
-      params.push(expansionIds)
+    let setFilter = ''
+    if (setIds && setIds.length) {
+      setFilter = `AND c.pt_set_id = ANY($${params.length + 1})`
+      params.push(setIds)
     }
 
     const { rows } = await client.query(
       `
-        SELECT c.id,
+        SELECT c.pt_card_id,
                c.name,
-               c.collector_number_raw,
-               c.collector_key,
-               e.set_code,
-               e.set_name,
-               e.era
-        FROM public.cards c
-        JOIN public.expansions e ON e.id = c.expansion_id
+               c.card_number,
+               c.total_set_number,
+               COALESCE(s.name, c.set_name) AS set_name,
+               s.series
+        FROM public.pt_cards c
+        LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
         WHERE (${clauses})
-        ${expansionFilter}
+        ${setFilter}
         ORDER BY c.name
         LIMIT ${Math.max(1, Math.min(max, 100))}
       `,
@@ -200,7 +229,7 @@ async function fetchCandidateCards(client, { collectorKey, title, expansionIds, 
     )
 
     for (const row of rows) {
-      candidates.set(row.id, row)
+      candidates.set(row.pt_card_id, row)
       if (candidates.size >= max) break
     }
   }
@@ -241,10 +270,10 @@ async function callOpenAi({ apiKey, model, systemPrompt, userPrompt }) {
   return JSON.parse(content)
 }
 
-function buildMatchPrompt({ auction, parsed, eras, expansions, cards }) {
+function buildMatchPrompt({ auction, parsed, sets, cards }) {
   const systemPrompt = `You match Pokemon auction listings to a single card from the database.
-Return JSON with keys: card_id (number or null), confidence (0-1), rationale (string).
-Only choose card_id if the auction clearly references a specific card. If uncertain, return null.`
+Return JSON with keys: pt_card_id (string or null), confidence (0-1), rationale (string).
+Only choose pt_card_id if the auction clearly references a specific card. If uncertain, return null.`
 
   const payload = {
     auction: {
@@ -252,8 +281,7 @@ Only choose card_id if the auction clearly references a specific card. If uncert
       description: auction.description || ''
     },
     parsed,
-    eras,
-    expansions,
+    sets,
     cards
   }
 
@@ -269,9 +297,9 @@ function coerceMatchResponse(response) {
     return { cardId: null, confidence: 0, rationale: 'invalid_response' }
   }
 
-  const cardId = Number(response.card_id)
+  const cardId = response.pt_card_id || response.card_id
   return {
-    cardId: Number.isFinite(cardId) ? cardId : null,
+    cardId: typeof cardId === 'string' && cardId.trim() ? cardId.trim() : null,
     confidence: coerceConfidence(response.confidence),
     rationale: typeof response.rationale === 'string' ? response.rationale.trim() : ''
   }
@@ -280,16 +308,12 @@ function coerceMatchResponse(response) {
 async function matchAuction({ client, auction, apiKey, model, confidenceThreshold }) {
   const parsed = parseAuctionTitle(`${auction.title || ''}\n${auction.description || ''}`)
 
-  const [eras, expansions] = await Promise.all([
-    fetchCandidateEras(client, auction.title || ''),
-    fetchCandidateExpansions(client, { setHint: parsed.setHint, title: auction.title || '' })
-  ])
-
-  const expansionIds = expansions.map((expansion) => expansion.id)
+  const sets = await fetchCandidateSets(client, { setHint: parsed.setHint, title: auction.title || '' })
+  const setIds = sets.map((set) => set.pt_set_id)
   const cards = await fetchCandidateCards(client, {
-    collectorKey: parsed.collectorKey?.value || parsed.collectorKey,
+    collectorKey: parsed.collectorKey,
     title: auction.title || '',
-    expansionIds,
+    setIds,
     max: DEFAULT_MAX_CANDIDATES
   })
 
@@ -304,8 +328,7 @@ async function matchAuction({ client, auction, apiKey, model, confidenceThreshol
   const { systemPrompt, userPrompt } = buildMatchPrompt({
     auction,
     parsed,
-    eras,
-    expansions,
+    sets,
     cards
   })
 
@@ -392,7 +415,7 @@ async function matchAuctionsWithAi({ client, limit, apiKey, model, itemIds } = {
       continue
     }
 
-    const insertColumns = [linkColumns.itemColumn, 'card_id']
+    const insertColumns = [linkColumns.itemColumn, linkColumns.cardColumn]
     const insertValues = ['$1', '$2']
     const params = [row.auction_key, result.details.cardId]
 
@@ -401,40 +424,40 @@ async function matchAuctionsWithAi({ client, limit, apiKey, model, itemIds } = {
       insertValues.push('NOW()')
     }
 
-    if (linkColumns.hasMethod) {
-      insertColumns.push('method')
+    if (linkColumns.methodColumn) {
+      insertColumns.push(linkColumns.methodColumn)
       params.push('ai')
       insertValues.push(`$${params.length}`)
     }
 
-    if (linkColumns.hasConfidence) {
-      insertColumns.push('confidence')
+    if (linkColumns.confidenceColumn) {
+      insertColumns.push(linkColumns.confidenceColumn)
       params.push(result.details.confidence)
       insertValues.push(`$${params.length}`)
     }
 
-    if (linkColumns.hasStatus) {
-      insertColumns.push('status')
+    if (linkColumns.statusColumn) {
+      insertColumns.push(linkColumns.statusColumn)
       params.push('linked')
       insertValues.push(`$${params.length}`)
     }
 
-    const updateClauses = ['card_id = EXCLUDED.card_id']
+    const updateClauses = [`${linkColumns.cardColumn} = EXCLUDED.${linkColumns.cardColumn}`]
 
     if (linkColumns.timestampColumn) {
       updateClauses.push(`${linkColumns.timestampColumn} = NOW()`)
     }
 
-    if (linkColumns.hasMethod) {
-      updateClauses.push('method = EXCLUDED.method')
+    if (linkColumns.methodColumn) {
+      updateClauses.push(`${linkColumns.methodColumn} = EXCLUDED.${linkColumns.methodColumn}`)
     }
 
-    if (linkColumns.hasConfidence) {
-      updateClauses.push('confidence = EXCLUDED.confidence')
+    if (linkColumns.confidenceColumn) {
+      updateClauses.push(`${linkColumns.confidenceColumn} = EXCLUDED.${linkColumns.confidenceColumn}`)
     }
 
-    if (linkColumns.hasStatus) {
-      updateClauses.push('status = EXCLUDED.status')
+    if (linkColumns.statusColumn) {
+      updateClauses.push(`${linkColumns.statusColumn} = EXCLUDED.${linkColumns.statusColumn}`)
     }
 
     await client.query(
