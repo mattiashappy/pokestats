@@ -233,12 +233,16 @@ export type LinkingStats = {
   lastLinkedAt: string | null
 }
 
-export async function searchCards(query: string, limit = 50): Promise<CardSearchResult[]> {
+export async function searchCards(
+  query: string,
+  limit = 50,
+  source: 'price-tracker' | 'database' = 'price-tracker'
+): Promise<CardSearchResult[]> {
   const q = (query || '').trim()
   if (!q) return []
 
   const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200)
-  const params = new URLSearchParams({ q, limit: String(safeLimit) })
+  const params = new URLSearchParams({ q, limit: String(safeLimit), source })
   const response = await fetch(`/api/cards/search?${params.toString()}`)
   if (!response.ok) throw new Error('Failed to search cards')
   return response.json()
