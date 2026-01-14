@@ -84,15 +84,47 @@ async function parseAuctions({ client, limit } = {}) {
   return summary
 }
 
-async function findExpansion(client, setHint) {
+function normalizeSetHint(setHint) {
+  if (!setHint) return null
+  return String(setHint).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function normalizeCollectorPart(value) {
+  if (!value) return null
+  return String(value).replace(/^0+(?=\d)/, '')
+}
+
+function buildCollectorNumberCandidates(collectorKey) {
+  if (!collectorKey) return []
+  const candidates = new Set()
+  if (collectorKey.number) {
+    const normalizedNumber = normalizeCollectorPart(collectorKey.number)
+    if (normalizedNumber) candidates.add(normalizedNumber)
+    if (collectorKey.prefix) {
+      candidates.add(`${collectorKey.prefix}${normalizedNumber}`)
+    }
+  }
+  if (collectorKey.value && !collectorKey.value.includes('/')) {
+    candidates.add(normalizeCollectorPart(collectorKey.value))
+  }
+  return Array.from(candidates).filter(Boolean)
+}
+
+async function findSet(client, setHint) {
+  const normalizedHint = normalizeSetHint(setHint)
+  const hint = normalizedHint || setHint
+  if (!hint) return null
+
   let { rows } = await client.query(
     `
-      SELECT id, set_name, set_code, set_total
-      FROM public.expansions
-      WHERE UPPER(set_code) = UPPER($1)
+      SELECT pt_set_id, name, series, card_count
+      FROM public.pt_sets
+      WHERE pt_set_id = $1
+         OR tcgplayer_set_id = $1
+         OR UPPER(name) = UPPER($1)
       LIMIT 2
     `,
-    [setHint]
+    [hint]
   )
 
   if (rows.length === 1) return rows[0]
@@ -100,12 +132,13 @@ async function findExpansion(client, setHint) {
 
   ;({ rows } = await client.query(
     `
-      SELECT id, set_name, set_code, set_total
-      FROM public.expansions
-      WHERE set_name ILIKE $1
+      SELECT pt_set_id, name, series, card_count
+      FROM public.pt_sets
+      WHERE name ILIKE $1
+         OR series ILIKE $1
       LIMIT 2
     `,
-    [setHint]
+    [hint]
   ))
 
   if (rows.length === 1) return rows[0]
@@ -113,27 +146,35 @@ async function findExpansion(client, setHint) {
 
   ;({ rows } = await client.query(
     `
-      SELECT id, set_name, set_code, set_total
-      FROM public.expansions
-      WHERE set_name ILIKE $1 OR set_code ILIKE $1
+      SELECT pt_set_id, name, series, card_count
+      FROM public.pt_sets
+      WHERE name ILIKE $1
+         OR series ILIKE $1
+         OR pt_set_id ILIKE $1
       LIMIT 2
     `,
-    [`%${setHint}%`]
+    [`%${hint}%`]
   ))
 
   return rows.length === 1 ? rows[0] : null
 }
 
-async function findCard(client, expansionId, collectorKey) {
+async function findCardInSet(client, ptSetId, collectorKey) {
+  const candidates = buildCollectorNumberCandidates(collectorKey)
+  if (!candidates.length) return null
+
   const { rows } = await client.query(
     `
-      SELECT id, name
-      FROM public.cards
-      WHERE expansion_id = $1
-        AND (collector_key = $2 OR collector_number_raw = $2)
-      LIMIT 2
+      SELECT pt_card_id, name, card_number, total_set_number
+      FROM public.pt_cards
+      WHERE pt_set_id = $1
+        AND (
+          card_number = ANY($2)
+          OR regexp_replace(card_number, '^0+(?=\\d)', '') = ANY($2)
+        )
+      LIMIT 3
     `,
-    [expansionId, collectorKey]
+    [ptSetId, candidates]
   )
 
   if (rows.length !== 1) return null
@@ -141,29 +182,49 @@ async function findCard(client, expansionId, collectorKey) {
 }
 
 async function findCardsByCollectorKey(client, collectorKey) {
+  const candidates = buildCollectorNumberCandidates(collectorKey)
+  if (!candidates.length) return []
+
   const { rows } = await client.query(
     `
-      SELECT id, name, expansion_id
-      FROM public.cards
-      WHERE collector_key = $1
-      LIMIT 3
+      SELECT c.pt_card_id,
+             c.name,
+             c.pt_set_id,
+             c.card_number,
+             c.total_set_number,
+             COALESCE(s.name, c.set_name) AS set_name
+      FROM public.pt_cards c
+      LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
+      WHERE c.card_number = ANY($1)
+         OR regexp_replace(c.card_number, '^0+(?=\\d)', '') = ANY($1)
+      LIMIT 4
     `,
-    [collectorKey]
+    [candidates]
   )
 
   return rows
 }
 
 async function findCardsByCollectorKeyAndName(client, collectorKey, namePrefix) {
+  const candidates = buildCollectorNumberCandidates(collectorKey)
+  if (!candidates.length) return []
+
   const { rows } = await client.query(
     `
-      SELECT id, name, expansion_id
-      FROM public.cards
-      WHERE collector_key = $1
-        AND name ILIKE $2
-      LIMIT 3
+      SELECT c.pt_card_id,
+             c.name,
+             c.pt_set_id,
+             c.card_number,
+             c.total_set_number,
+             COALESCE(s.name, c.set_name) AS set_name
+      FROM public.pt_cards c
+      LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
+      WHERE (c.card_number = ANY($1)
+          OR regexp_replace(c.card_number, '^0+(?=\\d)', '') = ANY($1))
+        AND c.name ILIKE $2
+      LIMIT 4
     `,
-    [collectorKey, namePrefix]
+    [candidates, namePrefix]
   )
 
   return rows
@@ -215,9 +276,9 @@ function shouldValidateSetTotal(collectorKey) {
   return !collectorKey.prefix
 }
 
-function isSetTotalMatch(collectorKey, expansion) {
+function isSetTotalMatch(collectorKey, setTotal) {
   if (!shouldValidateSetTotal(collectorKey)) return true
-  const expectedTotal = Number(expansion.set_total)
+  const expectedTotal = Number(setTotal)
   const parsedTotal = Number(collectorKey.total)
   if (!Number.isFinite(expectedTotal) || !Number.isFinite(parsedTotal)) return true
   return expectedTotal === parsedTotal
@@ -240,13 +301,35 @@ async function resolveLinkColumns(client) {
     throw new Error('tradera_auction_card_links is missing item_id/auction_id column')
   }
 
-  const timestampColumn = columnNames.has('linked_at') ? 'linked_at' : columnNames.has('created_at') ? 'created_at' : null
+  const timestampColumn = columnNames.has('matched_at')
+    ? 'matched_at'
+    : columnNames.has('linked_at')
+      ? 'linked_at'
+      : columnNames.has('created_at')
+        ? 'created_at'
+        : null
+
+  const cardColumn = columnNames.has('pt_card_id') ? 'pt_card_id' : columnNames.has('card_id') ? 'card_id' : null
+
+  if (!cardColumn) {
+    throw new Error('tradera_auction_card_links is missing pt_card_id/card_id column')
+  }
+
+  const methodColumn = columnNames.has('match_method') ? 'match_method' : columnNames.has('method') ? 'method' : null
+  const confidenceColumn = columnNames.has('confidence_score')
+    ? 'confidence_score'
+    : columnNames.has('confidence')
+      ? 'confidence'
+      : null
+  const statusColumn = columnNames.has('status') ? 'status' : null
 
   return {
     itemColumn,
     timestampColumn,
-    hasMethod: columnNames.has('method'),
-    hasStatus: columnNames.has('status')
+    cardColumn,
+    methodColumn,
+    confidenceColumn,
+    statusColumn
   }
 }
 
@@ -336,10 +419,10 @@ async function linkAuctions({ client, limit } = {}) {
     }
 
     let card = null
-    let expansion = null
+    let set = null
 
     if (!parsed.setHint) {
-      card = await findUniqueCardByCollectorKey(client, parsed.collectorKey.value, row.title ?? '')
+      card = await findUniqueCardByCollectorKey(client, parsed.collectorKey, row.title ?? '')
       if (!card) {
         summary.skipped += 1
         incrementSkip(summary.skipReasons, 'missing_set_hint')
@@ -350,8 +433,8 @@ async function linkAuctions({ client, limit } = {}) {
         continue
       }
     } else {
-      expansion = await findExpansion(client, parsed.setHint)
-      if (!expansion) {
+      set = await findSet(client, parsed.setHint)
+      if (!set) {
         summary.skipped += 1
         incrementSkip(summary.skipReasons, 'expansion_not_unique')
         addSkipExample(summary.skippedExamples, 'expansion_not_unique', {
@@ -361,7 +444,7 @@ async function linkAuctions({ client, limit } = {}) {
         continue
       }
 
-      if (!isSetTotalMatch(parsed.collectorKey, expansion)) {
+      if (!isSetTotalMatch(parsed.collectorKey, set.card_count)) {
         summary.skipped += 1
         incrementSkip(summary.skipReasons, 'set_total_mismatch')
         addSkipExample(summary.skippedExamples, 'set_total_mismatch', {
@@ -371,7 +454,7 @@ async function linkAuctions({ client, limit } = {}) {
         continue
       }
 
-      card = await findCard(client, expansion.id, parsed.collectorKey.value)
+      card = await findCardInSet(client, set.pt_set_id, parsed.collectorKey)
       if (!card) {
         summary.skipped += 1
         incrementSkip(summary.skipReasons, 'card_not_unique')
@@ -384,39 +467,49 @@ async function linkAuctions({ client, limit } = {}) {
     }
 
     const linkKeyValue = row.auction_key
-    const insertColumns = [linkColumns.itemColumn, 'card_id']
+    const insertColumns = [linkColumns.itemColumn, linkColumns.cardColumn]
     const insertValues = ['$1', '$2']
-    const params = [linkKeyValue, card.id]
+    const params = [linkKeyValue, card.pt_card_id]
 
     if (linkColumns.timestampColumn) {
       insertColumns.push(linkColumns.timestampColumn)
       insertValues.push('NOW()')
     }
 
-    if (linkColumns.hasMethod) {
-      insertColumns.push('method')
+    if (linkColumns.methodColumn) {
+      insertColumns.push(linkColumns.methodColumn)
       params.push('deterministic')
       insertValues.push(`$${params.length}`)
     }
 
-    if (linkColumns.hasStatus) {
-      insertColumns.push('status')
+    if (linkColumns.confidenceColumn) {
+      insertColumns.push(linkColumns.confidenceColumn)
+      params.push(1)
+      insertValues.push(`$${params.length}`)
+    }
+
+    if (linkColumns.statusColumn) {
+      insertColumns.push(linkColumns.statusColumn)
       params.push('linked')
       insertValues.push(`$${params.length}`)
     }
 
-    const updateClauses = ['card_id = EXCLUDED.card_id']
+    const updateClauses = [`${linkColumns.cardColumn} = EXCLUDED.${linkColumns.cardColumn}`]
 
     if (linkColumns.timestampColumn) {
       updateClauses.push(`${linkColumns.timestampColumn} = NOW()`)
     }
 
-    if (linkColumns.hasMethod) {
-      updateClauses.push('method = EXCLUDED.method')
+    if (linkColumns.methodColumn) {
+      updateClauses.push(`${linkColumns.methodColumn} = EXCLUDED.${linkColumns.methodColumn}`)
     }
 
-    if (linkColumns.hasStatus) {
-      updateClauses.push('status = EXCLUDED.status')
+    if (linkColumns.confidenceColumn) {
+      updateClauses.push(`${linkColumns.confidenceColumn} = EXCLUDED.${linkColumns.confidenceColumn}`)
+    }
+
+    if (linkColumns.statusColumn) {
+      updateClauses.push(`${linkColumns.statusColumn} = EXCLUDED.${linkColumns.statusColumn}`)
     }
 
     await client.query(
@@ -434,9 +527,9 @@ async function linkAuctions({ client, limit } = {}) {
       summary.linkedExamples.push({
         itemId: row.item_id,
         title: row.title ?? null,
-        cardId: card.id,
+        cardId: card.pt_card_id,
         cardName: card.name ?? null,
-        setName: expansion?.set_name ?? null
+        setName: set?.name ?? null
       })
     }
   }
