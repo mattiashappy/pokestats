@@ -26,7 +26,7 @@ export type CardResponse = {
   image_url: string | null
   product_details: string | null
   expansion_id: number | null
-  created_at: string
+  created_at: string | null
 }
 
 export type CardListItem = CardResponse & {

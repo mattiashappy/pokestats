@@ -60,6 +60,8 @@ app.use(express.json())
 const DATABASE_URL = process.env.DATABASE_URL
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 const PYTHON_BIN = process.env.PYTHON_BIN || 'python'
+const PRICE_TRACKER_API_KEY = process.env.PRICE_TRACKER_API
+const PRICE_TRACKER_BASE_URL = 'https://www.pokemonpricetracker.com/api/v2'
 
 // --------------------
 // Card metadata overrides
@@ -90,6 +92,144 @@ function applyCardOverrides(card) {
     image_url: overrides?.image_url ?? card.image_url ?? null,
     product_details: overrides?.product_details ?? card.product_details ?? null
   }
+}
+
+// --------------------
+// Price Tracker API helpers
+// --------------------
+function buildPriceTrackerUrl(endpoint, params = {}) {
+  const url = new URL(`${PRICE_TRACKER_BASE_URL}${endpoint}`)
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === null || value === undefined || value === '') return
+    url.searchParams.set(key, String(value))
+  })
+  return url
+}
+
+async function fetchPriceTracker(endpoint, params = {}) {
+  if (!PRICE_TRACKER_API_KEY) {
+    throw new Error('PRICE_TRACKER_API not set')
+  }
+
+  const url = buildPriceTrackerUrl(endpoint, params)
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${PRICE_TRACKER_API_KEY}`
+    }
+  })
+
+  if (!response.ok) {
+    const body = await response.text()
+    throw new Error(`Price Tracker request failed (${response.status}): ${body}`)
+  }
+
+  return response.json()
+}
+
+function normalizePriceTrackerCards(payload) {
+  const data = payload?.data ?? null
+  if (!data) return []
+  return Array.isArray(data) ? data : [data]
+}
+
+function buildPriceTrackerProductDetails(card) {
+  const marketPrice =
+    card?.prices && card.prices.market != null ? `Market price: $${card.prices.market}` : null
+  const listingCount =
+    card?.prices && card.prices.listings != null ? `Listings: ${card.prices.listings}` : null
+  const details = [
+    card.cardType ? `Card type: ${card.cardType}` : null,
+    card.rarity ? `Rarity: ${card.rarity}` : null,
+    card.stage ? `Stage: ${card.stage}` : null,
+    Number.isFinite(Number(card.hp)) ? `HP: ${card.hp}` : null,
+    card.artist ? `Artist: ${card.artist}` : null,
+    card.tcgPlayerUrl ? `TCGPlayer: ${card.tcgPlayerUrl}` : null,
+    marketPrice,
+    listingCount,
+    card.prices?.primaryCondition ? `Primary condition: ${card.prices.primaryCondition}` : null,
+    card.prices?.primaryPrinting ? `Primary printing: ${card.prices.primaryPrinting}` : null,
+    card.prices?.lastUpdated ? `Last updated: ${card.prices.lastUpdated}` : null
+  ].filter(Boolean)
+
+  return details.length ? details.join('\n') : null
+}
+
+async function fetchExpansionBySetCodeOrName(setCode) {
+  if (!pool) return null
+  const ok = await ensureExpansionsTableAvailable()
+  if (!ok) return null
+
+  const query = `
+    SELECT id, set_name, set_code, era, set_total
+    FROM public.expansions
+    WHERE LOWER(set_code) = LOWER($1)
+       OR LOWER(set_name) = LOWER($1)
+    LIMIT 1
+  `
+  const { rows } = await pool.query(query, [setCode])
+  return rows[0] ?? null
+}
+
+async function fetchExpansionBySetName(setName) {
+  if (!pool) return null
+  const ok = await ensureExpansionsTableAvailable()
+  if (!ok) return null
+
+  const query = `
+    SELECT id, set_name, set_code, era, set_total
+    FROM public.expansions
+    WHERE LOWER(set_name) = LOWER($1)
+    LIMIT 1
+  `
+  const { rows } = await pool.query(query, [setName])
+  return rows[0] ?? null
+}
+
+async function fetchExpansionById(expansionId) {
+  if (!pool) return null
+  const ok = await ensureExpansionsTableAvailable()
+  if (!ok) return null
+
+  const { rows } = await pool.query(
+    `
+      SELECT id, set_name, set_code, era, set_total
+      FROM public.expansions
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [expansionId]
+  )
+
+  return rows[0] ?? null
+}
+
+function mapPriceTrackerCard(card, { expansion = null, setCodeOverride = null } = {}) {
+  const parsedId = Number(card?.tcgPlayerId)
+  const setName = card?.setName ?? expansion?.set_name ?? null
+  const setCode = setCodeOverride ?? expansion?.set_code ?? null
+  const setTotal = Number.isFinite(Number(card?.totalSetNumber))
+    ? Number(card.totalSetNumber)
+    : expansion?.set_total ?? null
+  const imageUrl =
+    card?.imageCdnUrl800 ??
+    card?.imageCdnUrl400 ??
+    card?.imageCdnUrl200 ??
+    card?.imageCdnUrl ??
+    null
+
+  return applyCardOverrides({
+    id: Number.isFinite(parsedId) ? parsedId : 0,
+    name: card?.name ?? null,
+    era: expansion?.era ?? null,
+    set_name: setName,
+    set_code: setCode,
+    set_total: setTotal,
+    card_number: card?.cardNumber ?? null,
+    image_url: imageUrl,
+    product_details: buildPriceTrackerProductDetails(card),
+    expansion_id: expansion?.id ?? null,
+    created_at: null
+  })
 }
 
 // --------------------
@@ -632,7 +772,7 @@ async function fetchAuctionsFromDatabase(filters = {}) {
   return rows.map(normalizeTraderaAuctionRow)
 }
 
-async function fetchCard(cardId) {
+async function fetchCardFromDatabase(cardId) {
   if (!Number.isFinite(cardId)) return null
   if (!pool) return null
 
@@ -950,7 +1090,7 @@ function runImporterScript(runUuid) {
   })
 }
 
-async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
+async function fetchCardsListFromDatabase({ setCode = null, expansionId = null } = {}) {
   if (!pool) return []
   const ok = await ensureCardInfrastructure()
   if (!ok) return []
@@ -1000,6 +1140,135 @@ async function fetchCardsList({ setCode = null, expansionId = null } = {}) {
   `
   const result = await pool.query(query, params)
   return result.rows.map(applyCardOverrides)
+}
+
+async function fetchCardsListFromPriceTracker({ setCode = null, search = null, limit = 100, offset = 0 } = {}) {
+  const params = {
+    language: 'english',
+    limit,
+    offset,
+    includeHistory: 'false',
+    includeEbay: 'false',
+    includeBoth: 'false',
+    days: 30
+  }
+
+  let expansion = null
+  let setName = null
+
+  if (setCode) {
+    expansion = await fetchExpansionBySetCodeOrName(setCode)
+    setName = expansion?.set_name ?? setCode
+    params.set = setName
+  }
+
+  if (search) {
+    params.search = search
+  }
+
+  const payload = await fetchPriceTracker('/cards', params)
+  const cards = normalizePriceTrackerCards(payload)
+
+  return cards.map((card) =>
+    ({
+      ...mapPriceTrackerCard(card, { expansion, setCodeOverride: expansion?.set_code ?? setCode ?? null }),
+      linked_auctions: 0,
+      last_seen: null
+    })
+  )
+}
+
+async function fetchCardFromPriceTracker(cardId) {
+  const params = {
+    language: 'english',
+    tcgPlayerId: cardId,
+    limit: 1,
+    offset: 0,
+    includeHistory: 'false',
+    includeEbay: 'false',
+    includeBoth: 'false',
+    days: 30
+  }
+  const payload = await fetchPriceTracker('/cards', params)
+  const cards = normalizePriceTrackerCards(payload)
+  if (!cards.length) return null
+
+  const card = cards[0]
+  const expansion = card?.setName ? await fetchExpansionBySetName(card.setName) : null
+
+  return mapPriceTrackerCard(card, {
+    expansion,
+    setCodeOverride: expansion?.set_code ?? null
+  })
+}
+
+async function fetchCardSearchFromPriceTracker(query, limit = 50) {
+  const params = {
+    language: 'english',
+    search: query,
+    limit,
+    offset: 0,
+    includeHistory: 'false',
+    includeEbay: 'false',
+    includeBoth: 'false',
+    days: 30
+  }
+
+  const payload = await fetchPriceTracker('/cards', params)
+  const cards = normalizePriceTrackerCards(payload)
+
+  return cards.map((card) => {
+    const parsedId = Number(card?.tcgPlayerId)
+    return {
+      id: Number.isFinite(parsedId) ? parsedId : 0,
+      name: card?.name ?? null,
+      cardNumber: card?.cardNumber ?? null,
+      setName: card?.setName ?? null,
+      setCode: card?.setName ?? null,
+      era: null
+    }
+  })
+}
+
+async function fetchCardSearchFromDatabase(query, limit = 50) {
+  if (!pool) return []
+  const ok = await ensureCardInfrastructure()
+  if (!ok) return []
+
+  const needle = `%${query}%`
+
+  const { rows } = await pool.query(
+    `
+      SELECT
+        c.id,
+        c.name,
+        c.collector_number_raw AS card_number,
+        e.set_name,
+        e.set_code,
+        e.era
+      FROM public.cards c
+      LEFT JOIN public.expansions e ON e.id = c.expansion_id
+      WHERE
+        c.name ILIKE $1
+        OR c.collector_number_raw ILIKE $1
+        OR e.set_name ILIKE $1
+        OR e.set_code ILIKE $1
+      ORDER BY
+        c.name NULLS LAST,
+        c.collector_number_raw NULLS LAST
+      LIMIT $2
+    `,
+    [needle, limit]
+  )
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name ?? null,
+    cardNumber: row.card_number ?? null,
+    setName: row.set_name ?? null,
+    setCode: row.set_code ?? null,
+    era: row.era ?? null
+  }))
 }
 
 // --------------------
@@ -1075,8 +1344,16 @@ app.get('/api/cards', async (req, res) => {
     const expansionIdParam = typeof req.query.expansionId === 'string' ? Number(req.query.expansionId) : null
     const expansionId = Number.isFinite(expansionIdParam) ? expansionIdParam : null
     const setCode = expansionId ? null : typeof req.query.set === 'string' ? req.query.set : null
+    const search = typeof req.query.search === 'string' ? req.query.search : typeof req.query.q === 'string' ? req.query.q : null
+    const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : 100
+    const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0
 
-    const cards = await fetchCardsList({ setCode, expansionId })
+    if (PRICE_TRACKER_API_KEY) {
+      const cards = await fetchCardsListFromPriceTracker({ setCode, search, limit, offset })
+      return res.json(cards)
+    }
+
+    const cards = await fetchCardsListFromDatabase({ setCode, expansionId })
     return res.json(cards)
   } catch (error) {
     console.error('Failed to fetch cards', error)
@@ -1093,7 +1370,12 @@ app.get('/api/expansions/:setCode/cards', async (req, res) => {
     const setCode = String(req.params.setCode || '').trim()
     if (!setCode) return res.status(400).json({ error: 'Invalid set code' })
 
-    const cards = await fetchCardsList({ setCode })
+    if (PRICE_TRACKER_API_KEY) {
+      const cards = await fetchCardsListFromPriceTracker({ setCode })
+      return res.json(cards)
+    }
+
+    const cards = await fetchCardsListFromDatabase({ setCode })
     return res.json(cards)
   } catch (error) {
     console.error('Failed to fetch cards for expansion', error)
@@ -1110,7 +1392,16 @@ app.get('/api/expansions/id/:id/cards', async (req, res) => {
     const expansionId = Number(req.params.id)
     if (!Number.isFinite(expansionId)) return res.status(400).json({ error: 'Invalid expansion id' })
 
-    const cards = await fetchCardsList({ expansionId })
+    if (PRICE_TRACKER_API_KEY) {
+      const expansion = await fetchExpansionById(expansionId)
+      if (!expansion) return res.json([])
+      const cards = await fetchCardsListFromPriceTracker({
+        setCode: expansion.set_code ?? expansion.set_name ?? String(expansionId)
+      })
+      return res.json(cards)
+    }
+
+    const cards = await fetchCardsListFromDatabase({ expansionId })
     return res.json(cards)
   } catch (error) {
     console.error('Failed to fetch cards for expansion id', error)
@@ -1119,52 +1410,20 @@ app.get('/api/expansions/id/:id/cards', async (req, res) => {
 })
 
 app.get('/api/cards/search', async (req, res) => {
-  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
-
   try {
-    const ok = await ensureCardInfrastructure()
-    if (!ok) return res.status(500).json({ error: 'Card tables unavailable' })
-
     const query = String(req.query.q ?? '').trim()
     if (!query) return res.json([])
 
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200)
-    const needle = `%${query}%`
+    const source = String(req.query.source ?? '').trim()
 
-    const { rows } = await pool.query(
-      `
-        SELECT
-          c.id,
-          c.name,
-          c.collector_number_raw AS card_number,
-          e.set_name,
-          e.set_code,
-          e.era
-        FROM public.cards c
-        LEFT JOIN public.expansions e ON e.id = c.expansion_id
-        WHERE
-          c.name ILIKE $1
-          OR c.collector_number_raw ILIKE $1
-          OR e.set_name ILIKE $1
-          OR e.set_code ILIKE $1
-        ORDER BY
-          c.name NULLS LAST,
-          c.collector_number_raw NULLS LAST
-        LIMIT $2
-      `,
-      [needle, limit]
-    )
+    if (source === 'database' || !PRICE_TRACKER_API_KEY) {
+      const results = await fetchCardSearchFromDatabase(query, limit)
+      return res.json(results)
+    }
 
-    return res.json(
-      rows.map((row) => ({
-        id: row.id,
-        name: row.name ?? null,
-        cardNumber: row.card_number ?? null,
-        setName: row.set_name ?? null,
-        setCode: row.set_code ?? null,
-        era: row.era ?? null
-      }))
-    )
+    const results = await fetchCardSearchFromPriceTracker(query, limit)
+    return res.json(results)
   } catch (error) {
     console.error('Failed to search cards', error)
     return res.status(500).json({ error: 'Failed to search cards' })
@@ -1176,7 +1435,17 @@ app.get('/api/cards/:id', async (req, res) => {
     const cardId = Number(req.params.id)
     if (!Number.isFinite(cardId)) return res.status(400).json({ error: 'Invalid card id' })
 
-    const card = await fetchCard(cardId)
+    if (PRICE_TRACKER_API_KEY) {
+      try {
+        const card = await fetchCardFromPriceTracker(cardId)
+        if (!card) return res.status(404).json({ error: 'Card not found' })
+        return res.json(card)
+      } catch (error) {
+        console.error('Failed to fetch card from Price Tracker', error)
+      }
+    }
+
+    const card = await fetchCardFromDatabase(cardId)
     if (!card) return res.status(404).json({ error: 'Card not found' })
 
     return res.json(card)

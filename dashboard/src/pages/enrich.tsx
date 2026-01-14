@@ -224,7 +224,7 @@ export function EnrichPage(): JSX.Element {
     isError: cardSearchError
   } = useQuery<CardSearchResult[]>({
     queryKey: ['card-search', searchQuery],
-    queryFn: () => searchCards(searchQuery),
+    queryFn: () => searchCards(searchQuery, 50, 'database'),
     enabled: searchOpen && Boolean(searchQuery)
   })
   const counts = useMemo(() => {
