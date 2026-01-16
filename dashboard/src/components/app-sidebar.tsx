@@ -49,7 +49,7 @@ export function AppSidebar(): JSX.Element {
 
   const navOther: NavItem[] = [
     { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
-    { title: 'Eras', url: '/era', icon: Layers },
+    { title: 'Pokemon Sets', url: '/sets', icon: Layers },
     { title: 'Settings', url: '/settings', icon: Settings }
   ]
 

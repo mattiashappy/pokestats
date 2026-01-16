@@ -10,11 +10,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Input } from '../components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { fetchCardsForSet, fetchExpansions } from '../lib/api'
-import { normalizeEraCode } from '../lib/era'
 import type { CardListItem, ExpansionSummary } from '../types'
 
 export function PokemonSetPage(): JSX.Element {
-  const { setCode = '', eraCode } = useParams()
+  const { setCode = '' } = useParams()
   const [searchTerm, setSearchTerm] = useState('')
 
   const {
@@ -42,7 +41,6 @@ export function PokemonSetPage(): JSX.Element {
     return expansions.find((expansion) => expansion.set_code.toLowerCase() === normalized) ?? null
   }, [expansions, setCode])
 
-  const resolvedEraCode = normalizeEraCode(eraCode ?? expansion?.era_code ?? null)
 
   const filteredCards = useMemo(() => {
     if (!cards) return []
@@ -59,8 +57,8 @@ export function PokemonSetPage(): JSX.Element {
 
   const headerLabel = expansion?.name ?? setCode
   const setTotal = expansion?.set_total ?? expansion?.cards_total ?? cards?.length ?? null
-  const backLink = resolvedEraCode ? `/era/${resolvedEraCode}` : '/era'
-  const backLabel = resolvedEraCode ? `Back to ${expansion?.era_name ?? expansion?.era ?? resolvedEraCode}` : 'Back to eras'
+  const backLink = '/sets'
+  const backLabel = 'Back to sets'
 
   return (
     <div className="space-y-6">
@@ -169,11 +167,7 @@ export function PokemonSetPage(): JSX.Element {
                       <TableCell className="text-right">
                         <Button asChild size="sm" variant="secondary">
                             <Link
-                              to={
-                                resolvedEraCode
-                                ? `/era/${resolvedEraCode}/${setCode}/${card.id}`
-                                : `/cards/${card.id}`
-                              }
+                              to={`/sets/${setCode}/${card.id}`}
                             >
                             View card
                           </Link>

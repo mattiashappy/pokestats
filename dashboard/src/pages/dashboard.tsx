@@ -242,7 +242,7 @@ export function DashboardPage(): JSX.Element {
                     {(topSet.linked_auctions ?? 0).toLocaleString('sv-SE')}
                   </p>
                   {topSet.set_code ? (
-                    <Link to={`/era/sets/${topSet.set_code}`} className="text-sm font-semibold text-sky-600 hover:text-sky-700">
+                    <Link to={`/sets/${topSet.set_code}`} className="text-sm font-semibold text-sky-600 hover:text-sky-700">
                       View set cards
                     </Link>
                   ) : null}

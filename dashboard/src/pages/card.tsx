@@ -8,10 +8,9 @@ import { Button } from '../components/ui/button'
 import { Card as UiCard, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { fetchCardAuctions, fetchCardDetails } from '../lib/api'
-import { normalizeEraCode } from '../lib/era'
 
 export function CardPage(): JSX.Element {
-  const { id, eraCode, setCode } = useParams()
+  const { id, setCode } = useParams()
   const cardId = Number(id)
 
   const {
@@ -52,14 +51,9 @@ export function CardPage(): JSX.Element {
   const isLoading = isLoadingCard || isLoadingAuctions
   const error = cardError || auctionsError
 
-  const resolvedEraCode = normalizeEraCode(eraCode ?? null)
   const resolvedSetCode = setCode ?? card?.set_code ?? null
-  const backLink = resolvedEraCode && resolvedSetCode
-    ? `/era/${resolvedEraCode}/${resolvedSetCode}`
-    : card?.set_code
-      ? `/era/sets/${card.set_code}`
-      : '/era'
-  const backLabel = resolvedSetCode ? `Back to ${resolvedSetCode}` : 'Back to era sets'
+  const backLink = resolvedSetCode ? `/sets/${resolvedSetCode}` : '/sets'
+  const backLabel = resolvedSetCode ? `Back to ${resolvedSetCode}` : 'Back to sets'
 
   return (
     <div className="space-y-6">
