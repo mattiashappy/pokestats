@@ -6,9 +6,28 @@ const API_KEY_HEADER = process.env.PT_API_KEY_HEADER || 'Authorization'
 const API_KEY_PREFIX = process.env.PT_API_KEY_PREFIX || 'Bearer'
 const LANGUAGE = process.env.PT_API_LANGUAGE || 'english'
 const PAGE_LIMIT = Number(process.env.PT_PAGE_LIMIT || 200)
-const SETS_PATH = process.env.PT_SETS_PATH || '/sets'
-const CARDS_PATH = process.env.PT_CARDS_PATH || '/cards'
+const SETS_PATH = process.env.PT_SETS_PATH || 'sets'
+const CARDS_PATH = process.env.PT_CARDS_PATH || 'cards'
 const FALLBACK_PAGINATION = process.env.PT_FALLBACK_PAGINATION === 'true'
+
+const ABSOLUTE_URL_REGEX = /^https?:\/\//i
+
+function normalizeBaseUrl(url) {
+  const baseUrl = new URL(url)
+  if (!baseUrl.pathname.endsWith('/')) {
+    baseUrl.pathname = `${baseUrl.pathname}/`
+  }
+  return baseUrl
+}
+
+function buildEndpointUrl(path, baseUrl) {
+  if (ABSOLUTE_URL_REGEX.test(path)) {
+    return new URL(path)
+  }
+
+  const normalizedPath = path.replace(/^\/+/, '')
+  return new URL(normalizedPath, baseUrl)
+}
 
 function normalizeString(value) {
   if (value === undefined || value === null) return null
@@ -171,16 +190,20 @@ function mapCard(card, fallbackSetName) {
 
 async function fetchPagedSets() {
   if (!API_BASE_URL) throw new Error('PT_API_BASE_URL not set')
-  const baseUrl = new URL(API_BASE_URL)
+  const baseUrl = normalizeBaseUrl(API_BASE_URL)
   const limit = Number.isFinite(PAGE_LIMIT) ? Math.max(1, PAGE_LIMIT) : 200
   const allSets = []
   let offset = 0
 
   while (true) {
-    const url = new URL(SETS_PATH, baseUrl)
+    const url = buildEndpointUrl(SETS_PATH, baseUrl)
     url.searchParams.set('language', LANGUAGE)
     url.searchParams.set('limit', String(limit))
     url.searchParams.set('offset', String(offset))
+
+    if (offset === 0) {
+      console.log('FIRST FETCH URL', url.toString())
+    }
 
     const payload = await fetchJson(url)
     const page = normalizeResponseList(payload, ['sets', 'data', 'results', 'items'])
@@ -196,13 +219,13 @@ async function fetchPagedSets() {
 }
 
 async function fetchPagedCards(setId) {
-  const baseUrl = new URL(API_BASE_URL)
+  const baseUrl = normalizeBaseUrl(API_BASE_URL)
   const limit = Number.isFinite(PAGE_LIMIT) ? Math.max(1, PAGE_LIMIT) : 200
   const allCards = []
   let offset = 0
 
   while (true) {
-    const url = new URL(CARDS_PATH, baseUrl)
+    const url = buildEndpointUrl(CARDS_PATH, baseUrl)
     if (setId) url.searchParams.set('setId', setId)
     url.searchParams.set('language', LANGUAGE)
     url.searchParams.set('limit', String(limit))
@@ -223,8 +246,8 @@ async function fetchPagedCards(setId) {
 
 async function fetchCardsForSet(setId) {
   if (!API_BASE_URL) throw new Error('PT_API_BASE_URL not set')
-  const baseUrl = new URL(API_BASE_URL)
-  const url = new URL(CARDS_PATH, baseUrl)
+  const baseUrl = normalizeBaseUrl(API_BASE_URL)
+  const url = buildEndpointUrl(CARDS_PATH, baseUrl)
   if (setId) url.searchParams.set('setId', setId)
   url.searchParams.set('fetchAllInSet', 'true')
   url.searchParams.set('language', LANGUAGE)
@@ -400,6 +423,14 @@ async function upsertCard(client, card) {
 async function importPriceTracker() {
   const databaseUrl = process.env.DATABASE_URL
   if (!databaseUrl) throw new Error('DATABASE_URL not set')
+
+  console.log({
+    API_BASE_URL,
+    SETS_PATH,
+    CARDS_PATH,
+    API_KEY_HEADER,
+    API_KEY_PREFIX
+  })
 
   const pool = new Pool({
     connectionString: databaseUrl,
