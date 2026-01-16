@@ -76,7 +76,7 @@ async function fetchJson(url) {
   }
 
   if (!response.ok) {
-    const preview = json ? JSON.stringify(json).slice(0, 300) : text.slice(0, 300)
+  const preview = json ? JSON.stringify(json).slice(0, 300) : text.slice(0, 300)
     throw new Error(`Request failed ${response.status}: ${preview}`)
   }
   return json
