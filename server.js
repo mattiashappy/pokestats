@@ -1551,13 +1551,13 @@ app.get('/api/cards', async (req, res) => {
     const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : 100
     const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0
 
-    if (PRICE_TRACKER_API_KEY) {
-      const cards = await fetchCardsListFromPriceTracker({ setCode, search, limit, offset })
+    if (await ensurePriceTrackerImportTablesAvailable()) {
+      const cards = await fetchCardsListFromPtImport({ setCode, search, limit, offset })
       return res.json(cards)
     }
 
-    if (await ensurePriceTrackerImportTablesAvailable()) {
-      const cards = await fetchCardsListFromPtImport({ setCode, search, limit, offset })
+    if (PRICE_TRACKER_API_KEY) {
+      const cards = await fetchCardsListFromPriceTracker({ setCode, search, limit, offset })
       return res.json(cards)
     }
 
@@ -1578,13 +1578,13 @@ app.get('/api/expansions/:setCode/cards', async (req, res) => {
     const setCode = String(req.params.setCode || '').trim()
     if (!setCode) return res.status(400).json({ error: 'Invalid set code' })
 
-    if (PRICE_TRACKER_API_KEY) {
-      const cards = await fetchCardsListFromPriceTracker({ setCode })
+    if (await ensurePriceTrackerImportTablesAvailable()) {
+      const cards = await fetchCardsListFromPtImport({ setCode })
       return res.json(cards)
     }
 
-    if (await ensurePriceTrackerImportTablesAvailable()) {
-      const cards = await fetchCardsListFromPtImport({ setCode })
+    if (PRICE_TRACKER_API_KEY) {
+      const cards = await fetchCardsListFromPriceTracker({ setCode })
       return res.json(cards)
     }
 
@@ -1606,9 +1606,22 @@ app.get('/api/expansions/id/:id/cards', async (req, res) => {
     if (!Number.isFinite(expansionId)) return res.status(400).json({ error: 'Invalid expansion id' })
 
     if (PRICE_TRACKER_API_KEY) {
+      try {
+        const expansion = await fetchExpansionById(expansionId)
+        if (!expansion) return res.json([])
+        const cards = await fetchCardsListFromPriceTracker({
+          setCode: expansion.set_code ?? expansion.set_name ?? String(expansionId)
+        })
+        return res.json(cards)
+      } catch (error) {
+        console.error('Failed to fetch cards from Price Tracker', error)
+      }
+    }
+
+    if (await ensurePriceTrackerImportTablesAvailable()) {
       const expansion = await fetchExpansionById(expansionId)
       if (!expansion) return res.json([])
-      const cards = await fetchCardsListFromPriceTracker({
+      const cards = await fetchCardsListFromPtImport({
         setCode: expansion.set_code ?? expansion.set_name ?? String(expansionId)
       })
       return res.json(cards)
@@ -1638,6 +1651,12 @@ app.get('/api/cards/search', async (req, res) => {
       return res.json(results)
     }
 
+    const ptReady = await ensurePriceTrackerImportTablesAvailable()
+    if (ptReady) {
+      const results = await fetchCardSearchFromPtImport(query, limit)
+      return res.json(results)
+    }
+
     const results = await fetchCardSearchFromPriceTracker(query, limit)
     return res.json(results)
   } catch (error) {
@@ -1652,16 +1671,6 @@ app.get('/api/cards/:id', async (req, res) => {
     if (!cardIdParam) return res.status(400).json({ error: 'Invalid card id' })
     const cardId = Number(cardIdParam)
 
-    if (PRICE_TRACKER_API_KEY && Number.isFinite(cardId)) {
-      try {
-        const card = await fetchCardFromPriceTracker(cardId)
-        if (!card) return res.status(404).json({ error: 'Card not found' })
-        return res.json(card)
-      } catch (error) {
-        console.error('Failed to fetch card from Price Tracker', error)
-      }
-    }
-
     let card = null
 
     if (Number.isFinite(cardId)) {
@@ -1670,6 +1679,14 @@ app.get('/api/cards/:id', async (req, res) => {
 
     if (!card && (await ensurePriceTrackerImportTablesAvailable())) {
       card = await fetchCardFromPtImport(cardIdParam)
+    }
+
+    if (!card && PRICE_TRACKER_API_KEY && Number.isFinite(cardId)) {
+      try {
+        card = await fetchCardFromPriceTracker(cardId)
+      } catch (error) {
+        console.error('Failed to fetch card from Price Tracker', error)
+      }
     }
 
     if (!card) return res.status(404).json({ error: 'Card not found' })
