@@ -85,7 +85,15 @@ Artist:Ken Sugimori`
 
 function applyCardOverrides(card) {
   if (!card) return null
-  const overrides = CARD_METADATA_OVERRIDES.get(card.id)
+  const parsedId = Number(card.id)
+  const overrideKey = CARD_METADATA_OVERRIDES.has(card.id)
+    ? card.id
+    : Number.isFinite(parsedId)
+      ? parsedId
+      : Number.isFinite(Number(card.tcgplayer_product_id))
+        ? Number(card.tcgplayer_product_id)
+        : null
+  const overrides = overrideKey !== null ? CARD_METADATA_OVERRIDES.get(overrideKey) : null
 
   return {
     ...card,
@@ -1229,13 +1237,15 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
       c.name,
       s.series AS era,
       COALESCE(s.name, c.set_name) AS set_name,
-      c.pt_set_id AS set_code,
+      c.pt_set_id AS pt_set_id,
+      NULL::text AS set_code,
       COALESCE(
         s.card_count,
         NULLIF(regexp_replace(split_part(c.total_set_number, '/', 2), '[^0-9]', '', 'g'), '')::int
       ) AS set_total,
       c.card_number AS card_number,
-      COALESCE(c.image_cdn_url400, c.image_cdn_url, c.image_url) AS image_url,
+      COALESCE(c.image_cdn_url800, c.image_cdn_url400, c.image_cdn_url200, c.image_cdn_url) AS image_url,
+      c.tcgplayer_product_id,
       NULL::text AS product_details,
       c.updated_at AS created_at,
       NULL::int AS expansion_id,
@@ -1244,12 +1254,18 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
     FROM public.pt_cards c
     LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
     ${whereClause}
-    ORDER BY c.card_number NULLS LAST, c.name NULLS LAST
+    ORDER BY
+      NULLIF(regexp_replace(c.card_number, '[^0-9].*$', ''), '')::int NULLS LAST,
+      c.card_number NULLS LAST,
+      c.name NULLS LAST
     ${useLimit ? `LIMIT $${params.length - 1} OFFSET $${params.length}` : ''}
   `
 
   const result = await pool.query(query, params)
-  return result.rows
+  return result.rows.map((row) => {
+    const { tcgplayer_product_id, ...card } = applyCardOverrides(row)
+    return card
+  })
 }
 
 async function fetchCardFromPtImport(cardId) {
@@ -1264,13 +1280,15 @@ async function fetchCardFromPtImport(cardId) {
       c.name,
       s.series AS era,
       COALESCE(s.name, c.set_name) AS set_name,
-      c.pt_set_id AS set_code,
+      c.pt_set_id AS pt_set_id,
+      NULL::text AS set_code,
       COALESCE(
         s.card_count,
         NULLIF(regexp_replace(split_part(c.total_set_number, '/', 2), '[^0-9]', '', 'g'), '')::int
       ) AS set_total,
       c.card_number AS card_number,
-      COALESCE(c.image_cdn_url400, c.image_cdn_url, c.image_url) AS image_url,
+      COALESCE(c.image_cdn_url800, c.image_cdn_url400, c.image_cdn_url200, c.image_cdn_url) AS image_url,
+      c.tcgplayer_product_id,
       c.rarity,
       c.card_type,
       c.hp,
@@ -1294,20 +1312,23 @@ async function fetchCardFromPtImport(cardId) {
   const result = await pool.query(query, [String(cardId)])
   const row = result.rows[0]
   if (!row) return null
-
-  return {
+  const { tcgplayer_product_id, ...card } = applyCardOverrides({
     id: row.id,
     name: row.name,
     era: row.era ?? null,
     set_name: row.set_name ?? null,
     set_code: row.set_code ?? null,
+    pt_set_id: row.pt_set_id ?? null,
     set_total: row.set_total ?? null,
     card_number: row.card_number ?? null,
     image_url: row.image_url ?? null,
     product_details: buildPtCardDetails(row),
     expansion_id: null,
-    created_at: row.created_at ?? null
-  }
+    created_at: row.created_at ?? null,
+    tcgplayer_product_id: row.tcgplayer_product_id ?? null
+  })
+
+  return card
 }
 
 async function fetchCardsListFromPriceTracker({ setCode = null, search = null, limit = 100, offset = 0 } = {}) {
@@ -1558,7 +1579,20 @@ app.get('/api/cards', async (req, res) => {
     const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0
 
     if (await ensurePriceTrackerImportTablesAvailable()) {
-      const cards = await fetchCardsListFromPtImport({ setCode, search, limit, offset })
+      let cards = await fetchCardsListFromPtImport({ setCode, search, limit, offset })
+
+      if (!cards.length && setCode) {
+        const expansion = await fetchExpansionBySetCodeOrName(setCode)
+        if (expansion?.set_name) {
+          cards = await fetchCardsListFromPtImport({
+            setCode: expansion.set_name,
+            search,
+            limit,
+            offset
+          })
+        }
+      }
+
       return res.json(cards)
     }
 
@@ -1585,7 +1619,15 @@ app.get('/api/expansions/:setCode/cards', async (req, res) => {
     if (!setCode) return res.status(400).json({ error: 'Invalid set code' })
 
     if (await ensurePriceTrackerImportTablesAvailable()) {
-      const cards = await fetchCardsListFromPtImport({ setCode })
+      let cards = await fetchCardsListFromPtImport({ setCode })
+
+      if (!cards.length) {
+        const expansion = await fetchExpansionBySetCodeOrName(setCode)
+        if (expansion?.set_name) {
+          cards = await fetchCardsListFromPtImport({ setCode: expansion.set_name })
+        }
+      }
+
       return res.json(cards)
     }
 
