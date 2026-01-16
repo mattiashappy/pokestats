@@ -4,8 +4,9 @@ import { Layers, Loader2 } from 'lucide-react'
 
 import { Button } from '../components/ui/button'
 import { SetCard } from '../components/pokemon/set-card'
-import { fetchExpansions } from '../lib/api'
-import type { ExpansionSummary } from '../types'
+import { fetchCardsPreview, fetchExpansions } from '../lib/api'
+import { getCardSetIdentifier, getExpansionIdentifier } from '../lib/sets'
+import type { CardListItem, ExpansionSummary } from '../types'
 
 const PAGE_SIZE = 12
 
@@ -21,13 +22,31 @@ export function SetsPage(): JSX.Element {
     queryFn: fetchExpansions
   })
 
+  const { data: previewCards } = useQuery<CardListItem[]>({
+    queryKey: ['cards-preview'],
+    queryFn: () => fetchCardsPreview(),
+    staleTime: 1000 * 60
+  })
+
+  const previewLinks = useMemo(() => {
+    if (!previewCards?.length) return []
+    return previewCards.slice(0, 4).map((card) => {
+      const setIdentifier = getCardSetIdentifier(card)
+      return {
+        id: card.id,
+        name: card.name ?? 'Unknown card',
+        href: setIdentifier ? `/sets/${setIdentifier}/${card.id}` : `/cards/${card.id}`
+      }
+    })
+  }, [previewCards])
+
   const sortedExpansions = useMemo(() => {
     if (!expansions) return []
     return [...expansions].sort((a, b) => {
       const releaseA = a.release_date ? new Date(a.release_date).getTime() : Number.MAX_SAFE_INTEGER
       const releaseB = b.release_date ? new Date(b.release_date).getTime() : Number.MAX_SAFE_INTEGER
       if (releaseA !== releaseB) return releaseA - releaseB
-      return (a.name ?? a.set_code).localeCompare(b.name ?? b.set_code)
+      return (a.name ?? getExpansionIdentifier(a)).localeCompare(b.name ?? getExpansionIdentifier(b))
     })
   }, [expansions])
 
@@ -50,6 +69,19 @@ export function SetsPage(): JSX.Element {
         <p className="text-sm text-slate-600 dark:text-slate-400">
           Browse every Pokemon TCG set in one place with simple pagination.
         </p>
+        {previewLinks.length > 0 ? (
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Featured cards:{' '}
+            {previewLinks.map((card, index) => (
+              <span key={card.id}>
+                <a className="font-semibold text-sky-600 hover:text-sky-700" href={card.href}>
+                  {card.name}
+                </a>
+                {index < previewLinks.length - 1 ? ', ' : '.'}
+              </span>
+            ))}
+          </p>
+        ) : null}
       </div>
 
       {isLoading ? (

@@ -8,6 +8,7 @@ import { Button } from '../components/ui/button'
 import { SetCard } from '../components/pokemon/set-card'
 import { fetchEraExpansions, fetchEras } from '../lib/api'
 import { formatEraYears, normalizeEraCode } from '../lib/era'
+import { getExpansionIdentifier } from '../lib/sets'
 import type { EraSummary, ExpansionSummary } from '../types'
 
 export function EraSetsPage(): JSX.Element {
@@ -40,7 +41,7 @@ export function EraSetsPage(): JSX.Element {
       const releaseA = a.release_date ? new Date(a.release_date).getTime() : Number.MAX_SAFE_INTEGER
       const releaseB = b.release_date ? new Date(b.release_date).getTime() : Number.MAX_SAFE_INTEGER
       if (releaseA !== releaseB) return releaseA - releaseB
-      return a.set_code.localeCompare(b.set_code)
+      return getExpansionIdentifier(a).localeCompare(getExpansionIdentifier(b))
     })
   }, [expansions])
 

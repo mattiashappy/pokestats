@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Input } from '../components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { fetchCardsForSet, fetchExpansions } from '../lib/api'
+import { getCardSetIdentifier, getExpansionIdentifier } from '../lib/sets'
 import type { CardListItem, ExpansionSummary } from '../types'
 
 export function PokemonSetPage(): JSX.Element {
@@ -38,7 +39,9 @@ export function PokemonSetPage(): JSX.Element {
   const expansion = useMemo(() => {
     if (!expansions) return null
     const normalized = setCode.toLowerCase()
-    return expansions.find((expansion) => expansion.set_code.toLowerCase() === normalized) ?? null
+    return (
+      expansions.find((expansion) => getExpansionIdentifier(expansion).toLowerCase() === normalized) ?? null
+    )
   }, [expansions, setCode])
 
 
@@ -47,15 +50,17 @@ export function PokemonSetPage(): JSX.Element {
     const term = searchTerm.trim().toLowerCase()
     if (!term) return cards
     return cards.filter((card) => {
+      const cardSetIdentifier = getCardSetIdentifier(card) ?? ''
       return (
         card.name.toLowerCase().includes(term) ||
         (card.card_number ?? '').toLowerCase().includes(term) ||
-        (card.set_code ?? '').toLowerCase().includes(term)
+        cardSetIdentifier.toLowerCase().includes(term)
       )
     })
   }, [cards, searchTerm])
 
   const headerLabel = expansion?.name ?? setCode
+  const headerCode = expansion ? getExpansionIdentifier(expansion) : setCode
   const setTotal = expansion?.set_total ?? expansion?.cards_total ?? cards?.length ?? null
   const backLink = '/sets'
   const backLabel = 'Back to sets'
@@ -76,7 +81,7 @@ export function PokemonSetPage(): JSX.Element {
               <CardDescription className="text-sm text-rose-400">Failed to load set metadata.</CardDescription>
             ) : expansion ? (
               <CardDescription className="text-sm text-slate-600 dark:text-slate-400">
-                {expansion.set_code} · {expansion.era_name ?? expansion.era ?? 'Unknown era'} · {expansion.language || 'Unknown language'}
+                {headerCode} · {expansion.era_name ?? expansion.era ?? 'Unknown era'} · {expansion.language || 'Unknown language'}
               </CardDescription>
             ) : isLoadingExpansions ? (
               <CardDescription className="text-sm text-slate-500">Loading set metadata…</CardDescription>
@@ -103,7 +108,7 @@ export function PokemonSetPage(): JSX.Element {
               ) : null}
               {setTotal ? <span className="text-slate-600 dark:text-slate-300">{setTotal} cards</span> : null}
               <Badge variant="secondary" className="uppercase">
-                {setCode}
+                {headerCode}
               </Badge>
             </div>
             <div className="relative w-full md:w-72">

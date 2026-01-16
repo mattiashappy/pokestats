@@ -979,7 +979,8 @@ export function EnrichPage(): JSX.Element {
                       <p className="font-semibold text-slate-900 dark:text-slate-50">{card.name ?? 'Unknown card'}</p>
                       <p className="text-xs text-slate-600 dark:text-slate-400">
                         {card.setName ?? 'Unknown set'}
-                        {card.setCode ? ` · ${card.setCode}` : ''} · {card.cardNumber ?? 'Unnumbered'}
+                        {card.ptSetId || card.setCode ? ` · ${card.ptSetId ?? card.setCode}` : ''} ·{' '}
+                        {card.cardNumber ?? 'Unnumbered'}
                         {card.era ? ` · ${card.era}` : ''}
                       </p>
                     </div>

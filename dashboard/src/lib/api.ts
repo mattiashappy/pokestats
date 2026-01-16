@@ -74,7 +74,7 @@ export async function fetchEraExpansions(eraCode: string): Promise<ExpansionSumm
 }
 
 /**
- * Fetch cards for a set using set_code (matches UX: sets grid -> /era/:eraCode/:setCode -> cards)
+ * Fetch cards for a set using set identifier (local set_code or PT pt_set_id).
  * Backend must support: GET /api/expansions/:setCode/cards
  */
 export async function fetchCardsForSet(setCode: string): Promise<CardListItem[]> {
@@ -89,6 +89,13 @@ export async function fetchCardsForSet(setCode: string): Promise<CardListItem[]>
 export async function fetchCards(): Promise<CardListItem[]> {
   const response = await fetch('/api/cards')
   if (!response.ok) throw new Error('Failed to fetch cards')
+  return response.json()
+}
+
+export async function fetchCardsPreview(limit = 4): Promise<CardListItem[]> {
+  const safeLimit = Math.min(Math.max(Number(limit) || 1, 1), 12)
+  const response = await fetch(`/api/cards?limit=${safeLimit}`)
+  if (!response.ok) throw new Error('Failed to fetch cards preview')
   return response.json()
 }
 
@@ -206,6 +213,7 @@ export type CardSearchResult = {
   cardNumber: string | null
   setName: string | null
   setCode: string | null
+  ptSetId?: string | null
   era: string | null
 }
 
