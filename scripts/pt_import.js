@@ -1,8 +1,15 @@
 const crypto = require('crypto')
 const { Pool } = require('pg')
 
-const PRICE_TRACKER_BASE_URL = 'https://www.pokemonpricetracker.com/api/v2'
-const PRICE_TRACKER_API_KEY = process.env.PRICE_TRACKER_API
+const PRICE_TRACKER_BASE_URL =
+  process.env.PT_API_BASE_URL ||
+  process.env.PRICE_TRACKER_BASE_URL ||
+  'https://www.pokemonpricetracker.com/api/v2'
+const PRICE_TRACKER_TOKEN =
+  process.env.PT_API_TOKEN ||
+  process.env.PT_API_KEY ||
+  process.env.PRICE_TRACKER_TOKEN ||
+  process.env.PRICE_TRACKER_API_KEY
 const DATABASE_URL = process.env.DATABASE_URL
 
 function hashText(text) {
@@ -13,6 +20,14 @@ function normalizeString(value) {
   if (value === undefined || value === null) return null
   const normalized = String(value).trim()
   return normalized ? normalized : null
+}
+
+function normalizeNumericId(value) {
+  const normalized = normalizeSetValue(value)
+  if (normalized === null) return null
+  const str = String(normalized).trim()
+  if (!/^\d+$/.test(str)) return normalized
+  return Number(str)
 }
 
 function withLineNumbers(text) {
@@ -51,15 +66,15 @@ function buildPriceTrackerUrl(endpoint, params = {}) {
 }
 
 async function fetchPriceTracker(endpoint, params = {}) {
-  if (!PRICE_TRACKER_API_KEY) {
-    throw new Error('PRICE_TRACKER_API not set')
+  if (!PRICE_TRACKER_TOKEN) {
+    throw new Error('Price Tracker token not set')
   }
 
   const url = buildPriceTrackerUrl(endpoint, params)
   console.log('PT_FETCH_URL', url.toString())
   const response = await fetch(url, {
     headers: {
-      Authorization: `Bearer ${PRICE_TRACKER_API_KEY}`
+      Authorization: `Bearer ${PRICE_TRACKER_TOKEN}`
     }
   })
 
@@ -105,7 +120,9 @@ function normalizeSetValue(value) {
 
 function mapPriceTrackerSet(set) {
   const ptSetId = normalizeSetValue(set?.id ?? set?.ptSetId ?? set?.setId)
-  const tcgplayerSetId = normalizeSetValue(set?.tcgPlayerId ?? set?.tcgplayerSetId ?? set?.tcgplayer_set_id)
+  const tcgplayerSetId = normalizeNumericId(
+    set?.tcgPlayerId ?? set?.tcgplayerSetId ?? set?.tcgplayer_set_id
+  )
   const ptSetSlug = normalizeString(set?.tcgPlayerId ?? set?.tcgplayerSetId ?? set?.tcgplayer_set_id ?? set?.slug)
   const name = normalizeSetValue(set?.name ?? set?.setName)
   const series = normalizeSetValue(set?.series)
@@ -146,7 +163,7 @@ function mapPriceTrackerSet(set) {
 
 function mapPriceTrackerCard(card, setOverride = null) {
   const ptCardId = normalizeSetValue(card?.id ?? card?.ptCardId ?? card?.cardId ?? card?.card_id)
-  const tcgplayerProductId = normalizeSetValue(
+  const tcgplayerProductId = normalizeNumericId(
     card?.tcgPlayerId ?? card?.tcgplayerProductId ?? card?.tcgplayer_product_id
   )
   const ptSetId = normalizeSetValue(card?.setId ?? card?.ptSetId ?? setOverride?.ptSetId)
@@ -412,6 +429,7 @@ async function importPriceTracker({ limitSets = 100, limitCards = 100, dryRun = 
   }
 
   const pool = new Pool({ connectionString: DATABASE_URL })
+  const client = await pool.connect()
   const summary = {
     setsFetched: 0,
     setsUpserted: 0,
@@ -420,6 +438,9 @@ async function importPriceTracker({ limitSets = 100, limitCards = 100, dryRun = 
   }
 
   try {
+    if (!dryRun) {
+      await client.query('BEGIN')
+    }
     const sets = await fetchPagedSets({ limit: limitSets })
     summary.setsFetched = sets.length
 
@@ -431,7 +452,7 @@ async function importPriceTracker({ limitSets = 100, limitCards = 100, dryRun = 
       }
 
       if (!dryRun) {
-        await upsertSet(pool, mappedSet)
+        await upsertSet(client, mappedSet)
         summary.setsUpserted += 1
       }
 
@@ -451,12 +472,21 @@ async function importPriceTracker({ limitSets = 100, limitCards = 100, dryRun = 
         }
 
         if (!dryRun) {
-          await upsertCard(pool, mappedCard)
+          await upsertCard(client, mappedCard)
           summary.cardsUpserted += 1
         }
       }
     }
+    if (!dryRun) {
+      await client.query('COMMIT')
+    }
+  } catch (error) {
+    if (!dryRun) {
+      await client.query('ROLLBACK')
+    }
+    throw error
   } finally {
+    client.release()
     await pool.end()
   }
 
