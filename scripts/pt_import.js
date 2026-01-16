@@ -9,6 +9,12 @@ function hashText(text) {
   return crypto.createHash('sha256').update(text, 'utf8').digest('hex').slice(0, 12)
 }
 
+function normalizeString(value) {
+  if (value === undefined || value === null) return null
+  const normalized = String(value).trim()
+  return normalized ? normalized : null
+}
+
 function withLineNumbers(text) {
   return text
     .split('\n')
@@ -50,6 +56,7 @@ async function fetchPriceTracker(endpoint, params = {}) {
   }
 
   const url = buildPriceTrackerUrl(endpoint, params)
+  console.log('PT_FETCH_URL', url.toString())
   const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${PRICE_TRACKER_API_KEY}`
@@ -99,6 +106,7 @@ function normalizeSetValue(value) {
 function mapPriceTrackerSet(set) {
   const ptSetId = normalizeSetValue(set?.id ?? set?.ptSetId ?? set?.setId)
   const tcgplayerSetId = normalizeSetValue(set?.tcgPlayerId ?? set?.tcgplayerSetId ?? set?.tcgplayer_set_id)
+  const ptSetSlug = normalizeString(set?.tcgPlayerId ?? set?.tcgplayerSetId ?? set?.tcgplayer_set_id ?? set?.slug)
   const name = normalizeSetValue(set?.name ?? set?.setName)
   const series = normalizeSetValue(set?.series)
   const releaseDate = normalizeSetValue(set?.releaseDate ?? set?.release_date)
@@ -118,6 +126,7 @@ function mapPriceTrackerSet(set) {
   return {
     ptSetId,
     tcgplayerSetId,
+    ptSetSlug,
     name,
     series,
     releaseDate,
@@ -388,11 +397,10 @@ async function fetchPagedSets({ limit = 100 } = {}) {
   return fetchPaged('/sets', {}, { limit })
 }
 
-async function fetchCardsForSet(set, { limit = 100 } = {}) {
+async function fetchCardsForSet(setSlug, { limit = 100 } = {}) {
   const params = {
-    setId: set.ptSetId ?? set.id ?? null,
-    setCode: set.setCode ?? set.set_code ?? null,
-    setName: set.name ?? null
+    set: setSlug ?? null,
+    fetchAllInSet: 'true'
   }
 
   return fetchPaged('/cards', params, { limit })
@@ -427,7 +435,12 @@ async function importPriceTracker({ limitSets = 100, limitCards = 100, dryRun = 
         summary.setsUpserted += 1
       }
 
-      const cards = await fetchCardsForSet(mappedSet, { limit: limitCards })
+      if (!mappedSet.ptSetSlug) {
+        console.warn('PT_IMPORT_SKIP_SET_MISSING_SLUG', mappedSet)
+        continue
+      }
+
+      const cards = await fetchCardsForSet(mappedSet.ptSetSlug, { limit: limitCards })
       summary.cardsFetched += cards.length
 
       for (const rawCard of cards) {
