@@ -1,10 +1,30 @@
-const { importPriceTracker } = require('./pt_import')
+heroku run "bash -lc 'cat > scripts/pt_smoketest.js <<\"JS\"
+const token =
+  process.env.PT_API_TOKEN ||
+  process.env.PT_API_KEY ||
+  process.env.PRICE_TRACKER_TOKEN ||
+  process.env.PRICE_TRACKER_API_KEY;
 
-console.log('PT_IMPORT_BOOT', { file: __filename, node: process.version })
+if (!token) {
+  console.error(\"No API token found in env\");
+  process.exit(1);
+}
 
-importPriceTracker()
-  .then((summary) => console.log('PT import complete', summary))
-  .catch((err) => {
-    console.error('PT import failed', err)
-    process.exitCode = 1
-  })
+async function test(url) {
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  const text = await res.text();
+  console.log(\"\\n===\", url);
+  console.log(\"STATUS\", res.status);
+  console.log(\"BODY\", text.slice(0, 500).replace(/\\s+/g, \" \"));
+}
+
+(async () => {
+  await test(\"https://www.pokemonpricetracker.com/api/v2/sets\");
+  await test(\"https://www.pokemonpricetracker.com/api/v2/cards?set=celebrations&fetchAllInSet=true\");
+})().catch((err) => {
+  console.error(\"SMOKETEST FAILED\", err);
+  process.exit(1);
+});
+JS'" -a pokestats
