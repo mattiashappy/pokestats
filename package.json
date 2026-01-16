@@ -7,7 +7,8 @@
     "build": "npm run build --prefix dashboard",
     "start": "node server.js",
     "dev": "npm run dev --prefix dashboard",
-    "test": "node --test"
+    "test": "node --test",
+    "pt:import": "node scripts/pt_import_run.js"
   },
   "dependencies": {
     "compression": "^1.7.4",
