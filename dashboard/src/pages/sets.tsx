@@ -5,6 +5,7 @@ import { Layers, Loader2 } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { SetCard } from '../components/pokemon/set-card'
 import { fetchExpansions } from '../lib/api'
+import { getExpansionIdentifier } from '../lib/sets'
 import type { ExpansionSummary } from '../types'
 
 const PAGE_SIZE = 12
@@ -27,7 +28,7 @@ export function SetsPage(): JSX.Element {
       const releaseA = a.release_date ? new Date(a.release_date).getTime() : Number.MAX_SAFE_INTEGER
       const releaseB = b.release_date ? new Date(b.release_date).getTime() : Number.MAX_SAFE_INTEGER
       if (releaseA !== releaseB) return releaseA - releaseB
-      return (a.name ?? a.set_code).localeCompare(b.name ?? b.set_code)
+      return (a.name ?? getExpansionIdentifier(a)).localeCompare(b.name ?? getExpansionIdentifier(b))
     })
   }, [expansions])
 

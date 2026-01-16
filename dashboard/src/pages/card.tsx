@@ -8,6 +8,7 @@ import { Button } from '../components/ui/button'
 import { Card as UiCard, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { fetchCardAuctions, fetchCardDetails } from '../lib/api'
+import { getCardSetIdentifier } from '../lib/sets'
 
 export function CardPage(): JSX.Element {
   const { id, setCode } = useParams()
@@ -34,10 +35,11 @@ export function CardPage(): JSX.Element {
 
   const title = useMemo(() => card?.name ?? 'Card', [card?.name])
   const headerLabel = useMemo(() => {
-    if (card?.set_code && card?.card_number) return `${card.set_code} ${card.card_number}`
+    const cardSetIdentifier = card ? getCardSetIdentifier(card) : null
+    if (cardSetIdentifier && card?.card_number) return `${cardSetIdentifier} ${card.card_number}`
     if (card?.card_number) return card.card_number
     return title
-  }, [card?.set_code, card?.card_number, title])
+  }, [card, title])
 
   const productDetails = useMemo(() => {
     if (!card?.product_details) return []
@@ -50,9 +52,11 @@ export function CardPage(): JSX.Element {
   const isLoading = isLoadingCard || isLoadingAuctions
   const error = cardError || auctionsError
 
-  const resolvedSetCode = setCode ?? card?.set_code ?? null
+  const resolvedSetCode = setCode ?? (card ? getCardSetIdentifier(card) : null)
   const backLink = resolvedSetCode ? `/sets/${resolvedSetCode}` : '/sets'
   const backLabel = resolvedSetCode ? `Back to ${resolvedSetCode}` : 'Back to sets'
+
+  const cardSetIdentifier = card ? getCardSetIdentifier(card) : null
 
   return (
     <div className="space-y-6">
@@ -68,7 +72,7 @@ export function CardPage(): JSX.Element {
           {card ? (
             <CardDescription className="text-sm text-slate-600 dark:text-slate-400">
               Name: {card.name || 'Unknown name'} · Era: {card.era || 'Unknown era'} · Set: {card.set_name || 'Unknown set'} ·
-              Set code: {card.set_code || 'N/A'} · Card number: {card.card_number || 'N/A'}
+              Set code: {cardSetIdentifier || 'N/A'} · Card number: {card.card_number || 'N/A'}
             </CardDescription>
           ) : null}
         </div>

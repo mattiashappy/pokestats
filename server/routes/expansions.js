@@ -35,7 +35,8 @@ function createExpansionService({
           )
           SELECT
             s.pt_set_id AS id,
-            s.pt_set_id AS set_code,
+            NULL::text AS set_code,
+            s.pt_set_id AS pt_set_id,
             s.name AS name,
             s.series AS era,
             NULL::text AS language,
@@ -43,7 +44,10 @@ function createExpansionService({
             s.card_count AS cards_in_set,
             COALESCE(s.card_count, pt_counts.cards_total) AS set_total,
             s.release_date AS release_date,
-            COALESCE(s.image_cdn_url400, s.image_cdn_url, s.image_url) AS image_url,
+            COALESCE(s.image_cdn_url800, s.image_cdn_url400, s.image_cdn_url200, s.image_cdn_url) AS image_url,
+            s.image_cdn_url200 AS image_cdn_url200,
+            s.image_cdn_url400 AS image_cdn_url400,
+            s.image_cdn_url800 AS image_cdn_url800,
             COALESCE(pt_counts.cards_total, 0)::int AS cards_total,
             0::int AS linked_auctions
           FROM public.pt_sets s
@@ -81,7 +85,11 @@ function createExpansionService({
           COALESCE(s.card_count, e.base_total) AS cards_in_set,
           COALESCE(e.set_total, s.card_count, pt_counts.cards_total) AS set_total,
           s.release_date AS release_date,
-          COALESCE(s.image_cdn_url400, s.image_cdn_url, s.image_url) AS image_url,
+          COALESCE(s.image_cdn_url800, s.image_cdn_url400, s.image_cdn_url200, s.image_cdn_url, s.image_url) AS image_url,
+          s.image_cdn_url200 AS image_cdn_url200,
+          s.image_cdn_url400 AS image_cdn_url400,
+          s.image_cdn_url800 AS image_cdn_url800,
+          s.pt_set_id AS pt_set_id,
           COALESCE(pt_counts.cards_total, COUNT(DISTINCT c.id)::int) AS cards_total,
           ${linksReady ? 'COUNT(DISTINCT l.auction_id)::int' : '0::int'} AS linked_auctions
         FROM public.expansions e
@@ -126,6 +134,10 @@ function createExpansionService({
           e.set_total AS set_total,
           NULL::date AS release_date,
           NULL::text AS image_url,
+          NULL::text AS image_cdn_url200,
+          NULL::text AS image_cdn_url400,
+          NULL::text AS image_cdn_url800,
+          NULL::text AS pt_set_id,
           COUNT(DISTINCT c.id)::int AS cards_total,
           ${linksReady ? 'COUNT(DISTINCT l.auction_id)::int' : '0::int'} AS linked_auctions
         FROM public.expansions e
