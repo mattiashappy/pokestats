@@ -428,7 +428,10 @@ async function importPriceTracker({ limitSets = 100, limitCards = 100, dryRun = 
     throw new Error('DATABASE_URL not set')
   }
 
-  const pool = new Pool({ connectionString: DATABASE_URL })
+  const pool = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+  })
   const client = await pool.connect()
   const summary = {
     setsFetched: 0,
