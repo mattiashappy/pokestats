@@ -11,16 +11,15 @@ import { fetchCardAuctions, fetchCardDetails } from '../lib/api'
 
 export function CardPage(): JSX.Element {
   const { id, setCode } = useParams()
-  const cardId = Number(id)
 
   const {
     data: card,
     isLoading: isLoadingCard,
     error: cardError
   } = useQuery({
-    queryKey: ['card', cardId],
-    queryFn: () => fetchCardDetails(cardId),
-    enabled: Number.isFinite(cardId)
+    queryKey: ['card', id],
+    queryFn: () => fetchCardDetails(id ?? ''),
+    enabled: Boolean(id)
   })
 
   const {
@@ -28,9 +27,9 @@ export function CardPage(): JSX.Element {
     isLoading: isLoadingAuctions,
     error: auctionsError
   } = useQuery({
-    queryKey: ['card', cardId, 'auctions'],
-    queryFn: () => fetchCardAuctions(cardId),
-    enabled: Number.isFinite(cardId)
+    queryKey: ['card', id, 'auctions'],
+    queryFn: () => fetchCardAuctions(id ?? ''),
+    enabled: Boolean(id)
   })
 
   const title = useMemo(() => card?.name ?? 'Card', [card?.name])

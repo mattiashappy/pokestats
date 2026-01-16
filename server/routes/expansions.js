@@ -21,13 +21,41 @@ function createExpansionService({
     if (!pool) return []
 
     try {
-      const ok = await ensureCardInfrastructure()
-      if (!ok) return []
-
       const linksReady = ensureTraderaAuctionLinksTableAvailable
         ? await ensureTraderaAuctionLinksTableAvailable()
         : false
       const priceTrackerReady = await ensurePriceTrackerTablesAvailable()
+      const cardInfraReady = await ensureCardInfrastructure()
+
+      if (!cardInfraReady && priceTrackerReady) {
+        const { rows } = await pool.query(`
+          WITH pt_counts AS (
+            SELECT pt_set_id, COUNT(*)::int AS cards_total
+            FROM public.pt_cards
+            GROUP BY pt_set_id
+          )
+          SELECT
+            s.pt_set_id AS id,
+            s.pt_set_id AS set_code,
+            s.name AS name,
+            NULL::text AS era,
+            NULL::text AS language,
+            s.card_count AS set_number,
+            s.card_count AS cards_in_set,
+            COALESCE(s.card_count, pt_counts.cards_total) AS set_total,
+            s.release_date AS release_date,
+            COALESCE(s.image_cdn_url400, s.image_cdn_url, s.image_url) AS image_url,
+            COALESCE(pt_counts.cards_total, 0)::int AS cards_total,
+            0::int AS linked_auctions
+          FROM public.pt_sets s
+          LEFT JOIN pt_counts ON pt_counts.pt_set_id = s.pt_set_id
+          ORDER BY s.release_date NULLS LAST, s.name NULLS LAST, s.pt_set_id NULLS LAST
+        `)
+
+        return rows
+      }
+
+      if (!cardInfraReady) return []
 
       const query = priceTrackerReady
         ? `

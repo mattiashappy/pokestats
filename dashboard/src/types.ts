@@ -16,7 +16,7 @@ export type AuctionRecord = {
 }
 
 export type CardResponse = {
-  id: number
+  id: number | string
   name: string
   era: string | null
   set_name: string | null
@@ -35,7 +35,7 @@ export type CardListItem = CardResponse & {
 }
 
 export type ExpansionSummary = {
-  id: number
+  id: number | string
   set_code: string
   name: string | null
   era: string | null

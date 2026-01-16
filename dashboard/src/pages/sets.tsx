@@ -7,7 +7,7 @@ import { SetCard } from '../components/pokemon/set-card'
 import { fetchExpansions } from '../lib/api'
 import type { ExpansionSummary } from '../types'
 
-const PAGE_SIZE = 24
+const PAGE_SIZE = 12
 
 export function SetsPage(): JSX.Element {
   const [page, setPage] = useState(1)
