@@ -1,4 +1,3 @@
-heroku run "bash -lc 'cat > scripts/pt_smoketest.js <<EOF
 const token = process.env.PT_API_TOKEN || process.env.PT_API_KEY || process.env.PRICE_TRACKER_TOKEN || process.env.PRICE_TRACKER_API_KEY;
 if (!token) { console.error(\"No API token found in env\"); process.exit(1); }
 
