@@ -1579,7 +1579,20 @@ app.get('/api/cards', async (req, res) => {
     const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0
 
     if (await ensurePriceTrackerImportTablesAvailable()) {
-      const cards = await fetchCardsListFromPtImport({ setCode, search, limit, offset })
+      let cards = await fetchCardsListFromPtImport({ setCode, search, limit, offset })
+
+      if (!cards.length && setCode) {
+        const expansion = await fetchExpansionBySetCodeOrName(setCode)
+        if (expansion?.set_name) {
+          cards = await fetchCardsListFromPtImport({
+            setCode: expansion.set_name,
+            search,
+            limit,
+            offset
+          })
+        }
+      }
+
       return res.json(cards)
     }
 
@@ -1606,7 +1619,15 @@ app.get('/api/expansions/:setCode/cards', async (req, res) => {
     if (!setCode) return res.status(400).json({ error: 'Invalid set code' })
 
     if (await ensurePriceTrackerImportTablesAvailable()) {
-      const cards = await fetchCardsListFromPtImport({ setCode })
+      let cards = await fetchCardsListFromPtImport({ setCode })
+
+      if (!cards.length) {
+        const expansion = await fetchExpansionBySetCodeOrName(setCode)
+        if (expansion?.set_name) {
+          cards = await fetchCardsListFromPtImport({ setCode: expansion.set_name })
+        }
+      }
+
       return res.json(cards)
     }
 
