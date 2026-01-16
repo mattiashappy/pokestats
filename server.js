@@ -1214,7 +1214,7 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
 
   if (setCode) {
     params.push(setCode.trim())
-    clauses.push('(LOWER(c.pt_set_id) = LOWER($1) OR LOWER(c.set_name) = LOWER($1) OR LOWER(s.name) = LOWER($1))')
+    clauses.push('c.pt_set_id = $1')
   }
 
   if (search) {
@@ -1432,7 +1432,8 @@ async function fetchCardSearchFromPtImport(query, limit = 50) {
         c.name,
         c.card_number AS card_number,
         COALESCE(s.name, c.set_name) AS set_name,
-        c.pt_set_id AS set_code,
+        c.pt_set_id AS pt_set_id,
+        NULL::text AS set_code,
         s.series AS era
       FROM public.pt_cards c
       LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
@@ -1456,6 +1457,7 @@ async function fetchCardSearchFromPtImport(query, limit = 50) {
     cardNumber: row.card_number ?? null,
     setName: row.set_name ?? null,
     setCode: row.set_code ?? null,
+    ptSetId: row.pt_set_id ?? null,
     era: row.era ?? null
   }))
 }

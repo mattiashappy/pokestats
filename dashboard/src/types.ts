@@ -21,6 +21,7 @@ export type CardResponse = {
   era: string | null
   set_name: string | null
   set_code: string | null
+  pt_set_id?: string | null
   set_total: number | null
   card_number: string | null
   image_url: string | null
@@ -36,7 +37,8 @@ export type CardListItem = CardResponse & {
 
 export type ExpansionSummary = {
   id: number | string
-  set_code: string
+  set_code: string | null
+  pt_set_id?: string | null
   name: string | null
   era: string | null
   era_code?: string | null
@@ -47,6 +49,9 @@ export type ExpansionSummary = {
   set_total: number | null
   release_date: string | null
   image_url: string | null
+  image_cdn_url200?: string | null
+  image_cdn_url400?: string | null
+  image_cdn_url800?: string | null
   cards_total: number
   linked_auctions: number
 }

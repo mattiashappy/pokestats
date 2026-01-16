@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 
 import { Badge } from '../ui/badge'
 import { Card, CardContent } from '../ui/card'
+import { getExpansionIdentifier } from '../../lib/sets'
 import type { ExpansionSummary } from '../../types'
 
 type SetCardProps = {
@@ -18,26 +19,29 @@ export function SetCard({ expansion }: SetCardProps): JSX.Element {
   const cardsLabel = expansion.set_total ?? expansion.cards_total
   const auctionsLabel = expansion.linked_auctions ?? 0
   const hasAuctionsLinked = auctionsLabel > 0
-  const setLink = `/sets/${expansion.set_code}`
+  const setIdentifier = getExpansionIdentifier(expansion)
+  const setLink = `/sets/${setIdentifier}`
+  const imageUrl =
+    expansion.image_cdn_url800 ?? expansion.image_cdn_url400 ?? expansion.image_cdn_url200 ?? expansion.image_url
 
   return (
     <Link to={setLink} className="group block h-full">
       <Card className="flex h-full flex-col overflow-hidden border-slate-200/80 shadow-none transition hover:-translate-y-1 hover:shadow-md dark:border-slate-800/80">
         <div className="relative bg-gradient-to-br from-slate-100 to-white pb-[56.25%] dark:from-slate-900 dark:to-slate-950">
-          {expansion.image_url ? (
+          {imageUrl ? (
             <img
-              src={expansion.image_url}
-              alt={expansion.name ?? expansion.set_code}
+              src={imageUrl}
+              alt={expansion.name ?? setIdentifier}
               className="absolute inset-0 h-full w-full object-cover"
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-3xl font-black tracking-tight text-slate-300 dark:text-slate-700">
-              {expansion.set_code}
+              {setIdentifier}
             </div>
           )}
 
           <Badge className="absolute left-3 top-3 bg-slate-900/80 text-xs uppercase text-white backdrop-blur-sm transition group-hover:bg-sky-600">
-            {expansion.set_code}
+            {setIdentifier}
           </Badge>
         </div>
 

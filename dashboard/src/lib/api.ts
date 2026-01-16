@@ -74,7 +74,7 @@ export async function fetchEraExpansions(eraCode: string): Promise<ExpansionSumm
 }
 
 /**
- * Fetch cards for a set using set_code (matches UX: sets grid -> /era/:eraCode/:setCode -> cards)
+ * Fetch cards for a set using set identifier (local set_code or PT pt_set_id).
  * Backend must support: GET /api/expansions/:setCode/cards
  */
 export async function fetchCardsForSet(setCode: string): Promise<CardListItem[]> {
@@ -206,6 +206,7 @@ export type CardSearchResult = {
   cardNumber: string | null
   setName: string | null
   setCode: string | null
+  ptSetId?: string | null
   era: string | null
 }
 

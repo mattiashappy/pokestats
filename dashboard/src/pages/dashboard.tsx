@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Input } from '../components/ui/input'
 import { fetchCards, fetchEras, fetchExpansions, searchCards } from '../lib/api'
 import { formatEraYears, normalizeEraCode } from '../lib/era'
+import { getExpansionIdentifier } from '../lib/sets'
 import type { CardListItem, CardSearchResult, EraSummary, ExpansionSummary } from '../types'
 
 const SEARCH_DEBOUNCE_MS = 300
@@ -228,7 +229,9 @@ export function DashboardPage(): JSX.Element {
           <Card>
             <CardHeader className="space-y-1">
               <CardDescription>Most popular set</CardDescription>
-              <CardTitle className="text-2xl">{topSet?.name ?? topSet?.set_code ?? '—'}</CardTitle>
+              <CardTitle className="text-2xl">
+                {topSet ? topSet.name ?? getExpansionIdentifier(topSet) : '—'}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
               {expansionsLoading ? (
@@ -241,8 +244,11 @@ export function DashboardPage(): JSX.Element {
                   <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">
                     {(topSet.linked_auctions ?? 0).toLocaleString('sv-SE')}
                   </p>
-                  {topSet.set_code ? (
-                    <Link to={`/sets/${topSet.set_code}`} className="text-sm font-semibold text-sky-600 hover:text-sky-700">
+                  {topSet ? (
+                    <Link
+                      to={`/sets/${getExpansionIdentifier(topSet)}`}
+                      className="text-sm font-semibold text-sky-600 hover:text-sky-700"
+                    >
                       View set cards
                     </Link>
                   ) : null}
