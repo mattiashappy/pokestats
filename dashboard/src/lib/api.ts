@@ -92,6 +92,13 @@ export async function fetchCards(): Promise<CardListItem[]> {
   return response.json()
 }
 
+export async function fetchCardsPreview(limit = 4): Promise<CardListItem[]> {
+  const safeLimit = Math.min(Math.max(Number(limit) || 1, 1), 12)
+  const response = await fetch(`/api/cards?limit=${safeLimit}`)
+  if (!response.ok) throw new Error('Failed to fetch cards preview')
+  return response.json()
+}
+
 export type ImportRun = {
   id: number
   source: string
