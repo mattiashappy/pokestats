@@ -1,7 +1,7 @@
 const { Pool } = require('pg')
 
 const API_BASE_URL = process.env.PT_API_BASE_URL
-const API_KEY = process.env.PT_API_KEY
+const API_KEY = process.env.PT_API_TOKEN || process.env.PT_API_KEY
 const API_KEY_HEADER = process.env.PT_API_KEY_HEADER || 'Authorization'
 const API_KEY_PREFIX = process.env.PT_API_KEY_PREFIX || 'Bearer'
 const LANGUAGE = process.env.PT_API_LANGUAGE || 'english'
@@ -61,11 +61,25 @@ function buildHeaders() {
 
 async function fetchJson(url) {
   const response = await fetch(url, { headers: buildHeaders() })
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`Request failed ${response.status}: ${text.slice(0, 300)}`)
+  const text = await response.text()
+
+  let json = null
+  try {
+    json = text ? JSON.parse(text) : null
+  } catch (error) {
+    console.error('PT fetch failed (non-JSON response)')
+    console.error('URL:', url)
+    console.error('STATUS:', response.status)
+    console.error('CONTENT-TYPE:', response.headers.get('content-type'))
+    console.error('BODY (first 300):', text.slice(0, 300).replace(/\s+/g, ' '))
+    throw error
   }
-  return response.json()
+
+  if (!response.ok) {
+    const preview = json ? JSON.stringify(json).slice(0, 300) : text.slice(0, 300)
+    throw new Error(`Request failed ${response.status}: ${preview}`)
+  }
+  return json
 }
 
 function normalizeResponseList(payload, keys) {
