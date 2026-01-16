@@ -357,6 +357,10 @@ async function upsertCard(client, card) {
     card.updatedAt
   ]
 
+  if (values.length !== 23) {
+    throw new Error(`pt_cards upsert expected 23 values, got ${values.length}`)
+  }
+
   await client.query(
     `
       INSERT INTO public.pt_cards (
@@ -389,7 +393,7 @@ async function upsertCard(client, card) {
         $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15,
         $16, $17, $18, $19, $20,
-        $21, $22, $23, $24
+        $21, $22, $23
       )
       ON CONFLICT (pt_card_id)
       DO UPDATE SET
