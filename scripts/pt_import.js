@@ -61,11 +61,24 @@ function buildHeaders() {
 
 async function fetchJson(url) {
   const response = await fetch(url, { headers: buildHeaders() })
+  const text = await response.text()
+
+  let json
+  try {
+    json = JSON.parse(text)
+  } catch (error) {
+    console.error('PT fetch failed (non-JSON response)')
+    console.error('URL:', url)
+    console.error('STATUS:', response.status)
+    console.error('CONTENT-TYPE:', response.headers.get('content-type'))
+    console.error('BODY (first 300):', text.slice(0, 300).replace(/\s+/g, ' '))
+    throw error
+  }
+
   if (!response.ok) {
-    const text = await response.text()
     throw new Error(`Request failed ${response.status}: ${text.slice(0, 300)}`)
   }
-  return response.json()
+  return json
 }
 
 function normalizeResponseList(payload, keys) {
