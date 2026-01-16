@@ -65,6 +65,10 @@ function buildPriceTrackerUrl(endpoint, params = {}) {
   return url
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function fetchPriceTracker(endpoint, params = {}) {
   if (!PRICE_TRACKER_TOKEN) {
     throw new Error('Price Tracker token not set')
@@ -104,6 +108,38 @@ async function fetchPaged(endpoint, params = {}, { limit = 100, offset = 0, maxP
     items.push(...pageItems)
 
     if (pageItems.length < limit) break
+
+    currentOffset += limit
+    page += 1
+  }
+
+  return items
+}
+
+async function fetchPagedCards(
+  setSlug,
+  { limit = 100, offset = 0, maxPages = 1000, sleepMs = 0 } = {}
+) {
+  const items = []
+  let page = 0
+  let currentOffset = offset
+  const params = {
+    set: setSlug ?? null,
+    fetchAllInSet: 'true'
+  }
+
+  while (page < maxPages) {
+    const payload = await fetchPriceTracker('/cards', { ...params, limit, offset: currentOffset })
+    const pageItems = normalizePriceTrackerData(payload)
+    if (pageItems.length) {
+      items.push(...pageItems)
+    }
+
+    if (sleepMs > 0) {
+      await sleep(sleepMs)
+    }
+
+    if (!pageItems.length || pageItems.length < limit) break
 
     currentOffset += limit
     page += 1
@@ -414,19 +450,26 @@ async function fetchPagedSets({ limit = 100 } = {}) {
   return fetchPaged('/sets', {}, { limit })
 }
 
-async function fetchCardsForSet(setSlug, { limit = 100 } = {}) {
-  const params = {
-    set: setSlug ?? null,
-    fetchAllInSet: 'true'
-  }
-
-  return fetchPaged('/cards', params, { limit })
+async function fetchCardsForSet(setSlug, { limit = 100, sleepMs = 0 } = {}) {
+  return fetchPagedCards(setSlug, { limit, sleepMs })
 }
 
 async function importPriceTracker({ limitSets = 100, limitCards = 100, dryRun = false } = {}) {
   if (!DATABASE_URL) {
     throw new Error('DATABASE_URL not set')
   }
+
+  const setOffset = Number(process.env.PT_SET_OFFSET || 0)
+  const maxSets = process.env.PT_MAX_SETS ? Number(process.env.PT_MAX_SETS) : Infinity
+  const cardLimit = Number(process.env.PT_CARD_LIMIT || 10)
+  const sleepMs = Number(process.env.PT_SLEEP_MS || 65000)
+
+  console.log('PT_IMPORT_CONFIG', {
+    PT_SET_OFFSET: setOffset,
+    PT_MAX_SETS: maxSets,
+    PT_CARD_LIMIT: cardLimit,
+    PT_SLEEP_MS: sleepMs
+  })
 
   const pool = new Pool({
     connectionString: DATABASE_URL,
@@ -445,9 +488,10 @@ async function importPriceTracker({ limitSets = 100, limitCards = 100, dryRun = 
       await client.query('BEGIN')
     }
     const sets = await fetchPagedSets({ limit: limitSets })
-    summary.setsFetched = sets.length
+    const selectedSets = sets.slice(setOffset, setOffset + maxSets)
+    summary.setsFetched = selectedSets.length
 
-    for (const rawSet of sets) {
+    for (const rawSet of selectedSets) {
       const mappedSet = mapPriceTrackerSet(rawSet)
       if (!mappedSet.ptSetId) {
         console.warn('PT_IMPORT_SKIP_SET_MISSING_ID', mappedSet)
@@ -464,7 +508,7 @@ async function importPriceTracker({ limitSets = 100, limitCards = 100, dryRun = 
         continue
       }
 
-      const cards = await fetchCardsForSet(mappedSet.ptSetSlug, { limit: limitCards })
+      const cards = await fetchCardsForSet(mappedSet.ptSetSlug, { limit: cardLimit, sleepMs })
       summary.cardsFetched += cards.length
 
       for (const rawCard of cards) {
