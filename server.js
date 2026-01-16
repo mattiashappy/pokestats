@@ -575,6 +575,18 @@ async function ensureCardsTableAvailable() {
   return cardsTableAvailable
 }
 
+async function ensurePriceTrackerImportTablesAvailable() {
+  if (!pool) return false
+
+  const { rows } = await pool.query(`
+    SELECT
+      to_regclass('public.pt_sets') AS pt_sets,
+      to_regclass('public.pt_cards') AS pt_cards
+  `)
+
+  return Boolean(rows?.[0]?.pt_sets && rows?.[0]?.pt_cards)
+}
+
 async function ensureCardInfrastructure() {
   if (!pool) return false
   if (ensureCardInfrastructurePromise) return ensureCardInfrastructurePromise
@@ -1142,6 +1154,85 @@ async function fetchCardsListFromDatabase({ setCode = null, expansionId = null }
   return result.rows.map(applyCardOverrides)
 }
 
+async function fetchCardsListFromPtImport({ setCode = null, search = null, limit = null, offset = 0 } = {}) {
+  if (!pool) return []
+  const ok = await ensurePriceTrackerImportTablesAvailable()
+  if (!ok) return []
+
+  const params = []
+  const clauses = []
+
+  if (setCode) {
+    params.push(setCode.trim())
+    clauses.push('(LOWER(c.pt_set_id) = LOWER($1) OR LOWER(c.set_name) = LOWER($1))')
+  }
+
+  if (search) {
+    params.push(`%${search}%`)
+    clauses.push(`(c.name ILIKE $${params.length} OR c.card_number ILIKE $${params.length})`)
+  }
+
+  const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
+  const useLimit = Number.isFinite(Number(limit))
+  if (useLimit) {
+    params.push(Number(limit))
+    params.push(Number(offset))
+  }
+
+  const query = `
+    SELECT
+      c.pt_card_id AS id,
+      c.name,
+      NULL::text AS era,
+      c.set_name AS set_name,
+      c.pt_set_id AS set_code,
+      NULLIF(split_part(c.total_set_number, '/', 2), '')::int AS set_total,
+      c.card_number AS card_number,
+      COALESCE(c.image_cdn_url400, c.image_cdn_url, c.image_url) AS image_url,
+      NULL::text AS product_details,
+      c.updated_at AS created_at,
+      NULL::int AS expansion_id,
+      0::int AS linked_auctions,
+      NULL::timestamptz AS last_seen
+    FROM public.pt_cards c
+    ${whereClause}
+    ORDER BY c.card_number NULLS LAST, c.name NULLS LAST
+    ${useLimit ? `LIMIT $${params.length - 1} OFFSET $${params.length}` : ''}
+  `
+
+  const result = await pool.query(query, params)
+  return result.rows
+}
+
+async function fetchCardFromPtImport(cardId) {
+  if (!cardId) return null
+  if (!pool) return null
+  const ok = await ensurePriceTrackerImportTablesAvailable()
+  if (!ok) return null
+
+  const query = `
+    SELECT
+      c.pt_card_id AS id,
+      c.name,
+      NULL::text AS era,
+      c.set_name AS set_name,
+      c.pt_set_id AS set_code,
+      NULLIF(split_part(c.total_set_number, '/', 2), '')::int AS set_total,
+      c.card_number AS card_number,
+      COALESCE(c.image_cdn_url400, c.image_cdn_url, c.image_url) AS image_url,
+      NULL::text AS product_details,
+      c.updated_at AS created_at,
+      NULL::int AS expansion_id
+    FROM public.pt_cards c
+    WHERE c.pt_card_id = $1
+       OR c.tcgplayer_product_id::text = $1
+    LIMIT 1
+  `
+
+  const result = await pool.query(query, [String(cardId)])
+  return result.rows[0] ?? null
+}
+
 async function fetchCardsListFromPriceTracker({ setCode = null, search = null, limit = 100, offset = 0 } = {}) {
   const params = {
     language: 'english',
@@ -1228,6 +1319,45 @@ async function fetchCardSearchFromPriceTracker(query, limit = 50) {
       era: null
     }
   })
+}
+
+async function fetchCardSearchFromPtImport(query, limit = 50) {
+  if (!pool) return []
+  const ok = await ensurePriceTrackerImportTablesAvailable()
+  if (!ok) return []
+
+  const needle = `%${query}%`
+  const { rows } = await pool.query(
+    `
+      SELECT
+        c.pt_card_id AS id,
+        c.name,
+        c.card_number AS card_number,
+        c.set_name,
+        c.pt_set_id AS set_code,
+        NULL::text AS era
+      FROM public.pt_cards c
+      WHERE
+        c.name ILIKE $1
+        OR c.card_number ILIKE $1
+        OR c.set_name ILIKE $1
+        OR c.pt_set_id ILIKE $1
+      ORDER BY
+        c.name NULLS LAST,
+        c.card_number NULLS LAST
+      LIMIT $2
+    `,
+    [needle, limit]
+  )
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name ?? null,
+    cardNumber: row.card_number ?? null,
+    setName: row.set_name ?? null,
+    setCode: row.set_code ?? null,
+    era: row.era ?? null
+  }))
 }
 
 async function fetchCardSearchFromDatabase(query, limit = 50) {
@@ -1353,6 +1483,11 @@ app.get('/api/cards', async (req, res) => {
       return res.json(cards)
     }
 
+    if (await ensurePriceTrackerImportTablesAvailable()) {
+      const cards = await fetchCardsListFromPtImport({ setCode, search, limit, offset })
+      return res.json(cards)
+    }
+
     const cards = await fetchCardsListFromDatabase({ setCode, expansionId })
     return res.json(cards)
   } catch (error) {
@@ -1372,6 +1507,11 @@ app.get('/api/expansions/:setCode/cards', async (req, res) => {
 
     if (PRICE_TRACKER_API_KEY) {
       const cards = await fetchCardsListFromPriceTracker({ setCode })
+      return res.json(cards)
+    }
+
+    if (await ensurePriceTrackerImportTablesAvailable()) {
+      const cards = await fetchCardsListFromPtImport({ setCode })
       return res.json(cards)
     }
 
@@ -1418,7 +1558,10 @@ app.get('/api/cards/search', async (req, res) => {
     const source = String(req.query.source ?? '').trim()
 
     if (source === 'database' || !PRICE_TRACKER_API_KEY) {
-      const results = await fetchCardSearchFromDatabase(query, limit)
+      const ptReady = await ensurePriceTrackerImportTablesAvailable()
+      const results = ptReady
+        ? await fetchCardSearchFromPtImport(query, limit)
+        : await fetchCardSearchFromDatabase(query, limit)
       return res.json(results)
     }
 
@@ -1432,10 +1575,11 @@ app.get('/api/cards/search', async (req, res) => {
 
 app.get('/api/cards/:id', async (req, res) => {
   try {
-    const cardId = Number(req.params.id)
-    if (!Number.isFinite(cardId)) return res.status(400).json({ error: 'Invalid card id' })
+    const cardIdParam = String(req.params.id ?? '').trim()
+    if (!cardIdParam) return res.status(400).json({ error: 'Invalid card id' })
+    const cardId = Number(cardIdParam)
 
-    if (PRICE_TRACKER_API_KEY) {
+    if (PRICE_TRACKER_API_KEY && Number.isFinite(cardId)) {
       try {
         const card = await fetchCardFromPriceTracker(cardId)
         if (!card) return res.status(404).json({ error: 'Card not found' })
@@ -1445,7 +1589,16 @@ app.get('/api/cards/:id', async (req, res) => {
       }
     }
 
-    const card = await fetchCardFromDatabase(cardId)
+    let card = null
+
+    if (Number.isFinite(cardId)) {
+      card = await fetchCardFromDatabase(cardId)
+    }
+
+    if (!card && (await ensurePriceTrackerImportTablesAvailable())) {
+      card = await fetchCardFromPtImport(cardIdParam)
+    }
+
     if (!card) return res.status(404).json({ error: 'Card not found' })
 
     return res.json(card)
@@ -1458,7 +1611,7 @@ app.get('/api/cards/:id', async (req, res) => {
 app.get('/api/cards/:id/auctions', async (req, res) => {
   try {
     const cardId = Number(req.params.id)
-    if (!Number.isFinite(cardId)) return res.status(400).json({ error: 'Invalid card id' })
+    if (!Number.isFinite(cardId)) return res.json([])
 
     const auctions = await fetchCardAuctions(cardId, { limit: 500 })
     return res.json(auctions)

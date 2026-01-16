@@ -11,6 +11,7 @@ import { DashboardPage } from "./pages/dashboard"
 import { EnrichPage } from "./pages/enrich"
 import { LoginPage } from "./pages/login"
 import { PokemonSetPage } from "./pages/pokemon-set"
+import { SetsPage } from "./pages/sets"
 import { SettingsPage } from "./pages/settings"
 import { SignupPage } from "./pages/signup"
 import { AuctionImportsPage } from "./pages/auction-imports"
@@ -32,6 +33,9 @@ function App(): JSX.Element {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/auctions" element={<AuctionsPage />} />
           <Route path="/auctions/:attribute" element={<AuctionsPage />} />
+          <Route path="/sets" element={<SetsPage />} />
+          <Route path="/sets/:setCode" element={<PokemonSetPage />} />
+          <Route path="/sets/:setCode/:id" element={<CardPage />} />
           <Route path="/era" element={<ErasPage />} />
           <Route path="/era/:eraCode" element={<EraSetsPage />} />
           <Route path="/era/:eraCode/:setCode" element={<PokemonSetPage />} />

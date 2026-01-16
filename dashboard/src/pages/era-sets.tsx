@@ -82,7 +82,7 @@ export function EraSetsPage(): JSX.Element {
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {sortedExpansions.map((expansion) => (
-              <SetCard key={expansion.id} expansion={expansion} eraCode={normalizedEraCode} />
+              <SetCard key={expansion.id} expansion={expansion} />
             ))}
           </div>
         </div>

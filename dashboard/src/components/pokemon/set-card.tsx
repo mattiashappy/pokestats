@@ -4,15 +4,13 @@ import { Link } from 'react-router-dom'
 
 import { Badge } from '../ui/badge'
 import { Card, CardContent } from '../ui/card'
-import { normalizeEraCode } from '../../lib/era'
 import type { ExpansionSummary } from '../../types'
 
 type SetCardProps = {
   expansion: ExpansionSummary
-  eraCode?: string | null
 }
 
-export function SetCard({ expansion, eraCode }: SetCardProps): JSX.Element {
+export function SetCard({ expansion }: SetCardProps): JSX.Element {
   const releaseLabel = expansion.release_date
     ? `Released ${format(new Date(expansion.release_date), 'PP')}`
     : 'Release date pending'
@@ -20,10 +18,7 @@ export function SetCard({ expansion, eraCode }: SetCardProps): JSX.Element {
   const cardsLabel = expansion.set_total ?? expansion.cards_total
   const auctionsLabel = expansion.linked_auctions ?? 0
   const hasAuctionsLinked = auctionsLabel > 0
-  const resolvedEraCode = normalizeEraCode(eraCode ?? expansion.era_code ?? expansion.era ?? '')
-  const setLink = resolvedEraCode
-    ? `/era/${resolvedEraCode}/${expansion.set_code}`
-    : `/era/sets/${expansion.set_code}`
+  const setLink = `/sets/${expansion.set_code}`
 
   return (
     <Link to={setLink} className="group block h-full">

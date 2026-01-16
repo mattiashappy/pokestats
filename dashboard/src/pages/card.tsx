@@ -8,20 +8,18 @@ import { Button } from '../components/ui/button'
 import { Card as UiCard, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { fetchCardAuctions, fetchCardDetails } from '../lib/api'
-import { normalizeEraCode } from '../lib/era'
 
 export function CardPage(): JSX.Element {
-  const { id, eraCode, setCode } = useParams()
-  const cardId = Number(id)
+  const { id, setCode } = useParams()
 
   const {
     data: card,
     isLoading: isLoadingCard,
     error: cardError
   } = useQuery({
-    queryKey: ['card', cardId],
-    queryFn: () => fetchCardDetails(cardId),
-    enabled: Number.isFinite(cardId)
+    queryKey: ['card', id],
+    queryFn: () => fetchCardDetails(id ?? ''),
+    enabled: Boolean(id)
   })
 
   const {
@@ -29,9 +27,9 @@ export function CardPage(): JSX.Element {
     isLoading: isLoadingAuctions,
     error: auctionsError
   } = useQuery({
-    queryKey: ['card', cardId, 'auctions'],
-    queryFn: () => fetchCardAuctions(cardId),
-    enabled: Number.isFinite(cardId)
+    queryKey: ['card', id, 'auctions'],
+    queryFn: () => fetchCardAuctions(id ?? ''),
+    enabled: Boolean(id)
   })
 
   const title = useMemo(() => card?.name ?? 'Card', [card?.name])
@@ -52,14 +50,9 @@ export function CardPage(): JSX.Element {
   const isLoading = isLoadingCard || isLoadingAuctions
   const error = cardError || auctionsError
 
-  const resolvedEraCode = normalizeEraCode(eraCode ?? null)
   const resolvedSetCode = setCode ?? card?.set_code ?? null
-  const backLink = resolvedEraCode && resolvedSetCode
-    ? `/era/${resolvedEraCode}/${resolvedSetCode}`
-    : card?.set_code
-      ? `/era/sets/${card.set_code}`
-      : '/era'
-  const backLabel = resolvedSetCode ? `Back to ${resolvedSetCode}` : 'Back to era sets'
+  const backLink = resolvedSetCode ? `/sets/${resolvedSetCode}` : '/sets'
+  const backLabel = resolvedSetCode ? `Back to ${resolvedSetCode}` : 'Back to sets'
 
   return (
     <div className="space-y-6">
