@@ -10,7 +10,7 @@ const crypto = require('crypto')
 const { createExpansionService } = require('./server/routes/expansions')
 const { registerTraderaRoutes } = require('./server/routes/tradera')
 const { registerAiRoutes } = require('./server/routes/ai')
-const { normalizeEraCode, resolveEraCode } = require('./server/era')
+const { getEraDefinition, normalizeEraCode, resolveEraCode } = require('./server/era')
 
 const { parseAuctionTitle } = require('./scripts/tradera_parser')
 
@@ -152,6 +152,48 @@ function buildPriceTrackerProductDetails(card) {
   ].filter(Boolean)
 
   return details.length ? details.join('\n') : null
+}
+
+function formatUsd(value) {
+  const parsed = Number(value)
+  if (Number.isFinite(parsed)) return parsed.toFixed(2)
+  if (value === null || value === undefined) return null
+  const fallback = String(value).trim()
+  return fallback ? fallback : null
+}
+
+function buildPtCardDetails(card) {
+  if (!card) return null
+  const marketPrice =
+    card.price_market != null ? `Market price: $${formatUsd(card.price_market)}` : null
+  const listingCount = card.price_listings != null ? `Listings: ${card.price_listings}` : null
+
+  const details = [
+    card.card_type ? `Card type: ${card.card_type}` : null,
+    card.rarity ? `Rarity: ${card.rarity}` : null,
+    card.stage ? `Stage: ${card.stage}` : null,
+    Number.isFinite(Number(card.hp)) ? `HP: ${card.hp}` : null,
+    card.artist ? `Artist: ${card.artist}` : null,
+    card.tcgplayer_url ? `TCGPlayer: ${card.tcgplayer_url}` : null,
+    marketPrice,
+    listingCount,
+    card.price_primary_condition ? `Primary condition: ${card.price_primary_condition}` : null,
+    card.price_primary_printing ? `Primary printing: ${card.price_primary_printing}` : null,
+    card.price_last_updated ? `Last updated: ${card.price_last_updated}` : null
+  ].filter(Boolean)
+
+  return details.length ? details.join('\n') : null
+}
+
+function parseSetTotal(value) {
+  if (!value) return null
+  const raw = String(value)
+  const parts = raw.split('/')
+  const candidate = parts.length > 1 ? parts[1] : parts[0]
+  const digits = candidate.replace(/[^0-9]/g, '')
+  if (!digits) return null
+  const parsed = Number(digits)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 async function fetchExpansionBySetCodeOrName(setCode) {
@@ -615,18 +657,27 @@ async function fetchErasFromDatabase() {
   const erasReady = await ensureErasTableAvailable()
   if (!erasReady) return []
 
+  const ptReady = await ensurePriceTrackerImportTablesAvailable()
+
   const { rows: eraRows } = await pool.query(`
     SELECT id, code, name, sort_order, start_year, end_year
     FROM public.eras
     ORDER BY sort_order, start_year, name
   `)
 
-  const { rows: expansionRows } = await pool.query(`
-    SELECT era, COUNT(*)::int AS sets_total
-    FROM public.expansions
-    WHERE era IS NOT NULL
-    GROUP BY era
-  `)
+  const { rows: expansionRows } = ptReady
+    ? await pool.query(`
+        SELECT series AS era, COUNT(*)::int AS sets_total
+        FROM public.pt_sets
+        WHERE series IS NOT NULL
+        GROUP BY series
+      `)
+    : await pool.query(`
+        SELECT era, COUNT(*)::int AS sets_total
+        FROM public.expansions
+        WHERE era IS NOT NULL
+        GROUP BY era
+      `)
 
   const byCode = new Map(
     eraRows.map((row) => [
@@ -645,13 +696,15 @@ async function fetchErasFromDatabase() {
       continue
     }
 
+    const definition = getEraDefinition(code)
+
     byCode.set(normalizeEraCode(code), {
       id: null,
-      code,
-      name: expansion.era,
-      sort_order: 999,
-      start_year: null,
-      end_year: null,
+      code: definition?.code ?? code,
+      name: definition?.name ?? expansion.era,
+      sort_order: definition?.sort_order ?? 999,
+      start_year: definition?.start_year ?? null,
+      end_year: definition?.end_year ?? null,
       sets_total: expansion.sets_total
     })
   }
@@ -1164,12 +1217,14 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
 
   if (setCode) {
     params.push(setCode.trim())
-    clauses.push('(LOWER(c.pt_set_id) = LOWER($1) OR LOWER(c.set_name) = LOWER($1))')
+    clauses.push('(LOWER(c.pt_set_id) = LOWER($1) OR LOWER(c.set_name) = LOWER($1) OR LOWER(s.name) = LOWER($1))')
   }
 
   if (search) {
     params.push(`%${search}%`)
-    clauses.push(`(c.name ILIKE $${params.length} OR c.card_number ILIKE $${params.length})`)
+    clauses.push(
+      `(c.name ILIKE $${params.length} OR c.card_number ILIKE $${params.length} OR c.set_name ILIKE $${params.length} OR s.name ILIKE $${params.length} OR s.pt_set_id ILIKE $${params.length})`
+    )
   }
 
   const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
@@ -1183,10 +1238,11 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
     SELECT
       c.pt_card_id AS id,
       c.name,
-      NULL::text AS era,
-      c.set_name AS set_name,
+      s.series AS era,
+      COALESCE(s.name, c.set_name) AS set_name,
       c.pt_set_id AS set_code,
-      NULLIF(split_part(c.total_set_number, '/', 2), '')::int AS set_total,
+      s.card_count AS set_total,
+      c.total_set_number AS total_set_number,
       c.card_number AS card_number,
       COALESCE(c.image_cdn_url400, c.image_cdn_url, c.image_url) AS image_url,
       NULL::text AS product_details,
@@ -1195,13 +1251,17 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
       0::int AS linked_auctions,
       NULL::timestamptz AS last_seen
     FROM public.pt_cards c
+    LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
     ${whereClause}
     ORDER BY c.card_number NULLS LAST, c.name NULLS LAST
     ${useLimit ? `LIMIT $${params.length - 1} OFFSET $${params.length}` : ''}
   `
 
   const result = await pool.query(query, params)
-  return result.rows
+  return result.rows.map((row) => ({
+    ...row,
+    set_total: row.set_total ?? parseSetTotal(row.total_set_number)
+  }))
 }
 
 async function fetchCardFromPtImport(cardId) {
@@ -1214,23 +1274,50 @@ async function fetchCardFromPtImport(cardId) {
     SELECT
       c.pt_card_id AS id,
       c.name,
-      NULL::text AS era,
-      c.set_name AS set_name,
+      s.series AS era,
+      COALESCE(s.name, c.set_name) AS set_name,
       c.pt_set_id AS set_code,
-      NULLIF(split_part(c.total_set_number, '/', 2), '')::int AS set_total,
+      s.card_count AS set_total,
+      c.total_set_number AS total_set_number,
       c.card_number AS card_number,
       COALESCE(c.image_cdn_url400, c.image_cdn_url, c.image_url) AS image_url,
-      NULL::text AS product_details,
+      c.rarity,
+      c.card_type,
+      c.hp,
+      c.stage,
+      c.artist,
+      c.tcgplayer_url,
+      c.price_market,
+      c.price_listings,
+      c.price_primary_condition,
+      c.price_primary_printing,
+      c.price_last_updated,
       c.updated_at AS created_at,
       NULL::int AS expansion_id
     FROM public.pt_cards c
+    LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
     WHERE c.pt_card_id = $1
        OR c.tcgplayer_product_id::text = $1
     LIMIT 1
   `
 
   const result = await pool.query(query, [String(cardId)])
-  return result.rows[0] ?? null
+  const row = result.rows[0]
+  if (!row) return null
+
+  return {
+    id: row.id,
+    name: row.name,
+    era: row.era ?? null,
+    set_name: row.set_name ?? null,
+    set_code: row.set_code ?? null,
+    set_total: row.set_total ?? parseSetTotal(row.total_set_number),
+    card_number: row.card_number ?? null,
+    image_url: row.image_url ?? null,
+    product_details: buildPtCardDetails(row),
+    expansion_id: null,
+    created_at: row.created_at ?? null
+  }
 }
 
 async function fetchCardsListFromPriceTracker({ setCode = null, search = null, limit = 100, offset = 0 } = {}) {
@@ -1333,14 +1420,16 @@ async function fetchCardSearchFromPtImport(query, limit = 50) {
         c.pt_card_id AS id,
         c.name,
         c.card_number AS card_number,
-        c.set_name,
+        COALESCE(s.name, c.set_name) AS set_name,
         c.pt_set_id AS set_code,
-        NULL::text AS era
+        s.series AS era
       FROM public.pt_cards c
+      LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
       WHERE
         c.name ILIKE $1
         OR c.card_number ILIKE $1
         OR c.set_name ILIKE $1
+        OR s.name ILIKE $1
         OR c.pt_set_id ILIKE $1
       ORDER BY
         c.name NULLS LAST,
@@ -1478,13 +1567,13 @@ app.get('/api/cards', async (req, res) => {
     const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : 100
     const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0
 
-    if (PRICE_TRACKER_API_KEY) {
-      const cards = await fetchCardsListFromPriceTracker({ setCode, search, limit, offset })
+    if (await ensurePriceTrackerImportTablesAvailable()) {
+      const cards = await fetchCardsListFromPtImport({ setCode, search, limit, offset })
       return res.json(cards)
     }
 
-    if (await ensurePriceTrackerImportTablesAvailable()) {
-      const cards = await fetchCardsListFromPtImport({ setCode, search, limit, offset })
+    if (PRICE_TRACKER_API_KEY) {
+      const cards = await fetchCardsListFromPriceTracker({ setCode, search, limit, offset })
       return res.json(cards)
     }
 
@@ -1505,13 +1594,13 @@ app.get('/api/expansions/:setCode/cards', async (req, res) => {
     const setCode = String(req.params.setCode || '').trim()
     if (!setCode) return res.status(400).json({ error: 'Invalid set code' })
 
-    if (PRICE_TRACKER_API_KEY) {
-      const cards = await fetchCardsListFromPriceTracker({ setCode })
+    if (await ensurePriceTrackerImportTablesAvailable()) {
+      const cards = await fetchCardsListFromPtImport({ setCode })
       return res.json(cards)
     }
 
-    if (await ensurePriceTrackerImportTablesAvailable()) {
-      const cards = await fetchCardsListFromPtImport({ setCode })
+    if (PRICE_TRACKER_API_KEY) {
+      const cards = await fetchCardsListFromPriceTracker({ setCode })
       return res.json(cards)
     }
 
@@ -1533,9 +1622,22 @@ app.get('/api/expansions/id/:id/cards', async (req, res) => {
     if (!Number.isFinite(expansionId)) return res.status(400).json({ error: 'Invalid expansion id' })
 
     if (PRICE_TRACKER_API_KEY) {
+      try {
+        const expansion = await fetchExpansionById(expansionId)
+        if (!expansion) return res.json([])
+        const cards = await fetchCardsListFromPriceTracker({
+          setCode: expansion.set_code ?? expansion.set_name ?? String(expansionId)
+        })
+        return res.json(cards)
+      } catch (error) {
+        console.error('Failed to fetch cards from Price Tracker', error)
+      }
+    }
+
+    if (await ensurePriceTrackerImportTablesAvailable()) {
       const expansion = await fetchExpansionById(expansionId)
       if (!expansion) return res.json([])
-      const cards = await fetchCardsListFromPriceTracker({
+      const cards = await fetchCardsListFromPtImport({
         setCode: expansion.set_code ?? expansion.set_name ?? String(expansionId)
       })
       return res.json(cards)
@@ -1565,6 +1667,12 @@ app.get('/api/cards/search', async (req, res) => {
       return res.json(results)
     }
 
+    const ptReady = await ensurePriceTrackerImportTablesAvailable()
+    if (ptReady) {
+      const results = await fetchCardSearchFromPtImport(query, limit)
+      return res.json(results)
+    }
+
     const results = await fetchCardSearchFromPriceTracker(query, limit)
     return res.json(results)
   } catch (error) {
@@ -1579,16 +1687,6 @@ app.get('/api/cards/:id', async (req, res) => {
     if (!cardIdParam) return res.status(400).json({ error: 'Invalid card id' })
     const cardId = Number(cardIdParam)
 
-    if (PRICE_TRACKER_API_KEY && Number.isFinite(cardId)) {
-      try {
-        const card = await fetchCardFromPriceTracker(cardId)
-        if (!card) return res.status(404).json({ error: 'Card not found' })
-        return res.json(card)
-      } catch (error) {
-        console.error('Failed to fetch card from Price Tracker', error)
-      }
-    }
-
     let card = null
 
     if (Number.isFinite(cardId)) {
@@ -1597,6 +1695,14 @@ app.get('/api/cards/:id', async (req, res) => {
 
     if (!card && (await ensurePriceTrackerImportTablesAvailable())) {
       card = await fetchCardFromPtImport(cardIdParam)
+    }
+
+    if (!card && PRICE_TRACKER_API_KEY && Number.isFinite(cardId)) {
+      try {
+        card = await fetchCardFromPriceTracker(cardId)
+      } catch (error) {
+        console.error('Failed to fetch card from Price Tracker', error)
+      }
     }
 
     if (!card) return res.status(404).json({ error: 'Card not found' })
