@@ -25,9 +25,8 @@ function createExpansionService({
         ? await ensureTraderaAuctionLinksTableAvailable()
         : false
       const priceTrackerReady = await ensurePriceTrackerTablesAvailable()
-      const cardInfraReady = await ensureCardInfrastructure()
 
-      if (!cardInfraReady && priceTrackerReady) {
+      if (priceTrackerReady) {
         const { rows } = await pool.query(`
           WITH pt_counts AS (
             SELECT pt_set_id, COUNT(*)::int AS cards_total
@@ -38,7 +37,7 @@ function createExpansionService({
             s.pt_set_id AS id,
             s.pt_set_id AS set_code,
             s.name AS name,
-            NULL::text AS era,
+            s.series AS era,
             NULL::text AS language,
             s.card_count AS set_number,
             s.card_count AS cards_in_set,
@@ -52,9 +51,17 @@ function createExpansionService({
           ORDER BY s.release_date NULLS LAST, s.name NULLS LAST, s.pt_set_id NULLS LAST
         `)
 
-        return rows
+        return rows.map((row) => {
+          const eraLabel = row.era ?? null
+          return {
+            ...row,
+            era_code: resolveEraCode(eraLabel),
+            era_name: eraLabel
+          }
+        })
       }
 
+      const cardInfraReady = await ensureCardInfrastructure()
       if (!cardInfraReady) return []
 
       const query = priceTrackerReady
