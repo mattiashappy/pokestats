@@ -1230,7 +1230,10 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
       s.series AS era,
       COALESCE(s.name, c.set_name) AS set_name,
       c.pt_set_id AS set_code,
-      COALESCE(s.card_count, NULLIF(split_part(c.total_set_number, '/', 2), '')::int) AS set_total,
+      COALESCE(
+        s.card_count,
+        NULLIF(regexp_replace(split_part(c.total_set_number, '/', 2), '[^0-9]', '', 'g'), '')::int
+      ) AS set_total,
       c.card_number AS card_number,
       COALESCE(c.image_cdn_url400, c.image_cdn_url, c.image_url) AS image_url,
       NULL::text AS product_details,
@@ -1262,7 +1265,10 @@ async function fetchCardFromPtImport(cardId) {
       s.series AS era,
       COALESCE(s.name, c.set_name) AS set_name,
       c.pt_set_id AS set_code,
-      COALESCE(s.card_count, NULLIF(split_part(c.total_set_number, '/', 2), '')::int) AS set_total,
+      COALESCE(
+        s.card_count,
+        NULLIF(regexp_replace(split_part(c.total_set_number, '/', 2), '[^0-9]', '', 'g'), '')::int
+      ) AS set_total,
       c.card_number AS card_number,
       COALESCE(c.image_cdn_url400, c.image_cdn_url, c.image_url) AS image_url,
       c.rarity,
