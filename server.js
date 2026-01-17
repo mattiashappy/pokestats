@@ -1233,10 +1233,12 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
   if (setCode) {
     params.push(setCode.trim())
     clauses.push(`(
-      c.pt_set_id = $1
+      LOWER(c.pt_set_id) = LOWER($1)
+      OR c.pt_set_id IN (SELECT pt_set_id FROM resolved_sets)
+      OR c.pt_set_id IN (SELECT tcgplayer_set_id::text FROM resolved_sets WHERE tcgplayer_set_id IS NOT NULL)
       OR c.set_name ILIKE $1
       OR s.name ILIKE $1
-      OR s.pt_set_id = $1
+      OR LOWER(s.pt_set_id) = LOWER($1)
       OR s.tcgplayer_set_id::text = $1
     )`)
   }
@@ -1256,6 +1258,15 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
   }
 
   const query = `
+    ${setCode ? `
+      WITH resolved_sets AS (
+        SELECT pt_set_id, tcgplayer_set_id, name
+        FROM public.pt_sets
+        WHERE pt_set_id = $1
+           OR tcgplayer_set_id::text = $1
+           OR LOWER(name) = LOWER($1)
+      )
+    ` : ''}
     SELECT
       c.pt_card_id AS id,
       c.name,
