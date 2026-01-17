@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
 
-import { Badge } from '../ui/badge'
 import { Card, CardContent } from '../ui/card'
 import { getExpansionIdentifier } from '../../lib/sets'
 import type { ExpansionSummary } from '../../types'
@@ -28,13 +27,9 @@ export function SetCard({ expansion }: SetCardProps): JSX.Element {
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-3xl font-black tracking-tight text-slate-300 dark:text-slate-700">
-              {setIdentifier}
+              Set image unavailable
             </div>
           )}
-
-          <Badge className="absolute left-3 top-3 bg-slate-900/80 text-xs uppercase text-white backdrop-blur-sm transition group-hover:bg-sky-600">
-            {setIdentifier}
-          </Badge>
         </div>
 
         <CardContent className="flex flex-1 flex-col gap-3 p-4">
