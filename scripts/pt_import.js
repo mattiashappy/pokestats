@@ -202,8 +202,8 @@ function mapPriceTrackerCard(card, setOverride = null) {
   const tcgplayerProductId = normalizeNumericId(
     card?.tcgPlayerId ?? card?.tcgplayerProductId ?? card?.tcgplayer_product_id
   )
-  const ptSetId = normalizeSetValue(card?.setId ?? card?.ptSetId ?? setOverride?.ptSetId)
-  const setName = normalizeSetValue(card?.setName ?? setOverride?.name)
+  const ptSetId = normalizeSetValue(setOverride?.ptSetId ?? card?.setId ?? card?.ptSetId)
+  const setName = normalizeSetValue(setOverride?.name ?? card?.setName)
   const name = normalizeSetValue(card?.name ?? card?.cardName)
   const cardNumber = normalizeSetValue(card?.cardNumber ?? card?.number)
   const totalSetNumber = normalizeSetValue(card?.totalSetNumber ?? card?.totalSet)
