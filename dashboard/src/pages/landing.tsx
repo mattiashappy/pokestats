@@ -1,10 +1,39 @@
+import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { ArrowRight, Layers, LineChart, Link2, ShieldCheck, Sparkles, Table2 } from 'lucide-react'
 
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { fetchCardsPreview, fetchExpansions } from '../lib/api'
+import { getCardSetIdentifier, getExpansionIdentifier } from '../lib/sets'
+import type { CardListItem, ExpansionSummary } from '../types'
 
 export function LandingPage(): JSX.Element {
+  const { data: expansions = [] } = useQuery<ExpansionSummary[]>({
+    queryKey: ['expansions'],
+    queryFn: fetchExpansions
+  })
+
+  const { data: previewCards = [] } = useQuery<CardListItem[]>({
+    queryKey: ['cards-preview-landing'],
+    queryFn: () => fetchCardsPreview(6),
+    staleTime: 1000 * 60
+  })
+
+  const latestSets = useMemo(() => {
+    if (!expansions.length) return []
+    return [...expansions]
+      .sort((a, b) => {
+        const dateA = a.release_date ? new Date(a.release_date).getTime() : 0
+        const dateB = b.release_date ? new Date(b.release_date).getTime() : 0
+        return dateB - dateA
+      })
+      .slice(0, 4)
+  }, [expansions])
+
+  const featuredCards = useMemo(() => previewCards.slice(0, 4), [previewCards])
+
   return (
     <div className="min-h-screen bg-white text-slate-900 dark:bg-gradient-to-b dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 dark:text-slate-50">
       <div className="mx-auto flex max-w-5xl flex-col gap-10 px-6 py-16">
@@ -13,10 +42,10 @@ export function LandingPage(): JSX.Element {
             <Sparkles className="h-4 w-4" />
             PokéStats · Tradera feed live
           </div>
-          <h1 className="text-4xl font-bold leading-tight md:text-5xl">See Pokémon auctions without any setup.</h1>
+          <h1 className="text-4xl font-bold leading-tight md:text-5xl">See Pokémon sets and cards without any setup.</h1>
           <p className="mx-auto max-w-2xl text-lg text-slate-600 dark:text-slate-300">
-            Data from Tradera is already imported so prospects land on real listings. Start with a 14-day trial that rolls into
-            $7/mo once you keep access.
+            Tradera data is already imported, so prospects land on real listings plus the latest sets and cards. Start with a 14-day
+            trial that rolls into $7/mo once you keep access.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Button size="lg" asChild>
@@ -50,12 +79,81 @@ export function LandingPage(): JSX.Element {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Future-proof</CardTitle>
-              <CardDescription>API is already seeded with Tradera auctions.</CardDescription>
+              <CardTitle>Set-ready catalog</CardTitle>
+              <CardDescription>New sets and card pages stay synced as data lands.</CardDescription>
             </CardHeader>
-            <CardContent className="text-sm text-slate-600 dark:text-slate-300">React Query wired to /api/sales with real auctions baked in.</CardContent>
+            <CardContent className="text-sm text-slate-600 dark:text-slate-300">
+              React Query pulls expansions and card previews straight from the live catalog.
+            </CardContent>
           </Card>
         </div>
+
+        <section className="grid gap-4 lg:grid-cols-2">
+          <Card className="border-slate-200 dark:border-slate-800">
+            <CardHeader>
+              <CardTitle>Newest sets</CardTitle>
+              <CardDescription>Jump straight into the newest expansions in the catalog.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+              {latestSets.length === 0 ? (
+                <p className="text-slate-500 dark:text-slate-400">Loading set previews…</p>
+              ) : (
+                <ul className="space-y-2">
+                  {latestSets.map((set) => (
+                    <li key={set.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/60">
+                      <div>
+                        <p className="font-semibold text-slate-900 dark:text-slate-100">{set.name ?? 'Untitled set'}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {set.release_date ? new Date(set.release_date).toLocaleDateString('sv-SE') : 'Release date pending'}
+                        </p>
+                      </div>
+                      <Link
+                        className="text-xs font-semibold uppercase tracking-wide text-sky-600 hover:text-sky-700"
+                        to={`/sets/${getExpansionIdentifier(set)}`}
+                      >
+                        View cards
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200 dark:border-slate-800">
+            <CardHeader>
+              <CardTitle>Featured cards</CardTitle>
+              <CardDescription>Recently indexed cards, ready for auction matching.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+              {featuredCards.length === 0 ? (
+                <p className="text-slate-500 dark:text-slate-400">Loading card previews…</p>
+              ) : (
+                <ul className="space-y-2">
+                  {featuredCards.map((card) => {
+                    const setIdentifier = getCardSetIdentifier(card)
+                    return (
+                      <li key={card.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/60">
+                        <div>
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">{card.name ?? 'Unknown card'}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {[card.set_name ?? card.set_code, card.card_number].filter(Boolean).join(' · ') || 'Set details pending'}
+                          </p>
+                        </div>
+                        <Link
+                          className="text-xs font-semibold uppercase tracking-wide text-sky-600 hover:text-sky-700"
+                          to={setIdentifier ? `/sets/${setIdentifier}/${card.id}` : `/cards/${card.id}`}
+                        >
+                          Open card
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </section>
 
         <section className="space-y-8 rounded-2xl border border-slate-200 bg-white/60 p-6 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/70">
           <div className="space-y-2 text-center">
