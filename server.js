@@ -1613,6 +1613,17 @@ app.get('/api/cards', async (req, res) => {
         }
 
         if (!cards.length) {
+          if (ptSet?.name) {
+            cards = await fetchCardsListFromPtImport({
+              setCode: ptSet.name,
+              search,
+              limit,
+              offset
+            })
+          }
+        }
+
+        if (!cards.length) {
           const expansion = await fetchExpansionBySetCodeOrName(setCode)
           if (expansion?.set_name) {
             cards = await fetchCardsListFromPtImport({
@@ -1657,6 +1668,12 @@ app.get('/api/expansions/:setCode/cards', async (req, res) => {
         const ptSet = await fetchPtSetByIdentifier(setCode)
         if (ptSet?.pt_set_id) {
           cards = await fetchCardsListFromPtImport({ setCode: ptSet.pt_set_id })
+        }
+
+        if (!cards.length) {
+          if (ptSet?.name) {
+            cards = await fetchCardsListFromPtImport({ setCode: ptSet.name })
+          }
         }
 
         if (!cards.length) {
