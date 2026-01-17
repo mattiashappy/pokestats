@@ -312,6 +312,8 @@ let importRunsTableAvailable = false
 let ensureCardInfrastructurePromise = null
 let hasCheckedErasTable = false
 let erasTableAvailable = false
+let hasCheckedPtTables = false
+let ptTablesAvailable = false
 
 async function ensureColumnExists(tableName, columnName, definition) {
   const { rows } = await pool.query(
@@ -634,14 +636,23 @@ async function ensureCardsTableAvailable() {
 
 async function ensurePriceTrackerImportTablesAvailable() {
   if (!pool) return false
+  if (hasCheckedPtTables) return ptTablesAvailable
 
-  const { rows } = await pool.query(`
-    SELECT
-      to_regclass('public.pt_sets') AS pt_sets,
-      to_regclass('public.pt_cards') AS pt_cards
-  `)
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        to_regclass('public.pt_sets') AS pt_sets,
+        to_regclass('public.pt_cards') AS pt_cards
+    `)
 
-  return Boolean(rows?.[0]?.pt_sets && rows?.[0]?.pt_cards)
+    ptTablesAvailable = Boolean(rows?.[0]?.pt_sets && rows?.[0]?.pt_cards)
+  } catch (error) {
+    console.error('PT table availability check failed', error)
+    ptTablesAvailable = false
+  }
+
+  hasCheckedPtTables = true
+  return ptTablesAvailable
 }
 
 async function ensureCardInfrastructure() {
@@ -1615,7 +1626,9 @@ app.get('/api/cards', async (req, res) => {
     const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : 100
     const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0
 
-    if (await ensurePriceTrackerImportTablesAvailable()) {
+    const ptReady = await ensurePriceTrackerImportTablesAvailable()
+    console.log('[api cards]', { setCode, ptReady })
+    if (ptReady) {
       let cards = await fetchCardsListFromPtImport({ setCode, search, limit, offset })
 
       if (!cards.length && setCode) {
@@ -1678,7 +1691,9 @@ app.get('/api/expansions/:setCode/cards', async (req, res) => {
     const setCode = String(req.params.setCode || '').trim()
     if (!setCode) return res.status(400).json({ error: 'Invalid set code' })
 
-    if (await ensurePriceTrackerImportTablesAvailable()) {
+    const ptReady = await ensurePriceTrackerImportTablesAvailable()
+    console.log('[expansions cards]', { setCode, ptReady })
+    if (ptReady) {
       let cards = await fetchCardsListFromPtImport({ setCode })
 
       if (!cards.length) {
