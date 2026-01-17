@@ -77,9 +77,31 @@ export function DashboardPage(): JSX.Element {
     return [...expansions].sort((a, b) => (b.linked_auctions ?? 0) - (a.linked_auctions ?? 0))[0] ?? null
   }, [expansions])
 
+  const latestSets = useMemo(() => {
+    if (!expansions?.length) return []
+    return [...expansions]
+      .sort((a, b) => {
+        const dateA = a.release_date ? new Date(a.release_date).getTime() : 0
+        const dateB = b.release_date ? new Date(b.release_date).getTime() : 0
+        return dateB - dateA
+      })
+      .slice(0, 5)
+  }, [expansions])
+
   const topCard = useMemo(() => {
     if (!cards?.length) return null
     return [...cards].sort((a, b) => (b.linked_auctions ?? 0) - (a.linked_auctions ?? 0))[0] ?? null
+  }, [cards])
+
+  const latestCards = useMemo(() => {
+    if (!cards?.length) return []
+    return [...cards]
+      .sort((a, b) => {
+        const dateA = a.last_seen ?? a.created_at ?? ''
+        const dateB = b.last_seen ?? b.created_at ?? ''
+        return dateB.localeCompare(dateA)
+      })
+      .slice(0, 5)
   }, [cards])
 
   const topEra = useMemo(() => {
@@ -98,6 +120,30 @@ export function DashboardPage(): JSX.Element {
     })
 
     return [...eraBuckets.values()].sort((a, b) => b.linkedAuctions - a.linkedAuctions)[0] ?? null
+  }, [expansions])
+
+  const eraPreviews = useMemo(() => {
+    if (!expansions?.length) return new Map<string, { imageUrl: string | null; releaseDate: number }>()
+
+    const previews = new Map<string, { imageUrl: string | null; releaseDate: number }>()
+
+    expansions.forEach((expansion) => {
+      const name = expansion.era_name ?? expansion.era ?? 'Unknown era'
+      const code = normalizeEraCode(expansion.era_code ?? expansion.era_name ?? expansion.era ?? name)
+      const key = code ?? name
+      if (!key) return
+
+      const imageUrl =
+        expansion.image_cdn_url800 ?? expansion.image_cdn_url400 ?? expansion.image_cdn_url200 ?? expansion.image_url ?? null
+      const releaseDate = expansion.release_date ? new Date(expansion.release_date).getTime() : 0
+      const current = previews.get(key)
+
+      if (!current || releaseDate > current.releaseDate) {
+        previews.set(key, { imageUrl, releaseDate })
+      }
+    })
+
+    return previews
   }, [expansions])
 
   return (
@@ -287,6 +333,84 @@ export function DashboardPage(): JSX.Element {
         </div>
       </section>
 
+      <section className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Catalog refresh</p>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Newest sets and cards</h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Recently added expansions and card pages from the live catalog feed.
+          </p>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader className="space-y-1">
+              <CardTitle className="text-xl">Latest sets</CardTitle>
+              <CardDescription>Fresh expansions ready to explore.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+              {expansionsLoading ? (
+                <p>Loading newest sets…</p>
+              ) : expansionsError ? (
+                <p className="text-rose-400">Unable to load newest sets.</p>
+              ) : latestSets.length ? (
+                <ul className="space-y-2">
+                  {latestSets.map((set) => (
+                    <li key={set.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/60">
+                      <div>
+                        <p className="font-semibold text-slate-900 dark:text-slate-50">
+                          {set.name ?? getExpansionIdentifier(set)}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {set.release_date ? new Date(set.release_date).toLocaleDateString('sv-SE') : 'Release date pending'}
+                        </p>
+                      </div>
+                      <Link to={`/sets/${getExpansionIdentifier(set)}`} className="text-xs font-semibold text-sky-600 hover:text-sky-700">
+                        View cards
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No new sets yet.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="space-y-1">
+              <CardTitle className="text-xl">Latest cards</CardTitle>
+              <CardDescription>Recently indexed card pages.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+              {cardsLoading ? (
+                <p>Loading newest cards…</p>
+              ) : cardsError ? (
+                <p className="text-rose-400">Unable to load newest cards.</p>
+              ) : latestCards.length ? (
+                <ul className="space-y-2">
+                  {latestCards.map((card) => (
+                    <li key={card.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/60">
+                      <div>
+                        <p className="font-semibold text-slate-900 dark:text-slate-50">{card.name ?? 'Unknown card'}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {[card.set_name ?? card.set_code, card.card_number].filter(Boolean).join(' · ') || 'Set details pending'}
+                        </p>
+                      </div>
+                      <Link to={`/cards/${card.id}`} className="text-xs font-semibold text-sky-600 hover:text-sky-700">
+                        Open card
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No new cards yet.</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
       <section className="space-y-6">
         <div className="flex items-center gap-3">
           <Layers className="h-5 w-5 text-amber-500" />
@@ -308,18 +432,29 @@ export function DashboardPage(): JSX.Element {
             {orderedEras.map((era) => {
               const eraCode = normalizeEraCode(era.code) ?? era.code
               const eraYears = formatEraYears(era.start_year, era.end_year)
+              const preview = eraPreviews.get(eraCode ?? era.name)
+              const previewImage = preview?.imageUrl ?? null
               return (
                 <Link key={era.code} to={`/era/${eraCode}`} className="group block h-full">
-                  <Card className="h-full border-slate-200/80 shadow-none transition hover:-translate-y-1 hover:shadow-md dark:border-slate-800/80">
-                    <CardContent className="space-y-3 p-5">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <Layers className="h-4 w-4 text-slate-400" />
-                          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">{era.name}</h3>
-                        </div>
-                        <Badge variant="secondary" className="uppercase">
+                  <Card className="flex h-full flex-col overflow-hidden border-slate-200/80 shadow-none transition hover:-translate-y-1 hover:shadow-md dark:border-slate-800/80">
+                    <div className="relative bg-gradient-to-br from-slate-100 to-white pb-[56.25%] dark:from-slate-900 dark:to-slate-950">
+                      {previewImage ? (
+                        <img src={previewImage} alt={era.name} className="absolute inset-0 h-full w-full object-cover" />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-3xl font-black tracking-tight text-slate-300 dark:text-slate-700">
                           {eraCode}
-                        </Badge>
+                        </div>
+                      )}
+
+                      <Badge className="absolute left-3 top-3 bg-slate-900/80 text-xs uppercase text-white backdrop-blur-sm transition group-hover:bg-sky-600">
+                        {eraCode}
+                      </Badge>
+                    </div>
+
+                    <CardContent className="space-y-3 p-5">
+                      <div className="flex items-center gap-2">
+                        <Layers className="h-4 w-4 text-slate-400" />
+                        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">{era.name}</h3>
                       </div>
                       <p className="text-sm text-slate-600 dark:text-slate-400">{eraYears}</p>
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
