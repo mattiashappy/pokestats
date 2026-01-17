@@ -122,6 +122,30 @@ export function DashboardPage(): JSX.Element {
     return [...eraBuckets.values()].sort((a, b) => b.linkedAuctions - a.linkedAuctions)[0] ?? null
   }, [expansions])
 
+  const eraPreviews = useMemo(() => {
+    if (!expansions?.length) return new Map<string, { imageUrl: string | null; releaseDate: number }>()
+
+    const previews = new Map<string, { imageUrl: string | null; releaseDate: number }>()
+
+    expansions.forEach((expansion) => {
+      const name = expansion.era_name ?? expansion.era ?? 'Unknown era'
+      const code = normalizeEraCode(expansion.era_code ?? expansion.era_name ?? expansion.era ?? name)
+      const key = code ?? name
+      if (!key) return
+
+      const imageUrl =
+        expansion.image_cdn_url800 ?? expansion.image_cdn_url400 ?? expansion.image_cdn_url200 ?? expansion.image_url ?? null
+      const releaseDate = expansion.release_date ? new Date(expansion.release_date).getTime() : 0
+      const current = previews.get(key)
+
+      if (!current || releaseDate > current.releaseDate) {
+        previews.set(key, { imageUrl, releaseDate })
+      }
+    })
+
+    return previews
+  }, [expansions])
+
   return (
     <div className="space-y-10">
       <section className="rounded-3xl border border-slate-200/80 bg-white p-8 shadow-sm dark:border-slate-800/80 dark:bg-slate-950/70">
@@ -408,18 +432,29 @@ export function DashboardPage(): JSX.Element {
             {orderedEras.map((era) => {
               const eraCode = normalizeEraCode(era.code) ?? era.code
               const eraYears = formatEraYears(era.start_year, era.end_year)
+              const preview = eraPreviews.get(eraCode ?? era.name)
+              const previewImage = preview?.imageUrl ?? null
               return (
                 <Link key={era.code} to={`/era/${eraCode}`} className="group block h-full">
-                  <Card className="h-full border-slate-200/80 shadow-none transition hover:-translate-y-1 hover:shadow-md dark:border-slate-800/80">
-                    <CardContent className="space-y-3 p-5">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <Layers className="h-4 w-4 text-slate-400" />
-                          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">{era.name}</h3>
-                        </div>
-                        <Badge variant="secondary" className="uppercase">
+                  <Card className="flex h-full flex-col overflow-hidden border-slate-200/80 shadow-none transition hover:-translate-y-1 hover:shadow-md dark:border-slate-800/80">
+                    <div className="relative bg-gradient-to-br from-slate-100 to-white pb-[56.25%] dark:from-slate-900 dark:to-slate-950">
+                      {previewImage ? (
+                        <img src={previewImage} alt={era.name} className="absolute inset-0 h-full w-full object-cover" />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-3xl font-black tracking-tight text-slate-300 dark:text-slate-700">
                           {eraCode}
-                        </Badge>
+                        </div>
+                      )}
+
+                      <Badge className="absolute left-3 top-3 bg-slate-900/80 text-xs uppercase text-white backdrop-blur-sm transition group-hover:bg-sky-600">
+                        {eraCode}
+                      </Badge>
+                    </div>
+
+                    <CardContent className="space-y-3 p-5">
+                      <div className="flex items-center gap-2">
+                        <Layers className="h-4 w-4 text-slate-400" />
+                        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">{era.name}</h3>
                       </div>
                       <p className="text-sm text-slate-600 dark:text-slate-400">{eraYears}</p>
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
