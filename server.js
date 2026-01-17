@@ -1232,7 +1232,13 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
 
   if (setCode) {
     params.push(setCode.trim())
-    clauses.push('c.pt_set_id = $1')
+    clauses.push(`(
+      c.pt_set_id = $1
+      OR c.set_name ILIKE $1
+      OR s.name ILIKE $1
+      OR s.pt_set_id = $1
+      OR s.tcgplayer_set_id::text = $1
+    )`)
   }
 
   if (search) {
