@@ -209,6 +209,24 @@ async function fetchExpansionBySetCodeOrName(setCode) {
   return rows[0] ?? null
 }
 
+async function fetchPtSetByIdentifier(setCode) {
+  if (!pool) return null
+  const ok = await ensurePriceTrackerImportTablesAvailable()
+  if (!ok) return null
+
+  const query = `
+    SELECT pt_set_id, name
+    FROM public.pt_sets
+    WHERE pt_set_id = $1
+       OR tcgplayer_set_id::text = $1
+       OR LOWER(name) = LOWER($1)
+    LIMIT 1
+  `
+
+  const { rows } = await pool.query(query, [setCode])
+  return rows[0] ?? null
+}
+
 async function fetchExpansionBySetName(setName) {
   if (!pool) return null
   const ok = await ensureExpansionsTableAvailable()
@@ -1584,14 +1602,26 @@ app.get('/api/cards', async (req, res) => {
       let cards = await fetchCardsListFromPtImport({ setCode, search, limit, offset })
 
       if (!cards.length && setCode) {
-        const expansion = await fetchExpansionBySetCodeOrName(setCode)
-        if (expansion?.set_name) {
+        const ptSet = await fetchPtSetByIdentifier(setCode)
+        if (ptSet?.pt_set_id) {
           cards = await fetchCardsListFromPtImport({
-            setCode: expansion.set_name,
+            setCode: ptSet.pt_set_id,
             search,
             limit,
             offset
           })
+        }
+
+        if (!cards.length) {
+          const expansion = await fetchExpansionBySetCodeOrName(setCode)
+          if (expansion?.set_name) {
+            cards = await fetchCardsListFromPtImport({
+              setCode: expansion.set_name,
+              search,
+              limit,
+              offset
+            })
+          }
         }
       }
 
@@ -1624,9 +1654,16 @@ app.get('/api/expansions/:setCode/cards', async (req, res) => {
       let cards = await fetchCardsListFromPtImport({ setCode })
 
       if (!cards.length) {
-        const expansion = await fetchExpansionBySetCodeOrName(setCode)
-        if (expansion?.set_name) {
-          cards = await fetchCardsListFromPtImport({ setCode: expansion.set_name })
+        const ptSet = await fetchPtSetByIdentifier(setCode)
+        if (ptSet?.pt_set_id) {
+          cards = await fetchCardsListFromPtImport({ setCode: ptSet.pt_set_id })
+        }
+
+        if (!cards.length) {
+          const expansion = await fetchExpansionBySetCodeOrName(setCode)
+          if (expansion?.set_name) {
+            cards = await fetchCardsListFromPtImport({ setCode: expansion.set_name })
+          }
         }
       }
 
