@@ -77,9 +77,31 @@ export function DashboardPage(): JSX.Element {
     return [...expansions].sort((a, b) => (b.linked_auctions ?? 0) - (a.linked_auctions ?? 0))[0] ?? null
   }, [expansions])
 
+  const latestSets = useMemo(() => {
+    if (!expansions?.length) return []
+    return [...expansions]
+      .sort((a, b) => {
+        const dateA = a.release_date ? new Date(a.release_date).getTime() : 0
+        const dateB = b.release_date ? new Date(b.release_date).getTime() : 0
+        return dateB - dateA
+      })
+      .slice(0, 5)
+  }, [expansions])
+
   const topCard = useMemo(() => {
     if (!cards?.length) return null
     return [...cards].sort((a, b) => (b.linked_auctions ?? 0) - (a.linked_auctions ?? 0))[0] ?? null
+  }, [cards])
+
+  const latestCards = useMemo(() => {
+    if (!cards?.length) return []
+    return [...cards]
+      .sort((a, b) => {
+        const dateA = a.last_seen ?? a.created_at ?? ''
+        const dateB = b.last_seen ?? b.created_at ?? ''
+        return dateB.localeCompare(dateA)
+      })
+      .slice(0, 5)
   }, [cards])
 
   const topEra = useMemo(() => {
@@ -281,6 +303,84 @@ export function DashboardPage(): JSX.Element {
                 </>
               ) : (
                 <p>No linked auctions yet.</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Catalog refresh</p>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Newest sets and cards</h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Recently added expansions and card pages from the live catalog feed.
+          </p>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader className="space-y-1">
+              <CardTitle className="text-xl">Latest sets</CardTitle>
+              <CardDescription>Fresh expansions ready to explore.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+              {expansionsLoading ? (
+                <p>Loading newest sets…</p>
+              ) : expansionsError ? (
+                <p className="text-rose-400">Unable to load newest sets.</p>
+              ) : latestSets.length ? (
+                <ul className="space-y-2">
+                  {latestSets.map((set) => (
+                    <li key={set.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/60">
+                      <div>
+                        <p className="font-semibold text-slate-900 dark:text-slate-50">
+                          {set.name ?? getExpansionIdentifier(set)}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {set.release_date ? new Date(set.release_date).toLocaleDateString('sv-SE') : 'Release date pending'}
+                        </p>
+                      </div>
+                      <Link to={`/sets/${getExpansionIdentifier(set)}`} className="text-xs font-semibold text-sky-600 hover:text-sky-700">
+                        View cards
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No new sets yet.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="space-y-1">
+              <CardTitle className="text-xl">Latest cards</CardTitle>
+              <CardDescription>Recently indexed card pages.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+              {cardsLoading ? (
+                <p>Loading newest cards…</p>
+              ) : cardsError ? (
+                <p className="text-rose-400">Unable to load newest cards.</p>
+              ) : latestCards.length ? (
+                <ul className="space-y-2">
+                  {latestCards.map((card) => (
+                    <li key={card.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/60">
+                      <div>
+                        <p className="font-semibold text-slate-900 dark:text-slate-50">{card.name ?? 'Unknown card'}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {[card.set_name ?? card.set_code, card.card_number].filter(Boolean).join(' · ') || 'Set details pending'}
+                        </p>
+                      </div>
+                      <Link to={`/cards/${card.id}`} className="text-xs font-semibold text-sky-600 hover:text-sky-700">
+                        Open card
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No new cards yet.</p>
               )}
             </CardContent>
           </Card>
