@@ -312,8 +312,9 @@ let importRunsTableAvailable = false
 let ensureCardInfrastructurePromise = null
 let hasCheckedErasTable = false
 let erasTableAvailable = false
-let hasCheckedPtTables = false
 let ptTablesAvailable = false
+let ptTablesCheckedAt = 0
+const PT_CACHE_TTL_MS = 60_000
 
 async function ensureColumnExists(tableName, columnName, definition) {
   const { rows } = await pool.query(
@@ -636,8 +637,10 @@ async function ensureCardsTableAvailable() {
 
 async function ensurePriceTrackerImportTablesAvailable() {
   if (!pool) return false
-  if (hasCheckedPtTables) return ptTablesAvailable
+  const now = Date.now()
+  if (now - ptTablesCheckedAt < PT_CACHE_TTL_MS) return ptTablesAvailable
 
+  ptTablesCheckedAt = now
   try {
     const { rows } = await pool.query(`
       SELECT
@@ -651,7 +654,6 @@ async function ensurePriceTrackerImportTablesAvailable() {
     ptTablesAvailable = false
   }
 
-  hasCheckedPtTables = true
   return ptTablesAvailable
 }
 
@@ -1695,6 +1697,7 @@ app.get('/api/expansions/:setCode/cards', async (req, res) => {
     console.log('[expansions cards]', { setCode, ptReady })
     if (ptReady) {
       let cards = await fetchCardsListFromPtImport({ setCode })
+      console.log('[expansions cards]', { setCode, ptReady, count: cards.length })
 
       if (!cards.length) {
         const ptSet = await fetchPtSetByIdentifier(setCode)
