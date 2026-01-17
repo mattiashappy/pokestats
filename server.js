@@ -1264,10 +1264,12 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
   }
 
   const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
-  const useLimit = Number.isFinite(Number(limit))
+  const parsedLimit = limit === null || limit === undefined ? null : Number(limit)
+  const parsedOffset = Number.isFinite(Number(offset)) ? Number(offset) : 0
+  const useLimit = Number.isFinite(parsedLimit) && parsedLimit > 0
   if (useLimit) {
-    params.push(Number(limit))
-    params.push(Number(offset))
+    params.push(parsedLimit)
+    params.push(parsedOffset)
   }
 
   const query = `
