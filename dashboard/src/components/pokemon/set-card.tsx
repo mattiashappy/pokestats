@@ -1,5 +1,3 @@
-import { format } from 'date-fns'
-import { Layers } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { Badge } from '../ui/badge'
@@ -12,13 +10,7 @@ type SetCardProps = {
 }
 
 export function SetCard({ expansion }: SetCardProps): JSX.Element {
-  const releaseLabel = expansion.release_date
-    ? `Released ${format(new Date(expansion.release_date), 'PP')}`
-    : 'Release date pending'
-
   const cardsLabel = expansion.set_total ?? expansion.cards_total
-  const auctionsLabel = expansion.linked_auctions ?? 0
-  const hasAuctionsLinked = auctionsLabel > 0
   const setIdentifier = getExpansionIdentifier(expansion)
   const setLink = `/sets/${setIdentifier}`
   const imageUrl =
@@ -46,29 +38,27 @@ export function SetCard({ expansion }: SetCardProps): JSX.Element {
         </div>
 
         <CardContent className="flex flex-1 flex-col gap-3 p-4">
-          <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pokémon set</p>
-            <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">
-              {expansion.name ?? 'Unknown set'}
-            </p>
-            <p className="text-sm text-slate-600 dark:text-slate-400">{releaseLabel}</p>
+          <div className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+            {expansion.name ?? 'Unknown set'}
           </div>
 
-          <div className="mt-auto flex flex-wrap items-center gap-3 text-sm text-slate-700 dark:text-slate-200">
-            <span className="flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-              <Layers className="h-3.5 w-3.5" />
-              {cardsLabel ? `${cardsLabel} cards` : 'Cards pending'}
-            </span>
-
-            {hasAuctionsLinked && (
-              <>
-                <span className="text-xs text-slate-500 dark:text-slate-400">·</span>
-
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                  {auctionsLabel.toLocaleString('sv-SE')} auctions linked
-                </span>
-              </>
-            )}
+          <div className="space-y-2 text-sm text-slate-700 dark:text-slate-200">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cards</span>
+              <span className="font-semibold">{cardsLabel ? `${cardsLabel} cards` : 'Cards pending'}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total set value</span>
+              <span className="font-semibold text-slate-500 dark:text-slate-400">Pending</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Avg</span>
+              <span className="font-semibold text-slate-500 dark:text-slate-400">Pending</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Change</span>
+              <span className="font-semibold text-slate-500 dark:text-slate-400">Pending</span>
+            </div>
           </div>
         </CardContent>
       </Card>
