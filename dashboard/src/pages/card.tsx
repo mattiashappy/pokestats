@@ -21,13 +21,11 @@ export function CardPage(): JSX.Element {
     enabled: Boolean(id)
   })
 
-  const title = useMemo(() => card?.name ?? 'Card', [card?.name])
   const headerLabel = useMemo(() => {
-    const cardSetIdentifier = card ? getCardSetIdentifier(card) : null
-    if (cardSetIdentifier && card?.card_number) return `${cardSetIdentifier} ${card.card_number}`
-    if (card?.card_number) return card.card_number
-    return title
-  }, [card, title])
+    if (!card) return 'Card'
+    if (card.card_number) return `${card.name} - ${card.card_number}`
+    return card.name
+  }, [card])
 
   const productDetails = useMemo(() => {
     if (!card?.product_details) return []
@@ -64,7 +62,6 @@ export function CardPage(): JSX.Element {
           </span>
         </div>
         <div className="mt-4 space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-700">Card</p>
           <h1 className="text-4xl font-black uppercase text-slate-900">{headerLabel}</h1>
           {card ? (
             <div className="flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-wide text-slate-900">
@@ -90,24 +87,15 @@ export function CardPage(): JSX.Element {
 
       {card && !isLoading && !error ? (
         <div className="grid gap-6 lg:grid-cols-[320px,1fr]">
-          <UiCard className="overflow-hidden border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
-            <CardHeader className="space-y-1 border-b-4 border-slate-900 bg-slate-900">
-              <CardTitle className="text-lg font-black uppercase text-white">{card.name}</CardTitle>
-              <CardDescription className="text-xs font-semibold uppercase tracking-wide text-amber-200">
-                {card.set_name || 'Unknown set'} · {card.era || 'Unknown era'}
-                {card.card_number ? ` · ${card.card_number}` : ''}
-              </CardDescription>
-            </CardHeader>
+          <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
             <CardContent className="p-4">
-              <div className="overflow-hidden border-4 border-slate-900 bg-white shadow-[4px_4px_0px_#0f172a]">
-                {card.image_url ? (
-                  <img src={card.image_url} alt={card.name} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-64 items-center justify-center bg-amber-50 text-sm font-semibold uppercase tracking-wide text-slate-600">
-                    No image available
-                  </div>
-                )}
-              </div>
+              {card.image_url ? (
+                <img src={card.image_url} alt={card.name} className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-64 items-center justify-center bg-amber-50 text-sm font-semibold uppercase tracking-wide text-slate-600">
+                  No image available
+                </div>
+              )}
             </CardContent>
           </UiCard>
 
