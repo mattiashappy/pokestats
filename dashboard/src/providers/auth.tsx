@@ -19,6 +19,7 @@ export type AuthContextValue = {
   logout: () => void
   updateSubscription: (status: SubscriptionStatus) => void
   startTrial: (cardLast4: string) => void
+  switchRole: (role: AuthUser['role']) => void
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -116,8 +117,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
     persistUser(nextUser)
   }
 
+  const switchRole = (role: AuthUser['role']): void => {
+    if (!user || user.email.toLowerCase() !== 'ash@pokestats.app') return
+    const nextUser: AuthUser = {
+      ...user,
+      role
+    }
+    persistUser(nextUser)
+  }
+
   const value = useMemo(
-    () => ({ user, loading, login, signup, logout, updateSubscription, startTrial }),
+    () => ({ user, loading, login, signup, logout, updateSubscription, startTrial, switchRole }),
     [user, loading]
   )
 
