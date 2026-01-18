@@ -33,7 +33,7 @@ export function PublicLayout(): JSX.Element {
           </>
         }
       />
-      <main className="mx-auto w-full max-w-6xl px-4 py-8">
+      <main className="mx-auto w-full max-w-6xl px-4 pb-10 pt-12">
         <Outlet />
       </main>
     </div>
