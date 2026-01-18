@@ -95,13 +95,6 @@ export function DashboardPage(): JSX.Element {
     setCurrentPage(1)
   }
 
-  const formatDate = (value: string | null): string => {
-    if (!value) return '—'
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return '—'
-    return date.toLocaleDateString('sv-SE', { year: 'numeric', month: 'short', day: 'numeric' })
-  }
-
   return (
     <div className="space-y-16">
       <section className="grid gap-6 lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-8">
@@ -201,9 +194,6 @@ export function DashboardPage(): JSX.Element {
               <tr className="border-b-2 border-slate-900 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
                 <th className="px-4 py-3">Card</th>
                 <th className="px-4 py-3">Set</th>
-                <th className="px-4 py-3">Era</th>
-                <th className="px-4 py-3">Auctions</th>
-                <th className="px-4 py-3">Last seen</th>
                 <th className="px-4 py-3 text-right">Link</th>
               </tr>
             </thead>
@@ -218,9 +208,6 @@ export function DashboardPage(): JSX.Element {
                       <td className="px-4 py-4 text-slate-700">
                         {[card.set_name, card.set_code].filter(Boolean).join(' · ') || 'Set pending'}
                       </td>
-                      <td className="px-4 py-4 text-slate-700">{card.era ?? '—'}</td>
-                      <td className="px-4 py-4 text-slate-700">{card.linked_auctions ?? 0}</td>
-                      <td className="px-4 py-4 text-slate-700">{formatDate(card.last_seen)}</td>
                       <td className="px-4 py-4 text-right">
                         <Link
                           to={detailHref}
@@ -234,7 +221,7 @@ export function DashboardPage(): JSX.Element {
                 })
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-sm text-slate-500">
+                  <td colSpan={3} className="px-4 py-6 text-center text-sm text-slate-500">
                     No cards match this search.
                   </td>
                 </tr>
