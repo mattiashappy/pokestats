@@ -19,6 +19,21 @@ export function DashboardPage(): JSX.Element {
   const [currentPage, setCurrentPage] = useState(1)
   const PAGE_SIZE = 10
 
+  const formatCardNumber = (card: CardListItem): string | null => {
+    if (!card.card_number) return null
+    if (card.set_total && !card.card_number.includes('/')) {
+      return `${card.card_number}/${card.set_total}`
+    }
+    return card.card_number
+  }
+
+  const formatMarketPrice = (value: number | null): string => {
+    if (value === null || value === undefined) return '—'
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) return '—'
+    return `$${parsed.toFixed(2)}`
+  }
+
   const {
     data: cards,
     isLoading: cardsLoading,
@@ -40,7 +55,7 @@ export function DashboardPage(): JSX.Element {
     const term = searchTerm.trim().toLowerCase()
     const era = eraFilter === 'all' ? null : eraFilter
 
-    return cards.filter((card) => {
+    const matches = cards.filter((card) => {
       const cardSetIdentifier = getCardSetIdentifier(card) ?? ''
       const haystack = [
         card.name,
@@ -57,6 +72,19 @@ export function DashboardPage(): JSX.Element {
       const matchesSearch = !term || haystack.includes(term)
       const matchesEra = !era || card.era === era
       return matchesSearch && matchesEra
+    })
+
+    return [...matches].sort((a, b) => {
+      const aPrice = Number.isFinite(Number(a.price_market)) ? Number(a.price_market) : null
+      const bPrice = Number.isFinite(Number(b.price_market)) ? Number(b.price_market) : null
+
+      if (aPrice === null && bPrice === null) return 0
+      if (aPrice === null) return 1
+      if (bPrice === null) return -1
+      if (aPrice === bPrice) {
+        return (a.name ?? '').localeCompare(b.name ?? '')
+      }
+      return bPrice - aPrice
     })
   }, [cards, eraFilter, searchTerm])
 
@@ -194,6 +222,7 @@ export function DashboardPage(): JSX.Element {
               <tr className="border-b-2 border-slate-900 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
                 <th className="px-4 py-3">Card</th>
                 <th className="px-4 py-3">Set</th>
+                <th className="px-4 py-3 text-right">Market price</th>
                 <th className="px-4 py-3 text-right">Link</th>
               </tr>
             </thead>
@@ -202,11 +231,20 @@ export function DashboardPage(): JSX.Element {
                 pagedCards.map((card) => {
                   const setIdentifier = getCardSetIdentifier(card)
                   const detailHref = setIdentifier ? `/sets/${setIdentifier}/${card.id}` : `/cards/${card.id}`
+                  const cardNumber = formatCardNumber(card)
                   return (
                     <tr key={card.id} className="bg-white">
-                      <td className="px-4 py-4 font-semibold text-slate-900">{card.name ?? 'Unknown card'}</td>
+                      <td className="px-4 py-4">
+                        <div className="font-semibold text-slate-900">{card.name ?? 'Unknown card'}</div>
+                        <div className="text-xs text-slate-600">
+                          {[card.set_name, card.era, cardNumber].filter(Boolean).join(' · ') || 'Card details pending'}
+                        </div>
+                      </td>
                       <td className="px-4 py-4 text-slate-700">
                         {[card.set_name, card.set_code].filter(Boolean).join(' · ') || 'Set pending'}
+                      </td>
+                      <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
+                        {formatMarketPrice(card.price_market)}
                       </td>
                       <td className="px-4 py-4 text-right">
                         <Link
@@ -221,7 +259,7 @@ export function DashboardPage(): JSX.Element {
                 })
               ) : (
                 <tr>
-                  <td colSpan={3} className="px-4 py-6 text-center text-sm text-slate-500">
+                  <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-500">
                     No cards match this search.
                   </td>
                 </tr>
