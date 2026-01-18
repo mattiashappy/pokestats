@@ -1309,6 +1309,7 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
     LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
     ${whereClause}
     ORDER BY
+      c.price_market DESC NULLS LAST,
       NULLIF(regexp_replace(c.card_number, '[^0-9].*$', ''), '')::int NULLS LAST,
       c.card_number NULLS LAST,
       c.name NULLS LAST
