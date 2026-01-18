@@ -1,9 +1,11 @@
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
 import DataTable from '../components/ui/data-table'
-import { fetchCardDetails } from '../lib/api'
-import type { CardResponse } from '../types'
+import { fetchCardDetails, fetchCards } from '../lib/api'
+import { getCardSetIdentifier } from '../lib/sets'
+import type { CardListItem, CardResponse } from '../types'
 
 export function DashboardPage(): JSX.Element {
   const featuredCardId = '68af87b6c4f780b5153e99c5'
@@ -11,48 +13,94 @@ export function DashboardPage(): JSX.Element {
     queryKey: ['featured-card', featuredCardId],
     queryFn: () => fetchCardDetails(featuredCardId)
   })
-  const catalogRows = [
-    {
-      id: '1',
-      card: 'Charizard Holo #4',
-      set: 'Base Set',
-      price: '12 450 kr',
-      change: '+18.2%',
-      changeTone: 'text-emerald-600'
-    },
-    {
-      id: '2',
-      card: 'Umbreon VMAX #215',
-      set: 'Evolving Skies',
-      price: '3 200 kr',
-      change: '+7.5%',
-      changeTone: 'text-emerald-600'
-    },
-    {
-      id: '3',
-      card: 'Blastoise Holo #2',
-      set: 'Base Set',
-      price: '4 980 kr',
-      change: '-2.1%',
-      changeTone: 'text-rose-600'
-    },
-    {
-      id: '4',
-      card: 'Gengar VMAX #271',
-      set: 'Fusion Strike',
-      price: '2 150 kr',
-      change: '+4.9%',
-      changeTone: 'text-emerald-600'
-    },
-    {
-      id: '5',
-      card: 'Lugia V #186',
-      set: 'Silver Tempest',
-      price: '1 890 kr',
-      change: '-1.4%',
-      changeTone: 'text-rose-600'
+
+  const [searchTerm, setSearchTerm] = useState('')
+  const [eraFilter, setEraFilter] = useState('all')
+  const [currentPage, setCurrentPage] = useState(1)
+  const PAGE_SIZE = 10
+
+  const {
+    data: cards,
+    isLoading: cardsLoading,
+    error: cardsError
+  } = useQuery<CardListItem[]>({
+    queryKey: ['cards'],
+    queryFn: () => fetchCards()
+  })
+
+  const eraOptions = useMemo(() => {
+    if (!cards) return []
+    return Array.from(new Set(cards.map((card) => card.era).filter(Boolean))).sort((a, b) =>
+      a && b ? a.localeCompare(b) : 0
+    )
+  }, [cards])
+
+  const filteredCards = useMemo(() => {
+    if (!cards) return []
+    const term = searchTerm.trim().toLowerCase()
+    const era = eraFilter === 'all' ? null : eraFilter
+
+    return cards.filter((card) => {
+      const cardSetIdentifier = getCardSetIdentifier(card) ?? ''
+      const haystack = [
+        card.name,
+        card.set_name,
+        card.set_code,
+        card.card_number,
+        card.era,
+        cardSetIdentifier
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+      const matchesSearch = !term || haystack.includes(term)
+      const matchesEra = !era || card.era === era
+      return matchesSearch && matchesEra
+    })
+  }, [cards, eraFilter, searchTerm])
+
+  const totalPages = useMemo(() => {
+    if (!filteredCards.length) return 1
+    return Math.ceil(filteredCards.length / PAGE_SIZE)
+  }, [filteredCards.length])
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages)
     }
-  ]
+  }, [currentPage, totalPages])
+
+  const pagedCards = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE
+    return filteredCards.slice(start, start + PAGE_SIZE)
+  }, [currentPage, filteredCards])
+
+  const displayRange = useMemo(() => {
+    if (!filteredCards.length) {
+      return { start: 0, end: 0 }
+    }
+    const start = (currentPage - 1) * PAGE_SIZE + 1
+    const end = Math.min(currentPage * PAGE_SIZE, filteredCards.length)
+    return { start, end }
+  }, [currentPage, filteredCards.length])
+
+  const handleSearchChange = (value: string): void => {
+    setSearchTerm(value)
+    setCurrentPage(1)
+  }
+
+  const handleEraChange = (value: string): void => {
+    setEraFilter(value)
+    setCurrentPage(1)
+  }
+
+  const formatDate = (value: string | null): string => {
+    if (!value) return '—'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return '—'
+    return date.toLocaleDateString('sv-SE', { year: 'numeric', month: 'short', day: 'numeric' })
+  }
 
   return (
     <div className="space-y-16">
@@ -110,43 +158,112 @@ export function DashboardPage(): JSX.Element {
                 className="w-40 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
                 placeholder="Charizard, Umbreon..."
                 type="text"
+                value={searchTerm}
+                onChange={(event) => handleSearchChange(event.target.value)}
               />
             </label>
-            <button
-              className="border-2 border-slate-900 bg-slate-900 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white shadow-[3px_3px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-700"
-              type="button"
-            >
-              Filter ▼
-            </button>
+            <label className="flex items-center gap-2 rounded-full border-2 border-slate-900 bg-slate-900 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white shadow-[3px_3px_0px_#0f172a]">
+              <span>Era</span>
+              <select
+                className="bg-transparent text-xs font-bold uppercase tracking-wide text-white outline-none"
+                value={eraFilter}
+                onChange={(event) => handleEraChange(event.target.value)}
+              >
+                <option value="all">All</option>
+                {eraOptions.map((era) => (
+                  <option key={era} value={era}>
+                    {era}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </div>
 
-        <DataTable>
-          <thead className="bg-amber-200">
-            <tr className="border-b-2 border-slate-900 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
-              <th className="px-4 py-3">Card</th>
-              <th className="px-4 py-3">Set</th>
-              <th className="px-4 py-3">Price</th>
-              <th className="px-4 py-3">Change %</th>
-              <th className="px-4 py-3 text-right">Link</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y-2 divide-slate-900">
-            {catalogRows.map((row) => (
-              <tr key={row.id} className="bg-white">
-                <td className="px-4 py-4 font-semibold text-slate-900">{row.card}</td>
-                <td className="px-4 py-4 text-slate-700">{row.set}</td>
-                <td className="px-4 py-4 font-semibold text-slate-900">{row.price}</td>
-                <td className={`px-4 py-4 font-semibold ${row.changeTone}`}>{row.change}</td>
-                <td className="px-4 py-4 text-right">
-                  <button className="inline-flex items-center gap-1 border-2 border-slate-900 bg-white px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[2px_2px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white">
-                    View card
-                  </button>
-                </td>
+        <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <span>
+            {displayRange.start}-{displayRange.end} of {filteredCards.length} cards
+          </span>
+          <span>Page {currentPage} of {totalPages}</span>
+        </div>
+
+        {cardsLoading ? (
+          <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500">
+            Loading card catalog…
+          </div>
+        ) : cardsError ? (
+          <div className="rounded-2xl border-2 border-dashed border-rose-300 bg-rose-50 px-6 py-12 text-center text-sm text-rose-600">
+            Unable to load cards right now.
+          </div>
+        ) : (
+          <DataTable>
+            <thead className="bg-amber-200">
+              <tr className="border-b-2 border-slate-900 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
+                <th className="px-4 py-3">Card</th>
+                <th className="px-4 py-3">Set</th>
+                <th className="px-4 py-3">Era</th>
+                <th className="px-4 py-3">Auctions</th>
+                <th className="px-4 py-3">Last seen</th>
+                <th className="px-4 py-3 text-right">Link</th>
               </tr>
-            ))}
-          </tbody>
-        </DataTable>
+            </thead>
+            <tbody className="divide-y-2 divide-slate-900">
+              {pagedCards.length ? (
+                pagedCards.map((card) => {
+                  const setIdentifier = getCardSetIdentifier(card)
+                  const detailHref = setIdentifier ? `/sets/${setIdentifier}/${card.id}` : `/cards/${card.id}`
+                  return (
+                    <tr key={card.id} className="bg-white">
+                      <td className="px-4 py-4 font-semibold text-slate-900">{card.name ?? 'Unknown card'}</td>
+                      <td className="px-4 py-4 text-slate-700">
+                        {[card.set_name, card.set_code].filter(Boolean).join(' · ') || 'Set pending'}
+                      </td>
+                      <td className="px-4 py-4 text-slate-700">{card.era ?? '—'}</td>
+                      <td className="px-4 py-4 text-slate-700">{card.linked_auctions ?? 0}</td>
+                      <td className="px-4 py-4 text-slate-700">{formatDate(card.last_seen)}</td>
+                      <td className="px-4 py-4 text-right">
+                        <Link
+                          to={detailHref}
+                          className="inline-flex items-center gap-1 border-2 border-slate-900 bg-white px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[2px_2px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
+                        >
+                          View card
+                        </Link>
+                      </td>
+                    </tr>
+                  )
+                })
+              ) : (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-sm text-slate-500">
+                    No cards match this search.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </DataTable>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <button
+            className="border-2 border-slate-900 bg-white px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[3px_3px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            type="button"
+            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+          >
+            Previous
+          </button>
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            {displayRange.start}-{displayRange.end} of {filteredCards.length}
+          </div>
+          <button
+            className="border-2 border-slate-900 bg-white px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[3px_3px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            type="button"
+            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+            disabled={currentPage === totalPages}
+          >
+            Next
+          </button>
+        </div>
       </section>
     </div>
   )
