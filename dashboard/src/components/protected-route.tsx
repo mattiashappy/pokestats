@@ -1,8 +1,13 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 
-import { useAuth } from '../providers/auth'
+import { useAuth, type AuthUser } from '../providers/auth'
 
-export function ProtectedRoute({ requireSubscription = false }: { requireSubscription?: boolean }): JSX.Element {
+type ProtectedRouteProps = {
+  requireSubscription?: boolean
+  allowedRoles?: AuthUser['role'][]
+}
+
+export function ProtectedRoute({ requireSubscription = false, allowedRoles }: ProtectedRouteProps): JSX.Element {
   const { user, loading } = useAuth()
   const location = useLocation()
 
@@ -16,6 +21,10 @@ export function ProtectedRoute({ requireSubscription = false }: { requireSubscri
 
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location }} />
+  }
+
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    return <Navigate to="/dashboard" replace />
   }
 
   const hasAccess =

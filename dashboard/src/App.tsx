@@ -7,6 +7,7 @@ import { AdminPage } from "./pages/admin"
 import { AuctionsPage } from "./pages/auctions"
 import { BillingPage } from "./pages/billing"
 import { CardPage } from "./pages/card"
+import { CollectionsPage } from "./pages/collections"
 import { DashboardPage } from "./pages/dashboard"
 import { EnrichPage } from "./pages/enrich"
 import { LoginPage } from "./pages/login"
@@ -27,12 +28,11 @@ function App(): JSX.Element {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
 
-      {/* Protected app routes – require active subscription */}
-      <Route element={<ProtectedRoute requireSubscription />}>
+      {/* Protected app routes – user/member access */}
+      <Route element={<ProtectedRoute allowedRoles={["admin", "member"]} />}>
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/auctions" element={<AuctionsPage />} />
-          <Route path="/auctions/:attribute" element={<AuctionsPage />} />
+          <Route path="/collections" element={<CollectionsPage />} />
           <Route path="/sets" element={<SetsPage />} />
           <Route path="/sets/:setCode" element={<PokemonSetPage />} />
           <Route path="/sets/:setCode/:id" element={<CardPage />} />
@@ -43,6 +43,14 @@ function App(): JSX.Element {
           <Route path="/era/sets/:setCode" element={<PokemonSetPage />} />
           <Route path="/cards/:id" element={<CardPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+        </Route>
+      </Route>
+
+      {/* Admin-only routes */}
+      <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
+        <Route element={<AppLayout />}>
+          <Route path="/auctions" element={<AuctionsPage />} />
+          <Route path="/auctions/:attribute" element={<AuctionsPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/admin/imports" element={<AuctionImportsPage />} />
           <Route path="/admin/enrich" element={<EnrichPage />} />

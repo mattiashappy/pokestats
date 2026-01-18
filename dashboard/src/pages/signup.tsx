@@ -34,7 +34,7 @@ export function SignupPage(): JSX.Element {
 
   const onSubmit = async (data: z.infer<typeof signupSchema>): Promise<void> => {
     await signup(data.name, data.email, data.password)
-    const path = data.email.toLowerCase() === 'ash@pokestats.app' ? '/app' : '/billing'
+    const path = data.email.toLowerCase() === 'ash@pokestats.app' ? '/app' : '/dashboard'
     navigate(path, { replace: true })
   }
 
