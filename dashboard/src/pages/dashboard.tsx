@@ -88,27 +88,6 @@ export function DashboardPage(): JSX.Element {
     })
   }, [cards, tableFilter, tableSearch])
 
-  const filteredCards = useMemo(() => {
-    if (!cards) return []
-    const term = tableSearch.trim().toLowerCase()
-    if (!term) return cards
-
-    return cards.filter((card) => {
-      const matches = (value?: string | null) => value?.toLowerCase().includes(term)
-      if (tableFilter === 'name') return matches(card.name)
-      if (tableFilter === 'set') return matches(card.set_name) || matches(card.set_code)
-      if (tableFilter === 'number') return matches(card.card_number)
-      if (tableFilter === 'era') return matches(card.era)
-      return (
-        matches(card.name) ||
-        matches(card.set_name) ||
-        matches(card.set_code) ||
-        matches(card.card_number) ||
-        matches(card.era)
-      )
-    })
-  }, [cards, tableFilter, tableSearch])
-
   const topEra = useMemo(() => {
     if (!expansions?.length) return null
 
