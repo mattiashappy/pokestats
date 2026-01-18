@@ -6,7 +6,7 @@ import { Link, useParams } from 'react-router-dom'
 
 import { Button } from '../components/ui/button'
 import { Card as UiCard, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
+import DataTable from '../components/ui/data-table'
 import { fetchCardAuctions, fetchCardDetails } from '../lib/api'
 import { getCardSetIdentifier } from '../lib/sets'
 
@@ -138,62 +138,60 @@ export function CardPage(): JSX.Element {
           ) : !card ? (
             <p className="text-sm text-slate-400">Card not found.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Picture</TableHead>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Era</TableHead>
-                    <TableHead className="text-right">Final price</TableHead>
-                    <TableHead className="text-center">Bids</TableHead>
-                    <TableHead>Ended at</TableHead>
-                    <TableHead>Link</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {auctions?.map((auction) => {
-                    return (
-                      <TableRow key={auction.itemId}>
-                        <TableCell className="w-24">
-                          <div className="overflow-hidden rounded-md border border-slate-200 dark:border-slate-800">
-                            {auction.thumbnailUrl ? (
-                              <img src={auction.thumbnailUrl} alt={auction.title} className="h-16 w-full object-cover" />
-                            ) : (
-                              <div className="flex h-16 w-full items-center justify-center bg-slate-100 text-xs text-slate-500 dark:bg-slate-900/50 dark:text-slate-400">
-                                No image
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-semibold text-slate-900 dark:text-slate-100">
-                          {auction.title}
-                        </TableCell>
-                        <TableCell>{auction.pokemonEra || card?.era || 'Unknown era'}</TableCell>
-                        <TableCell className="text-right text-slate-900 dark:text-slate-100">
-                          {new Intl.NumberFormat('sv-SE', { style: 'currency', currency: auction.currency }).format(auction.price)}
-                        </TableCell>
-                        <TableCell className="text-center">{auction.bidCount}</TableCell>
-                        <TableCell>
-                          <div className="text-slate-900 dark:text-slate-100">{new Date(auction.endDate).toLocaleString()}</div>
-                          <div className="text-xs text-slate-600 dark:text-slate-400">{formatDistanceToNow(parseISO(auction.endDate), { addSuffix: true })}</div>
-                        </TableCell>
-                        <TableCell>
-                          <a
-                            href={auction.itemUrl}
-                            className="inline-flex items-center gap-1 text-sky-300 hover:text-sky-200"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            View <ExternalLink className="h-3 w-3" />
-                          </a>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+            <DataTable>
+              <thead className="bg-amber-200">
+                <tr className="border-b-2 border-slate-900 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
+                  <th className="px-3 py-2">Picture</th>
+                  <th className="px-3 py-2">Title</th>
+                  <th className="px-3 py-2">Era</th>
+                  <th className="px-3 py-2 text-right">Final price</th>
+                  <th className="px-3 py-2 text-center">Bids</th>
+                  <th className="px-3 py-2">Ended at</th>
+                  <th className="px-3 py-2">Link</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y-2 divide-slate-900">
+                {auctions?.map((auction) => {
+                  return (
+                    <tr key={auction.itemId} className="bg-white">
+                      <td className="w-28 px-3 py-3">
+                        <div className="overflow-hidden border-2 border-slate-900 bg-white shadow-[2px_2px_0px_#0f172a]">
+                          {auction.thumbnailUrl ? (
+                            <img src={auction.thumbnailUrl} alt={auction.title} className="h-16 w-full object-cover" />
+                          ) : (
+                            <div className="flex h-16 w-full items-center justify-center bg-amber-50 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                              No image
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 font-semibold text-slate-900">{auction.title}</td>
+                      <td className="px-3 py-3">{auction.pokemonEra || card?.era || 'Unknown era'}</td>
+                      <td className="px-3 py-3 text-right font-semibold text-slate-900">
+                        {new Intl.NumberFormat('sv-SE', { style: 'currency', currency: auction.currency }).format(auction.price)}
+                      </td>
+                      <td className="px-3 py-3 text-center font-semibold text-slate-900">{auction.bidCount}</td>
+                      <td className="px-3 py-3">
+                        <div className="text-slate-900">{new Date(auction.endDate).toLocaleString()}</div>
+                        <div className="text-xs text-slate-600">
+                          {formatDistanceToNow(parseISO(auction.endDate), { addSuffix: true })}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <a
+                          href={auction.itemUrl}
+                          className="inline-flex items-center gap-1 border-2 border-slate-900 bg-white px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[2px_2px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          View <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </DataTable>
           )}
         </CardContent>
       </UiCard>

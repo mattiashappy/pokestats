@@ -6,17 +6,21 @@ import { ArrowUpRight, Layers, Search, Sparkles } from 'lucide-react'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import DataTable from '../components/ui/data-table'
 import { Input } from '../components/ui/input'
-import { fetchCards, fetchEras, fetchExpansions, searchCards } from '../lib/api'
-import { formatEraYears, normalizeEraCode } from '../lib/era'
+import { Select } from '../components/ui/select'
+import { fetchCards, fetchExpansions, searchCards } from '../lib/api'
+import { normalizeEraCode } from '../lib/era'
 import { getExpansionIdentifier } from '../lib/sets'
-import type { CardListItem, CardSearchResult, EraSummary, ExpansionSummary } from '../types'
+import type { CardListItem, CardSearchResult, ExpansionSummary } from '../types'
 
 const SEARCH_DEBOUNCE_MS = 300
 
 export function DashboardPage(): JSX.Element {
   const [searchTerm, setSearchTerm] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [tableSearch, setTableSearch] = useState('')
+  const [tableFilter, setTableFilter] = useState('all')
 
   useEffect(() => {
     const handler = window.setTimeout(() => {
@@ -54,24 +58,6 @@ export function DashboardPage(): JSX.Element {
     queryFn: fetchCards
   })
 
-  const {
-    data: eras,
-    isLoading: erasLoading,
-    error: erasError
-  } = useQuery<EraSummary[]>({
-    queryKey: ['eras'],
-    queryFn: fetchEras
-  })
-
-  const orderedEras = useMemo(() => {
-    if (!eras) return []
-    return [...eras].sort((a, b) => {
-      const orderDiff = (a.sort_order ?? 999) - (b.sort_order ?? 999)
-      if (orderDiff !== 0) return orderDiff
-      return a.name.localeCompare(b.name)
-    })
-  }, [eras])
-
   const topSet = useMemo(() => {
     if (!expansions?.length) return null
     return [...expansions].sort((a, b) => (b.linked_auctions ?? 0) - (a.linked_auctions ?? 0))[0] ?? null
@@ -104,6 +90,27 @@ export function DashboardPage(): JSX.Element {
       .slice(0, 5)
   }, [cards])
 
+  const filteredCards = useMemo(() => {
+    if (!cards) return []
+    const term = tableSearch.trim().toLowerCase()
+    if (!term) return cards
+
+    return cards.filter((card) => {
+      const matches = (value?: string | null) => value?.toLowerCase().includes(term)
+      if (tableFilter === 'name') return matches(card.name)
+      if (tableFilter === 'set') return matches(card.set_name) || matches(card.set_code)
+      if (tableFilter === 'number') return matches(card.card_number)
+      if (tableFilter === 'era') return matches(card.era)
+      return (
+        matches(card.name) ||
+        matches(card.set_name) ||
+        matches(card.set_code) ||
+        matches(card.card_number) ||
+        matches(card.era)
+      )
+    })
+  }, [cards, tableFilter, tableSearch])
+
   const topEra = useMemo(() => {
     if (!expansions?.length) return null
 
@@ -120,30 +127,6 @@ export function DashboardPage(): JSX.Element {
     })
 
     return [...eraBuckets.values()].sort((a, b) => b.linkedAuctions - a.linkedAuctions)[0] ?? null
-  }, [expansions])
-
-  const eraPreviews = useMemo(() => {
-    if (!expansions?.length) return new Map<string, { imageUrl: string | null; releaseDate: number }>()
-
-    const previews = new Map<string, { imageUrl: string | null; releaseDate: number }>()
-
-    expansions.forEach((expansion) => {
-      const name = expansion.era_name ?? expansion.era ?? 'Unknown era'
-      const code = normalizeEraCode(expansion.era_code ?? expansion.era_name ?? expansion.era ?? name)
-      const key = code ?? name
-      if (!key) return
-
-      const imageUrl =
-        expansion.image_cdn_url800 ?? expansion.image_cdn_url400 ?? expansion.image_cdn_url200 ?? expansion.image_url ?? null
-      const releaseDate = expansion.release_date ? new Date(expansion.release_date).getTime() : 0
-      const current = previews.get(key)
-
-      if (!current || releaseDate > current.releaseDate) {
-        previews.set(key, { imageUrl, releaseDate })
-      }
-    })
-
-    return previews
   }, [expansions])
 
   return (
@@ -335,6 +318,103 @@ export function DashboardPage(): JSX.Element {
 
       <section className="space-y-4">
         <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Card explorer</p>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">All tracked cards</h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Filter the full catalog by card attributes and jump straight to a card page.
+          </p>
+        </div>
+
+        <Card>
+          <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <CardTitle className="text-lg">Card catalog</CardTitle>
+              <CardDescription>Search and filter across every card in the database.</CardDescription>
+            </div>
+            <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
+              <div className="relative w-full md:w-72">
+                <Input
+                  value={tableSearch}
+                  onChange={(event) => setTableSearch(event.target.value)}
+                  placeholder="Search cards"
+                  className="pr-10"
+                />
+                <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
+              <Select value={tableFilter} onChange={(event) => setTableFilter(event.target.value)} className="md:w-52">
+                <option value="all">All columns</option>
+                <option value="name">Card name</option>
+                <option value="set">Set</option>
+                <option value="number">Card number</option>
+                <option value="era">Era</option>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {cardsLoading ? (
+              <p className="text-sm text-slate-500">Loading cards…</p>
+            ) : cardsError ? (
+              <p className="text-sm text-rose-400">Unable to load cards.</p>
+            ) : filteredCards.length === 0 ? (
+              <p className="text-sm text-slate-500">No cards match that filter.</p>
+            ) : (
+              <DataTable>
+                <thead className="bg-amber-200">
+                  <tr className="border-b-2 border-slate-900 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
+                    <th className="px-3 py-2">Card</th>
+                    <th className="px-3 py-2">Set</th>
+                    <th className="px-3 py-2">Era</th>
+                    <th className="px-3 py-2 text-center">Linked auctions</th>
+                    <th className="px-3 py-2">Last seen</th>
+                    <th className="px-3 py-2 text-right">Link</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y-2 divide-slate-900">
+                  {filteredCards.map((card) => (
+                    <tr key={card.id} className="bg-white">
+                      <td className="px-3 py-3">
+                        <p className="font-semibold text-slate-900">{card.name ?? 'Unknown card'}</p>
+                        <p className="text-xs text-slate-500">
+                          {card.card_number ? `#${card.card_number}` : 'Unnumbered'}
+                        </p>
+                      </td>
+                      <td className="px-3 py-3">
+                        <p className="font-semibold text-slate-900">{card.set_name ?? 'Unknown set'}</p>
+                        <p className="text-xs text-slate-500">{card.set_code ?? 'Set code pending'}</p>
+                      </td>
+                      <td className="px-3 py-3">{card.era ?? 'Unknown era'}</td>
+                      <td className="px-3 py-3 text-center font-semibold text-slate-900">
+                        {card.linked_auctions.toLocaleString('sv-SE')}
+                      </td>
+                      <td className="px-3 py-3">
+                        {card.last_seen ? (
+                          <div className="space-y-0.5 text-sm">
+                            <p className="text-slate-900">{format(new Date(card.last_seen), 'PP')}</p>
+                            <p className="text-xs text-slate-600">Most recent linked auction</p>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-slate-500">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <Link
+                          to={`/cards/${card.id}`}
+                          className="inline-flex items-center gap-1 border-2 border-slate-900 bg-white px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[2px_2px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
+                        >
+                          View card
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </DataTable>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="space-y-4">
+        <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Catalog refresh</p>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Newest sets and cards</h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
@@ -411,63 +491,6 @@ export function DashboardPage(): JSX.Element {
         </div>
       </section>
 
-      <section className="space-y-6">
-        <div className="flex items-center gap-3">
-          <Layers className="h-5 w-5 text-amber-500" />
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Browse by era</p>
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Pokémon eras</h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Jump into sets and cards using the era tiles below.</p>
-          </div>
-        </div>
-
-        {erasLoading ? (
-          <p className="text-sm text-slate-500">Loading eras…</p>
-        ) : erasError ? (
-          <p className="text-sm text-rose-400">Failed to load eras.</p>
-        ) : orderedEras.length === 0 ? (
-          <p className="text-sm text-slate-500">No eras found yet.</p>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {orderedEras.map((era) => {
-              const eraCode = normalizeEraCode(era.code) ?? era.code
-              const eraYears = formatEraYears(era.start_year, era.end_year)
-              const preview = eraPreviews.get(eraCode ?? era.name)
-              const previewImage = preview?.imageUrl ?? null
-              return (
-                <Link key={era.code} to={`/era/${eraCode}`} className="group block h-full">
-                  <Card className="flex h-full flex-col overflow-hidden border-slate-200/80 shadow-none transition hover:-translate-y-1 hover:shadow-md dark:border-slate-800/80">
-                    <div className="relative bg-gradient-to-br from-slate-100 to-white pb-[56.25%] dark:from-slate-900 dark:to-slate-950">
-                      {previewImage ? (
-                        <img src={previewImage} alt={era.name} className="absolute inset-0 h-full w-full object-cover" />
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center text-3xl font-black tracking-tight text-slate-300 dark:text-slate-700">
-                          {eraCode}
-                        </div>
-                      )}
-
-                      <Badge className="absolute left-3 top-3 bg-slate-900/80 text-xs uppercase text-white backdrop-blur-sm transition group-hover:bg-sky-600">
-                        {eraCode}
-                      </Badge>
-                    </div>
-
-                    <CardContent className="space-y-3 p-5">
-                      <div className="flex items-center gap-2">
-                        <Layers className="h-4 w-4 text-slate-400" />
-                        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">{era.name}</h3>
-                      </div>
-                      <p className="text-sm text-slate-600 dark:text-slate-400">{eraYears}</p>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        {era.sets_total} {era.sets_total === 1 ? 'set' : 'sets'}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </Link>
-              )
-            })}
-          </div>
-        )}
-      </section>
     </div>
   )
 }
