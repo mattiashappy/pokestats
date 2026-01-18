@@ -83,7 +83,7 @@ export function CardPage(): JSX.Element {
 
       {card && !isLoading && !error ? (
         <div className="grid gap-6 lg:grid-cols-[320px,1fr]">
-          <div className="border-4 border-slate-900">
+          <div>
             {card.image_url ? (
               <img src={card.image_url} alt={card.name} className="h-auto w-full" />
             ) : (
