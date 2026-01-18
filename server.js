@@ -282,6 +282,7 @@ function mapPriceTrackerCard(card, { expansion = null, setCodeOverride = null } 
     set_code: setCode,
     set_total: setTotal,
     card_number: card?.cardNumber ?? null,
+    price_market: card?.prices?.market ?? null,
     image_url: imageUrl,
     product_details: buildPriceTrackerProductDetails(card),
     expansion_id: expansion?.id ?? null,
@@ -881,6 +882,7 @@ async function fetchCardFromDatabase(cardId) {
       e.set_code AS set_code,
       e.set_total AS set_total,
       c.collector_number_raw AS card_number,
+      NULL::numeric AS price_market,
       c.image_url,
       NULL::text AS product_details,
       c.created_at,
@@ -1217,6 +1219,7 @@ async function fetchCardsListFromDatabase({ setCode = null, expansionId = null }
       e.set_code AS set_code,
       e.set_total AS set_total,
       c.collector_number_raw AS card_number,
+      NULL::numeric AS price_market,
       c.image_url,
       NULL::text AS product_details,
       c.created_at,
@@ -1294,6 +1297,7 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
         NULLIF(regexp_replace(split_part(c.total_set_number, '/', 2), '[^0-9]', '', 'g'), '')::int
       ) AS set_total,
       c.card_number AS card_number,
+      c.price_market,
       COALESCE(c.image_cdn_url800, c.image_cdn_url400, c.image_cdn_url200, c.image_cdn_url) AS image_url,
       c.tcgplayer_product_id,
       NULL::text AS product_details,
@@ -1305,6 +1309,7 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
     LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
     ${whereClause}
     ORDER BY
+      c.price_market DESC NULLS LAST,
       NULLIF(regexp_replace(c.card_number, '[^0-9].*$', ''), '')::int NULLS LAST,
       c.card_number NULLS LAST,
       c.name NULLS LAST
