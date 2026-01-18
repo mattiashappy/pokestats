@@ -14,6 +14,12 @@ export function SetCard({ expansion }: SetCardProps): JSX.Element {
   const setLink = `/sets/${setIdentifier}`
   const imageUrl =
     expansion.image_cdn_url800 ?? expansion.image_cdn_url400 ?? expansion.image_cdn_url200 ?? expansion.image_url
+  const formatMarketTotal = (value: number | null | undefined): string => {
+    if (value === null || value === undefined) return 'Pending'
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) return 'Pending'
+    return `$${parsed.toFixed(2)}`
+  }
 
   return (
     <Link to={setLink} className="group block h-full">
@@ -25,15 +31,11 @@ export function SetCard({ expansion }: SetCardProps): JSX.Element {
           </div>
           <div className="flex items-center justify-between gap-3 border-2 border-slate-900 bg-white px-3 py-2 font-semibold shadow-[2px_2px_0px_#0f172a]">
             <span className="text-xs font-bold uppercase tracking-wide text-slate-700">Total set value</span>
-            <span className="text-slate-600">Pending</span>
-          </div>
-          <div className="flex items-center justify-between gap-3 border-2 border-slate-900 bg-white px-3 py-2 font-semibold shadow-[2px_2px_0px_#0f172a]">
-            <span className="text-xs font-bold uppercase tracking-wide text-slate-700">Avg</span>
-            <span className="text-slate-600">Pending</span>
+            <span className="text-slate-600">{formatMarketTotal(expansion.set_market_total)}</span>
           </div>
           <div className="flex items-center justify-between gap-3 border-2 border-slate-900 bg-white px-3 py-2 font-semibold shadow-[2px_2px_0px_#0f172a]">
             <span className="text-xs font-bold uppercase tracking-wide text-slate-700">Change</span>
-            <span className="text-slate-600">Pending</span>
+            <span className="text-slate-600">0%</span>
           </div>
         </div>
       </ImageCard>

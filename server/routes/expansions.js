@@ -32,6 +32,11 @@ function createExpansionService({
             SELECT pt_set_id, COUNT(*)::int AS cards_total
             FROM public.pt_cards
             GROUP BY pt_set_id
+          ),
+          pt_market_totals AS (
+            SELECT pt_set_id, SUM(price_market)::numeric AS market_total
+            FROM public.pt_cards
+            GROUP BY pt_set_id
           )
           SELECT
             s.pt_set_id AS id,
@@ -49,9 +54,11 @@ function createExpansionService({
             s.image_cdn_url400 AS image_cdn_url400,
             s.image_cdn_url800 AS image_cdn_url800,
             COALESCE(pt_counts.cards_total, 0)::int AS cards_total,
+            pt_market_totals.market_total AS set_market_total,
             0::int AS linked_auctions
           FROM public.pt_sets s
           LEFT JOIN pt_counts ON pt_counts.pt_set_id = s.pt_set_id
+          LEFT JOIN pt_market_totals ON pt_market_totals.pt_set_id = s.pt_set_id
           ORDER BY s.release_date NULLS LAST, s.name NULLS LAST, s.pt_set_id NULLS LAST
         `)
 
@@ -74,6 +81,11 @@ function createExpansionService({
           SELECT pt_set_id, COUNT(*)::int AS cards_total
           FROM public.pt_cards
           GROUP BY pt_set_id
+        ),
+        pt_market_totals AS (
+          SELECT pt_set_id, SUM(price_market)::numeric AS market_total
+          FROM public.pt_cards
+          GROUP BY pt_set_id
         )
         SELECT
           e.id,
@@ -91,6 +103,7 @@ function createExpansionService({
           s.image_cdn_url800 AS image_cdn_url800,
           s.pt_set_id AS pt_set_id,
           COALESCE(pt_counts.cards_total, COUNT(DISTINCT c.id)::int) AS cards_total,
+          pt_market_totals.market_total AS set_market_total,
           ${linksReady ? 'COUNT(DISTINCT l.auction_id)::int' : '0::int'} AS linked_auctions
         FROM public.expansions e
         LEFT JOIN LATERAL (
@@ -109,6 +122,7 @@ function createExpansionService({
           LIMIT 1
         ) s ON true
         LEFT JOIN pt_counts ON pt_counts.pt_set_id = s.pt_set_id
+        LEFT JOIN pt_market_totals ON pt_market_totals.pt_set_id = s.pt_set_id
         LEFT JOIN public.cards c ON c.expansion_id = e.id
         ${linksReady ? 'LEFT JOIN public.tradera_auction_card_links l ON l.card_id = c.id' : ''}
         GROUP BY
@@ -119,7 +133,8 @@ function createExpansionService({
           s.image_cdn_url,
           s.image_cdn_url400,
           s.image_url,
-          pt_counts.cards_total
+          pt_counts.cards_total,
+          pt_market_totals.market_total
         ORDER BY e.set_name NULLS LAST, e.set_code NULLS LAST
       `
         : `
@@ -139,6 +154,7 @@ function createExpansionService({
           NULL::text AS image_cdn_url800,
           NULL::text AS pt_set_id,
           COUNT(DISTINCT c.id)::int AS cards_total,
+          NULL::numeric AS set_market_total,
           ${linksReady ? 'COUNT(DISTINCT l.auction_id)::int' : '0::int'} AS linked_auctions
         FROM public.expansions e
         LEFT JOIN public.cards c ON c.expansion_id = e.id
