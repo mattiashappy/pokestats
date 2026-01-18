@@ -1,238 +1,164 @@
-import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import DataTable from '../components/ui/data-table'
-import { fetchCards, fetchExpansions } from '../lib/api'
-import { normalizeEraCode } from '../lib/era'
-import { getExpansionIdentifier } from '../lib/sets'
-import type { CardListItem, ExpansionSummary } from '../types'
 
 export function DashboardPage(): JSX.Element {
-  const {
-    data: expansions,
-    isLoading: expansionsLoading,
-    error: expansionsError
-  } = useQuery<ExpansionSummary[]>({
-    queryKey: ['expansions'],
-    queryFn: fetchExpansions
-  })
-
-  const {
-    data: cards,
-    isLoading: cardsLoading,
-    error: cardsError
-  } = useQuery<CardListItem[]>({
-    queryKey: ['cards'],
-    queryFn: fetchCards
-  })
-
-  const topSet = useMemo(() => {
-    if (!expansions?.length) return null
-    return [...expansions].sort((a, b) => (b.linked_auctions ?? 0) - (a.linked_auctions ?? 0))[0] ?? null
-  }, [expansions])
-
-  const topCard = useMemo(() => {
-    if (!cards?.length) return null
-    return [...cards].sort((a, b) => (b.linked_auctions ?? 0) - (a.linked_auctions ?? 0))[0] ?? null
-  }, [cards])
-
-  const latestCards = useMemo(() => {
-    if (!cards?.length) return []
-    return [...cards]
-      .sort((a, b) => {
-        const aTime = a.created_at ? Date.parse(a.created_at) : 0
-        const bTime = b.created_at ? Date.parse(b.created_at) : 0
-        return bTime - aTime
-      })
-      .slice(0, 5)
-  }, [cards])
-
-  const parseMarketPrice = (details?: string | null): string | null => {
-    if (!details) return null
-    const match = details.match(/Market price:\\s*\\$([\\d.]+)/i)
-    if (!match) return null
-    const value = Number(match[1])
-    if (!Number.isFinite(value)) return null
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
+  const featuredCard = {
+    name: 'Live Pokestats card',
+    meta: 'Set 68af47c7190c4823de2527cd · Card 68af87b6c4f780b5153e99c5',
+    url: 'https://pokestats-0fa86d4b8a85.herokuapp.com/sets/68af47c7190c4823de2527cd/68af87b6c4f780b5153e99c5'
   }
-
-  const topEra = useMemo(() => {
-    if (!expansions?.length) return null
-
-    const eraBuckets = new Map<string, { code: string | null; name: string; linkedAuctions: number }>()
-
-    expansions.forEach((expansion) => {
-      const name = expansion.era_name ?? expansion.era ?? 'Unknown era'
-      const code = normalizeEraCode(expansion.era_code ?? expansion.era_name ?? expansion.era ?? name)
-      const key = code ?? name
-      const current = eraBuckets.get(key) ?? { code, name, linkedAuctions: 0 }
-
-      current.linkedAuctions += expansion.linked_auctions ?? 0
-      eraBuckets.set(key, current)
-    })
-
-    return [...eraBuckets.values()].sort((a, b) => b.linkedAuctions - a.linkedAuctions)[0] ?? null
-  }, [expansions])
+  const catalogRows = [
+    {
+      id: '1',
+      card: 'Charizard Holo #4',
+      set: 'Base Set',
+      price: '12 450 kr',
+      change: '+18.2%',
+      changeTone: 'text-emerald-600'
+    },
+    {
+      id: '2',
+      card: 'Umbreon VMAX #215',
+      set: 'Evolving Skies',
+      price: '3 200 kr',
+      change: '+7.5%',
+      changeTone: 'text-emerald-600'
+    },
+    {
+      id: '3',
+      card: 'Blastoise Holo #2',
+      set: 'Base Set',
+      price: '4 980 kr',
+      change: '-2.1%',
+      changeTone: 'text-rose-600'
+    },
+    {
+      id: '4',
+      card: 'Gengar VMAX #271',
+      set: 'Fusion Strike',
+      price: '2 150 kr',
+      change: '+4.9%',
+      changeTone: 'text-emerald-600'
+    },
+    {
+      id: '5',
+      card: 'Lugia V #186',
+      set: 'Silver Tempest',
+      price: '1 890 kr',
+      change: '-1.4%',
+      changeTone: 'text-rose-600'
+    }
+  ]
 
   return (
-    <div className="space-y-10">
-      <section className="space-y-4">
-        <Card>
-          <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="space-y-1">
-              <CardTitle className="text-lg">Latest imported cards</CardTitle>
-              <CardDescription>Showing the five most recent cards.</CardDescription>
+    <div className="space-y-12">
+      <section className="grid gap-10 lg:grid-cols-[1.05fr_1fr] lg:items-center">
+        <div className="relative">
+          <div className="relative overflow-hidden rounded-2xl border-2 border-slate-900 bg-gradient-to-br from-amber-200 via-orange-200 to-rose-200 p-8 shadow-[6px_6px_0px_#0f172a]">
+            <div className="absolute left-0 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 border-2 border-slate-900 bg-emerald-200 px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[3px_3px_0px_#0f172a]">
+              ROI <span className="text-lg">320%</span>
             </div>
-          </CardHeader>
-          <CardContent>
-            {cardsLoading ? (
-              <p className="text-sm text-slate-500">Loading cards…</p>
-            ) : cardsError ? (
-              <p className="text-sm text-rose-400">Unable to load cards.</p>
-            ) : latestCards.length === 0 ? (
-              <p className="text-sm text-slate-500">No cards available yet.</p>
-            ) : (
-              <DataTable>
-                <thead className="bg-amber-200">
-                  <tr className="border-b-2 border-slate-900 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
-                    <th className="px-3 py-2">Card</th>
-                    <th className="px-3 py-2">Set</th>
-                    <th className="px-3 py-2">Price</th>
-                    <th className="px-3 py-2 text-right">Link</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y-2 divide-slate-900">
-                  {latestCards.map((card) => (
-                    <tr key={card.id} className="bg-white">
-                      <td className="px-3 py-3">
-                        <p className="font-semibold text-slate-900">{card.name ?? 'Unknown card'}</p>
-                        <p className="text-xs text-slate-500">
-                          {card.card_number ? `#${card.card_number}` : 'Unnumbered'}
-                        </p>
-                      </td>
-                      <td className="px-3 py-3">
-                        <p className="font-semibold text-slate-900">{card.set_name ?? 'Unknown set'}</p>
-                      </td>
-                      <td className="px-3 py-3">
-                        <span className="text-sm text-slate-900">
-                          {parseMarketPrice(card.product_details) ?? '—'}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3 text-right">
-                        <Link
-                          to={`/cards/${card.id}`}
-                          className="inline-flex items-center gap-1 border-2 border-slate-900 bg-white px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[2px_2px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
-                        >
-                          View card
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </DataTable>
-            )}
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="space-y-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Popularity snapshots</p>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Most linked eras, sets, and cards</h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Ranked by how many linked auctions exist in the database.
-          </p>
+            <div className="flex min-h-[360px] flex-col justify-between rounded-xl border-2 border-slate-900 bg-white/80 p-6 backdrop-blur">
+              <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-widest text-slate-600">
+                <span>Pokémon TCG</span>
+                <span>Sweden</span>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-slate-500">Featured card</p>
+                <h1 className="text-3xl font-black uppercase text-slate-900">{featuredCard.name}</h1>
+                <p className="text-sm font-semibold text-slate-700">{featuredCard.meta}</p>
+                <a
+                  className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-900 underline decoration-2 underline-offset-4 transition hover:text-slate-700"
+                  href={featuredCard.url}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  View live card
+                </a>
+              </div>
+              <div className="flex items-center justify-between border-t-2 border-slate-900 pt-4 text-sm font-semibold text-slate-700">
+                <span>Avg. sale price</span>
+                <span className="text-lg font-black text-slate-900">12 450 kr</span>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <Card>
-          <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="space-y-1">
-              <CardTitle className="text-lg">Popularity leaderboard</CardTitle>
-              <CardDescription>Live counts of the most active catalog entries.</CardDescription>
+        <div className="space-y-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Pokestats Market Lab</p>
+          <h2 className="text-3xl font-black text-slate-900 md:text-4xl">
+            Pokémon Card Prices in Sweden, Real Sales Data from Tradera
+          </h2>
+          <p className="text-base text-slate-600">
+            Every price is calculated from completed Tradera auctions and updated continuously. Track actual market
+            behavior, measure ROI, and discover the next opportunity faster than the competition.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              to="/sets"
+              className="border-2 border-slate-900 bg-amber-200 px-5 py-3 text-sm font-bold uppercase tracking-wide shadow-[4px_4px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
+            >
+              Pokémon Sets
+            </Link>
+            <div className="rounded-full border-2 border-slate-900 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
+              Live auction coverage
             </div>
-          </CardHeader>
-          <CardContent>
-            {expansionsLoading || cardsLoading ? (
-              <p className="text-sm text-slate-500">Loading popularity data…</p>
-            ) : expansionsError || cardsError ? (
-              <p className="text-sm text-rose-400">Unable to load popularity data.</p>
-            ) : (
-              <DataTable>
-                <thead className="bg-amber-200">
-                  <tr className="border-b-2 border-slate-900 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
-                    <th className="px-3 py-2">Type</th>
-                    <th className="px-3 py-2">Name</th>
-                    <th className="px-3 py-2 text-center">Linked auctions</th>
-                    <th className="px-3 py-2 text-right">Link</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y-2 divide-slate-900">
-                  <tr className="bg-white">
-                    <td className="px-3 py-3 font-semibold text-slate-900">Era</td>
-                    <td className="px-3 py-3">{topEra?.name ?? '—'}</td>
-                    <td className="px-3 py-3 text-center font-semibold text-slate-900">
-                      {topEra?.linkedAuctions?.toLocaleString('sv-SE') ?? '—'}
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      {topEra?.code ? (
-                        <Link
-                          to={`/era/${topEra.code}`}
-                          className="inline-flex items-center gap-1 border-2 border-slate-900 bg-white px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[2px_2px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
-                        >
-                          Explore era
-                        </Link>
-                      ) : (
-                        <span className="text-xs text-slate-500">—</span>
-                      )}
-                    </td>
-                  </tr>
-                  <tr className="bg-white">
-                    <td className="px-3 py-3 font-semibold text-slate-900">Set</td>
-                    <td className="px-3 py-3">{topSet ? topSet.name ?? getExpansionIdentifier(topSet) : '—'}</td>
-                    <td className="px-3 py-3 text-center font-semibold text-slate-900">
-                      {(topSet?.linked_auctions ?? 0).toLocaleString('sv-SE')}
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      {topSet ? (
-                        <Link
-                          to={`/sets/${getExpansionIdentifier(topSet)}`}
-                          className="inline-flex items-center gap-1 border-2 border-slate-900 bg-white px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[2px_2px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
-                        >
-                          View set
-                        </Link>
-                      ) : (
-                        <span className="text-xs text-slate-500">—</span>
-                      )}
-                    </td>
-                  </tr>
-                  <tr className="bg-white">
-                    <td className="px-3 py-3 font-semibold text-slate-900">Card</td>
-                    <td className="px-3 py-3">{topCard?.name ?? '—'}</td>
-                    <td className="px-3 py-3 text-center font-semibold text-slate-900">
-                      {topCard?.linked_auctions?.toLocaleString('sv-SE') ?? '—'}
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      {topCard ? (
-                        <Link
-                          to={`/cards/${topCard.id}`}
-                          className="inline-flex items-center gap-1 border-2 border-slate-900 bg-white px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[2px_2px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
-                        >
-                          View card
-                        </Link>
-                      ) : (
-                        <span className="text-xs text-slate-500">—</span>
-                      )}
-                    </td>
-                  </tr>
-                </tbody>
-              </DataTable>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </section>
 
+      <section className="space-y-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-2xl font-black text-slate-900">Card catalog</h3>
+            <p className="text-sm text-slate-600">Search and filter across every card in the database.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 rounded-full border-2 border-slate-900 bg-white px-3 py-2 text-sm shadow-[3px_3px_0px_#0f172a]">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Search</span>
+              <input
+                className="w-40 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                placeholder="Charizard, Umbreon..."
+                type="text"
+              />
+            </label>
+            <button
+              className="border-2 border-slate-900 bg-slate-900 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white shadow-[3px_3px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-700"
+              type="button"
+            >
+              Filter ▼
+            </button>
+          </div>
+        </div>
+
+        <DataTable>
+          <thead className="bg-amber-200">
+            <tr className="border-b-2 border-slate-900 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
+              <th className="px-4 py-3">Card</th>
+              <th className="px-4 py-3">Set</th>
+              <th className="px-4 py-3">Price</th>
+              <th className="px-4 py-3">Change %</th>
+              <th className="px-4 py-3 text-right">Link</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y-2 divide-slate-900">
+            {catalogRows.map((row) => (
+              <tr key={row.id} className="bg-white">
+                <td className="px-4 py-4 font-semibold text-slate-900">{row.card}</td>
+                <td className="px-4 py-4 text-slate-700">{row.set}</td>
+                <td className="px-4 py-4 font-semibold text-slate-900">{row.price}</td>
+                <td className={`px-4 py-4 font-semibold ${row.changeTone}`}>{row.change}</td>
+                <td className="px-4 py-4 text-right">
+                  <button className="inline-flex items-center gap-1 border-2 border-slate-900 bg-white px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[2px_2px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white">
+                    View card
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </DataTable>
+      </section>
     </div>
   )
 }
