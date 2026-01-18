@@ -4,33 +4,36 @@ import { TopNav } from './top-nav'
 
 export function PublicLayout(): JSX.Element {
   const navItems = [
-    { label: 'Home', to: '/' },
+    { label: 'Dashboard', to: '/' },
     { label: 'Auctions', to: '/auctions' },
-    { label: 'Sets', to: '/sets' }
+    { label: 'Sets', to: '/sets' },
+    { label: 'Enrichment', to: '/admin/enrich' }
   ]
 
   return (
     <div className="min-h-screen bg-amber-50 text-slate-900">
       <TopNav
         items={navItems}
+        eyebrow="PS"
+        title="Pokestats Market Lab"
         actions={
           <>
             <Link
-              to="/login"
+              to="/admin"
               className="border-2 border-slate-900 bg-white px-3 py-2 text-xs font-bold uppercase tracking-wide shadow-[3px_3px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
             >
-              Log in
+              Admin
             </Link>
             <Link
-              to="/signup"
+              to="/login"
               className="border-2 border-slate-900 bg-sky-200 px-3 py-2 text-xs font-bold uppercase tracking-wide shadow-[3px_3px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
             >
-              Get started
+              Logout
             </Link>
           </>
         }
       />
-      <main className="mx-auto w-full max-w-6xl px-4 py-8">
+      <main className="mx-auto w-full max-w-6xl px-4 pb-10 pt-12">
         <Outlet />
       </main>
     </div>
