@@ -17,6 +17,21 @@ export function PokemonSetPage(): JSX.Element {
   const { setCode = '' } = useParams()
   const [searchTerm, setSearchTerm] = useState('')
 
+  const formatCardNumber = (card: CardListItem): string | null => {
+    if (!card.card_number) return null
+    if (card.set_total && !card.card_number.includes('/')) {
+      return `${card.card_number}/${card.set_total}`
+    }
+    return card.card_number
+  }
+
+  const formatMarketPrice = (value: number | null): string => {
+    if (value === null || value === undefined) return '—'
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) return '—'
+    return `$${parsed.toFixed(2)}`
+  }
+
   const {
     data: expansions,
     isLoading: isLoadingExpansions,
@@ -134,51 +149,42 @@ export function PokemonSetPage(): JSX.Element {
             <DataTable>
               <thead className="bg-amber-200">
                 <tr className="border-b-2 border-slate-900 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
-                  <th className="px-3 py-2">Number</th>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2 text-center">Linked auctions</th>
-                  <th className="px-3 py-2">Last seen</th>
-                  <th className="px-3 py-2 text-right">Link</th>
+                  <th className="px-4 py-3">Card</th>
+                  <th className="px-4 py-3">Set</th>
+                  <th className="px-4 py-3 text-right">Market price</th>
+                  <th className="px-4 py-3 text-right">Link</th>
                 </tr>
               </thead>
               <tbody className="divide-y-2 divide-slate-900">
-                {filteredCards.map((card) => (
-                  <tr key={card.id} className="bg-white">
-                    <td className="px-3 py-3">
-                      <span className="inline-flex items-center border-2 border-slate-900 bg-amber-50 px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-700 shadow-[2px_2px_0px_#0f172a]">
-                        {card.card_number ?? '—'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3">
-                      <p className="font-semibold text-slate-900">{card.name}</p>
-                      <p className="text-xs text-slate-500">
-                        {card.card_number ? `${card.card_number}` : 'Unnumbered'}
-                        {card.set_total ? ` / ${card.set_total}` : ''}
-                      </p>
-                    </td>
-                    <td className="px-3 py-3 text-center font-semibold text-slate-900">
-                      {card.linked_auctions.toLocaleString('sv-SE')}
-                    </td>
-                    <td className="px-3 py-3">
-                      {card.last_seen ? (
-                        <div className="space-y-0.5 text-sm">
-                          <p className="text-slate-900">{format(new Date(card.last_seen), 'PP')}</p>
-                          <p className="text-xs text-slate-600">Most recent linked auction</p>
+                {filteredCards.map((card) => {
+                  const setIdentifier = getCardSetIdentifier(card)
+                  const detailHref = setIdentifier ? `/sets/${setIdentifier}/${card.id}` : `/cards/${card.id}`
+                  const cardNumber = formatCardNumber(card)
+                  return (
+                    <tr key={card.id} className="bg-white">
+                      <td className="px-4 py-4">
+                        <div className="font-semibold text-slate-900">{card.name ?? 'Unknown card'}</div>
+                        <div className="text-xs text-slate-600">
+                          {[card.set_name, cardNumber].filter(Boolean).join(' · ') || 'Card details pending'}
                         </div>
-                      ) : (
-                        <span className="text-sm text-slate-500">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      <Link
-                        to={`/sets/${setCode}/${card.id}`}
-                        className="inline-flex items-center gap-1 border-2 border-slate-900 bg-white px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[2px_2px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
-                      >
-                        View card
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-4 text-slate-700">
+                        {[card.set_name, card.set_code].filter(Boolean).join(' · ') || 'Set pending'}
+                      </td>
+                      <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
+                        {formatMarketPrice(card.price_market)}
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <Link
+                          to={detailHref}
+                          className="inline-flex items-center gap-1 border-2 border-slate-900 bg-white px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[2px_2px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
+                        >
+                          View card
+                        </Link>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </DataTable>
           )}
