@@ -39,39 +39,65 @@ export function LoginPage(): JSX.Element {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12 dark:bg-gradient-to-b dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
+    <div className="flex min-h-screen items-center justify-center bg-amber-50 px-4 py-12 text-slate-900">
       <div className="w-full max-w-md">
-        <Card>
-          <CardHeader className="space-y-2 text-center">
-            <div className="mx-auto inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-700 dark:bg-slate-800/60 dark:text-sky-200">
+        <Card className="border-2 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
+          <CardHeader className="space-y-3 text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Pokestats Market Lab</p>
+            <div className="mx-auto inline-flex items-center gap-2 rounded-full border-2 border-slate-900 bg-amber-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[3px_3px_0px_#0f172a]">
               <LockKeyhole className="h-4 w-4" />
               Login required
             </div>
-            <CardTitle className="text-2xl">Welcome back</CardTitle>
-            <CardDescription>Access the dashboard and pick up where you left off.</CardDescription>
+            <div className="space-y-1">
+              <CardTitle className="text-2xl font-black text-slate-900">Welcome back</CardTitle>
+              <CardDescription className="text-sm text-slate-600">
+                Access the dashboard and pick up where you left off.
+              </CardDescription>
+            </div>
           </CardHeader>
           <form onSubmit={handleSubmit(onSubmit)} noValidate>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" autoComplete="email" placeholder="you@example.com" {...register('email')} />
-                {errors.email ? <p className="text-xs text-rose-400">{errors.email.message}</p> : null}
+                <Label htmlFor="email" className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Email
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  className="border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]"
+                  {...register('email')}
+                />
+                {errors.email ? <p className="text-xs text-rose-600">{errors.email.message}</p> : null}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" autoComplete="current-password" {...register('password')} />
-                {errors.password ? <p className="text-xs text-rose-400">{errors.password.message}</p> : null}
+                <Label htmlFor="password" className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Password
+                </Label>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  className="border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a]"
+                  {...register('password')}
+                />
+                {errors.password ? <p className="text-xs text-rose-600">{errors.password.message}</p> : null}
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Demo auth stores a session locally. Replace with OAuth/Clerk later.</p>
+              <p className="text-xs text-slate-500">Demo auth stores a session locally. Replace with OAuth/Clerk later.</p>
             </CardContent>
             <CardFooter className="flex flex-col gap-3">
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
+              <Button
+                type="submit"
+                className="w-full border-2 border-slate-900 bg-amber-200 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[4px_4px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
+                disabled={isSubmitting}
+              >
                 {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Log in
               </Button>
-              <p className="text-sm text-slate-600 dark:text-slate-400">
+              <p className="text-sm text-slate-600">
                 Need an account?{' '}
-                <Link to="/signup" className="font-semibold text-sky-700 dark:text-sky-300">
+                <Link to="/signup" className="font-semibold text-slate-900 underline decoration-2 decoration-sky-300">
                   Sign up
                 </Link>
               </p>
