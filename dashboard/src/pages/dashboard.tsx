@@ -3,6 +3,11 @@ import { Link } from 'react-router-dom'
 import DataTable from '../components/ui/data-table'
 
 export function DashboardPage(): JSX.Element {
+  const featuredCard = {
+    name: 'Live Pokestats card',
+    meta: 'Set 68af47c7190c4823de2527cd · Card 68af87b6c4f780b5153e99c5',
+    url: 'https://pokestats-0fa86d4b8a85.herokuapp.com/sets/68af47c7190c4823de2527cd/68af87b6c4f780b5153e99c5'
+  }
   const catalogRows = [
     {
       id: '1',
@@ -50,11 +55,10 @@ export function DashboardPage(): JSX.Element {
     <div className="space-y-12">
       <section className="grid gap-10 lg:grid-cols-[1.05fr_1fr] lg:items-center">
         <div className="relative">
-          <div className="absolute left-6 top-6 z-10 inline-flex items-center gap-2 border-2 border-slate-900 bg-emerald-200 px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[3px_3px_0px_#0f172a]">
-            ROI
-            <span className="text-lg">320%</span>
-          </div>
           <div className="relative overflow-hidden rounded-2xl border-2 border-slate-900 bg-gradient-to-br from-amber-200 via-orange-200 to-rose-200 p-8 shadow-[6px_6px_0px_#0f172a]">
+            <div className="absolute left-0 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 border-2 border-slate-900 bg-emerald-200 px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[3px_3px_0px_#0f172a]">
+              ROI <span className="text-lg">320%</span>
+            </div>
             <div className="flex min-h-[360px] flex-col justify-between rounded-xl border-2 border-slate-900 bg-white/80 p-6 backdrop-blur">
               <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-widest text-slate-600">
                 <span>Pokémon TCG</span>
@@ -62,8 +66,16 @@ export function DashboardPage(): JSX.Element {
               </div>
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-slate-500">Featured card</p>
-                <h1 className="text-4xl font-black uppercase text-slate-900">Charizard</h1>
-                <p className="text-base font-semibold text-slate-700">Base Set Holo · PSA 8</p>
+                <h1 className="text-3xl font-black uppercase text-slate-900">{featuredCard.name}</h1>
+                <p className="text-sm font-semibold text-slate-700">{featuredCard.meta}</p>
+                <a
+                  className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-900 underline decoration-2 underline-offset-4 transition hover:text-slate-700"
+                  href={featuredCard.url}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  View live card
+                </a>
               </div>
               <div className="flex items-center justify-between border-t-2 border-slate-900 pt-4 text-sm font-semibold text-slate-700">
                 <span>Avg. sale price</span>
