@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { ArrowUpRight, Layers, Search, Sparkles } from 'lucide-react'
+import { ArrowUpRight, Layers, Search } from 'lucide-react'
 
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
@@ -67,8 +67,10 @@ export function DashboardPage(): JSX.Element {
     return [...cards].sort((a, b) => (b.linked_auctions ?? 0) - (a.linked_auctions ?? 0))[0] ?? null
   }, [cards])
 
+  const hasTableFilter = tableSearch.trim().length > 0 || tableFilter !== 'all'
+
   const filteredCards = useMemo(() => {
-    if (!cards) return []
+    if (!cards || !hasTableFilter) return []
     const term = tableSearch.trim().toLowerCase()
     if (!term) return cards
 
@@ -86,7 +88,7 @@ export function DashboardPage(): JSX.Element {
         matches(card.era)
       )
     })
-  }, [cards, tableFilter, tableSearch])
+  }, [cards, hasTableFilter, tableFilter, tableSearch])
 
   const topEra = useMemo(() => {
     if (!expansions?.length) return null
@@ -110,20 +112,6 @@ export function DashboardPage(): JSX.Element {
     <div className="space-y-10">
       <section className="rounded-3xl border border-slate-200/80 bg-white p-8 shadow-sm dark:border-slate-800/80 dark:bg-slate-950/70">
         <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-700 dark:bg-slate-900/70 dark:text-sky-200">
-              <Sparkles className="h-4 w-4" />
-              PokéStats Dashboard
-            </div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50 sm:text-4xl">
-              Search every auction-linked card in seconds.
-            </h1>
-            <p className="max-w-2xl text-base text-slate-600 dark:text-slate-300">
-              Start with a card name, set code, or collector number. The results will surface the most active cards in the Tradera
-              feed.
-            </p>
-          </div>
-
           <div className="w-full max-w-xl rounded-2xl border border-slate-200/70 bg-slate-50 p-4 dark:border-slate-800/80 dark:bg-slate-900/60">
             <form
               onSubmit={(event) => {
@@ -194,14 +182,6 @@ export function DashboardPage(): JSX.Element {
       </section>
 
       <section className="space-y-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Card explorer</p>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">All tracked cards</h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Filter the full catalog by card attributes and jump straight to a card page.
-          </p>
-        </div>
-
         <Card>
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="space-y-1">
@@ -232,6 +212,8 @@ export function DashboardPage(): JSX.Element {
               <p className="text-sm text-slate-500">Loading cards…</p>
             ) : cardsError ? (
               <p className="text-sm text-rose-400">Unable to load cards.</p>
+            ) : !hasTableFilter ? (
+              <p className="text-sm text-slate-500">Start with a search or choose a filter to view cards.</p>
             ) : filteredCards.length === 0 ? (
               <p className="text-sm text-slate-500">No cards match that filter.</p>
             ) : (
