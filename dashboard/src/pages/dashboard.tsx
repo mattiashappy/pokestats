@@ -58,21 +58,19 @@ export function DashboardPage(): JSX.Element {
     <div className="space-y-12">
       <section className="grid gap-10 lg:grid-cols-[1.05fr_1fr] lg:items-center">
         <div className="relative">
-          <div className="relative overflow-hidden rounded-2xl border-2 border-slate-900 bg-gradient-to-br from-amber-200 via-orange-200 to-rose-200 p-8 shadow-[6px_6px_0px_#0f172a]">
+          <div className="relative flex min-h-[360px] items-center justify-center">
             <div className="absolute left-4 top-4 z-10 border-2 border-slate-900 bg-emerald-200 px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[3px_3px_0px_#0f172a]">
               ROI <span className="text-lg">302%</span>
             </div>
-            <div className="flex min-h-[360px] items-center justify-center rounded-xl border-2 border-slate-900 bg-white/80 p-6 backdrop-blur">
-              {featuredCard?.image_url ? (
-                <img
-                  src={featuredCard.image_url}
-                  alt={featuredCard.name ?? 'Featured card'}
-                  className="h-full max-h-[320px] w-full object-contain"
-                />
-              ) : (
-                <div className="h-80 w-full max-w-xs animate-pulse rounded-lg border-2 border-dashed border-slate-300 bg-white/70" />
-              )}
-            </div>
+            {featuredCard?.image_url ? (
+              <img
+                src={featuredCard.image_url}
+                alt={featuredCard.name ?? 'Featured card'}
+                className="h-full max-h-[360px] w-full object-contain"
+              />
+            ) : (
+              <div className="h-80 w-full max-w-xs animate-pulse rounded-lg bg-white/70" />
+            )}
           </div>
         </div>
 
