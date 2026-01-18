@@ -9,12 +9,19 @@ export function AppLayout(): JSX.Element {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
 
-  const navItems = [
-    { label: 'Dashboard', to: '/dashboard' },
-    { label: 'Auctions', to: '/auctions' },
-    { label: 'Sets', to: '/sets' },
-    { label: 'Enrichment', to: '/admin/enrich' }
-  ]
+  const navItems =
+    user?.role === 'admin'
+      ? [
+          { label: 'Dashboard', to: '/dashboard' },
+          { label: 'Auctions', to: '/auctions' },
+          { label: 'Sets', to: '/sets' },
+          { label: 'Enrichment', to: '/admin/enrich' }
+        ]
+      : [
+          { label: 'Dashboard', to: '/dashboard' },
+          { label: 'Collections', to: '/collections' },
+          { label: 'Sets', to: '/sets' }
+        ]
 
   return (
     <div className="min-h-screen bg-amber-50 text-slate-900">
