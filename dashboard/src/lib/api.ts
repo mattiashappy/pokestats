@@ -86,8 +86,20 @@ export async function fetchCardsForSet(setCode: string): Promise<CardListItem[]>
   return response.json()
 }
 
-export async function fetchCards(): Promise<CardListItem[]> {
-  const response = await fetch('/api/cards')
+type CardQueryOptions = {
+  search?: string
+  limit?: number
+  offset?: number
+}
+
+export async function fetchCards(options: CardQueryOptions = {}): Promise<CardListItem[]> {
+  const params = new URLSearchParams()
+  if (options.search) params.set('search', options.search)
+  if (Number.isFinite(options.limit)) params.set('limit', String(options.limit))
+  if (Number.isFinite(options.offset)) params.set('offset', String(options.offset))
+
+  const query = params.toString()
+  const response = await fetch(query ? `/api/cards?${query}` : '/api/cards')
   if (!response.ok) throw new Error('Failed to fetch cards')
   return response.json()
 }
