@@ -9,10 +9,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import DataTable from '../components/ui/data-table'
 import { Input } from '../components/ui/input'
 import { Select } from '../components/ui/select'
-import { fetchCards, fetchEras, fetchExpansions, searchCards } from '../lib/api'
-import { formatEraYears, normalizeEraCode } from '../lib/era'
+import { fetchCards, fetchExpansions, searchCards } from '../lib/api'
+import { normalizeEraCode } from '../lib/era'
 import { getExpansionIdentifier } from '../lib/sets'
-import type { CardListItem, CardSearchResult, EraSummary, ExpansionSummary } from '../types'
+import type { CardListItem, CardSearchResult, ExpansionSummary } from '../types'
 
 const SEARCH_DEBOUNCE_MS = 300
 
@@ -57,24 +57,6 @@ export function DashboardPage(): JSX.Element {
     queryKey: ['cards'],
     queryFn: fetchCards
   })
-
-  const {
-    data: eras,
-    isLoading: erasLoading,
-    error: erasError
-  } = useQuery<EraSummary[]>({
-    queryKey: ['eras'],
-    queryFn: fetchEras
-  })
-
-  const orderedEras = useMemo(() => {
-    if (!eras) return []
-    return [...eras].sort((a, b) => {
-      const orderDiff = (a.sort_order ?? 999) - (b.sort_order ?? 999)
-      if (orderDiff !== 0) return orderDiff
-      return a.name.localeCompare(b.name)
-    })
-  }, [eras])
 
   const topSet = useMemo(() => {
     if (!expansions?.length) return null
@@ -145,30 +127,6 @@ export function DashboardPage(): JSX.Element {
     })
 
     return [...eraBuckets.values()].sort((a, b) => b.linkedAuctions - a.linkedAuctions)[0] ?? null
-  }, [expansions])
-
-  const eraPreviews = useMemo(() => {
-    if (!expansions?.length) return new Map<string, { imageUrl: string | null; releaseDate: number }>()
-
-    const previews = new Map<string, { imageUrl: string | null; releaseDate: number }>()
-
-    expansions.forEach((expansion) => {
-      const name = expansion.era_name ?? expansion.era ?? 'Unknown era'
-      const code = normalizeEraCode(expansion.era_code ?? expansion.era_name ?? expansion.era ?? name)
-      const key = code ?? name
-      if (!key) return
-
-      const imageUrl =
-        expansion.image_cdn_url800 ?? expansion.image_cdn_url400 ?? expansion.image_cdn_url200 ?? expansion.image_url ?? null
-      const releaseDate = expansion.release_date ? new Date(expansion.release_date).getTime() : 0
-      const current = previews.get(key)
-
-      if (!current || releaseDate > current.releaseDate) {
-        previews.set(key, { imageUrl, releaseDate })
-      }
-    })
-
-    return previews
   }, [expansions])
 
   return (
@@ -533,63 +491,6 @@ export function DashboardPage(): JSX.Element {
         </div>
       </section>
 
-      <section className="space-y-6">
-        <div className="flex items-center gap-3">
-          <Layers className="h-5 w-5 text-amber-500" />
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Browse by era</p>
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Pokémon eras</h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Jump into sets and cards using the era tiles below.</p>
-          </div>
-        </div>
-
-        {erasLoading ? (
-          <p className="text-sm text-slate-500">Loading eras…</p>
-        ) : erasError ? (
-          <p className="text-sm text-rose-400">Failed to load eras.</p>
-        ) : orderedEras.length === 0 ? (
-          <p className="text-sm text-slate-500">No eras found yet.</p>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {orderedEras.map((era) => {
-              const eraCode = normalizeEraCode(era.code) ?? era.code
-              const eraYears = formatEraYears(era.start_year, era.end_year)
-              const preview = eraPreviews.get(eraCode ?? era.name)
-              const previewImage = preview?.imageUrl ?? null
-              return (
-                <Link key={era.code} to={`/era/${eraCode}`} className="group block h-full">
-                  <Card className="flex h-full flex-col overflow-hidden border-slate-200/80 shadow-none transition hover:-translate-y-1 hover:shadow-md dark:border-slate-800/80">
-                    <div className="relative bg-gradient-to-br from-slate-100 to-white pb-[56.25%] dark:from-slate-900 dark:to-slate-950">
-                      {previewImage ? (
-                        <img src={previewImage} alt={era.name} className="absolute inset-0 h-full w-full object-cover" />
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center text-3xl font-black tracking-tight text-slate-300 dark:text-slate-700">
-                          {eraCode}
-                        </div>
-                      )}
-
-                      <Badge className="absolute left-3 top-3 bg-slate-900/80 text-xs uppercase text-white backdrop-blur-sm transition group-hover:bg-sky-600">
-                        {eraCode}
-                      </Badge>
-                    </div>
-
-                    <CardContent className="space-y-3 p-5">
-                      <div className="flex items-center gap-2">
-                        <Layers className="h-4 w-4 text-slate-400" />
-                        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">{era.name}</h3>
-                      </div>
-                      <p className="text-sm text-slate-600 dark:text-slate-400">{eraYears}</p>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        {era.sets_total} {era.sets_total === 1 ? 'set' : 'sets'}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </Link>
-              )
-            })}
-          </div>
-        )}
-      </section>
     </div>
   )
 }
