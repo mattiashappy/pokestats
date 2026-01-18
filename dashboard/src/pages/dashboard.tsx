@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { ArrowUpRight, Layers, Search, Sparkles } from 'lucide-react'
 
-import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import DataTable from '../components/ui/data-table'
@@ -63,32 +62,31 @@ export function DashboardPage(): JSX.Element {
     return [...expansions].sort((a, b) => (b.linked_auctions ?? 0) - (a.linked_auctions ?? 0))[0] ?? null
   }, [expansions])
 
-  const latestSets = useMemo(() => {
-    if (!expansions?.length) return []
-    return [...expansions]
-      .sort((a, b) => {
-        const dateA = a.release_date ? new Date(a.release_date).getTime() : 0
-        const dateB = b.release_date ? new Date(b.release_date).getTime() : 0
-        return dateB - dateA
-      })
-      .slice(0, 5)
-  }, [expansions])
-
   const topCard = useMemo(() => {
     if (!cards?.length) return null
     return [...cards].sort((a, b) => (b.linked_auctions ?? 0) - (a.linked_auctions ?? 0))[0] ?? null
   }, [cards])
 
-  const latestCards = useMemo(() => {
-    if (!cards?.length) return []
-    return [...cards]
-      .sort((a, b) => {
-        const dateA = a.last_seen ?? a.created_at ?? ''
-        const dateB = b.last_seen ?? b.created_at ?? ''
-        return dateB.localeCompare(dateA)
-      })
-      .slice(0, 5)
-  }, [cards])
+  const filteredCards = useMemo(() => {
+    if (!cards) return []
+    const term = tableSearch.trim().toLowerCase()
+    if (!term) return cards
+
+    return cards.filter((card) => {
+      const matches = (value?: string | null) => value?.toLowerCase().includes(term)
+      if (tableFilter === 'name') return matches(card.name)
+      if (tableFilter === 'set') return matches(card.set_name) || matches(card.set_code)
+      if (tableFilter === 'number') return matches(card.card_number)
+      if (tableFilter === 'era') return matches(card.era)
+      return (
+        matches(card.name) ||
+        matches(card.set_name) ||
+        matches(card.set_code) ||
+        matches(card.card_number) ||
+        matches(card.era)
+      )
+    })
+  }, [cards, tableFilter, tableSearch])
 
   const filteredCards = useMemo(() => {
     if (!cards) return []
@@ -217,106 +215,6 @@ export function DashboardPage(): JSX.Element {
       </section>
 
       <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Popularity snapshots</p>
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Most linked eras, sets, and cards</h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400">Ranked by how many linked auctions exist in the database.</p>
-          </div>
-          <Badge variant="secondary">Live auction links</Badge>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="space-y-1">
-              <CardDescription>Most popular era</CardDescription>
-              <CardTitle className="text-2xl">{topEra?.name ?? '—'}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
-              {expansionsLoading ? (
-                <p>Calculating linked auctions…</p>
-              ) : expansionsError ? (
-                <p className="text-rose-400">Unable to load era popularity.</p>
-              ) : topEra && topEra.linkedAuctions > 0 ? (
-                <>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Linked auctions</p>
-                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">
-                    {topEra.linkedAuctions.toLocaleString('sv-SE')}
-                  </p>
-                  {topEra.code ? (
-                    <Link to={`/era/${topEra.code}`} className="text-sm font-semibold text-sky-600 hover:text-sky-700">
-                      Explore era
-                    </Link>
-                  ) : null}
-                </>
-              ) : (
-                <p>No linked auctions yet.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="space-y-1">
-              <CardDescription>Most popular set</CardDescription>
-              <CardTitle className="text-2xl">
-                {topSet ? topSet.name ?? getExpansionIdentifier(topSet) : '—'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
-              {expansionsLoading ? (
-                <p>Finding top set…</p>
-              ) : expansionsError ? (
-                <p className="text-rose-400">Unable to load set popularity.</p>
-              ) : topSet && (topSet.linked_auctions ?? 0) > 0 ? (
-                <>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Linked auctions</p>
-                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">
-                    {(topSet.linked_auctions ?? 0).toLocaleString('sv-SE')}
-                  </p>
-                  {topSet ? (
-                    <Link
-                      to={`/sets/${getExpansionIdentifier(topSet)}`}
-                      className="text-sm font-semibold text-sky-600 hover:text-sky-700"
-                    >
-                      View set cards
-                    </Link>
-                  ) : null}
-                </>
-              ) : (
-                <p>No linked auctions yet.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="space-y-1">
-              <CardDescription>Most popular card</CardDescription>
-              <CardTitle className="text-2xl">{topCard?.name ?? '—'}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
-              {cardsLoading ? (
-                <p>Finding top card…</p>
-              ) : cardsError ? (
-                <p className="text-rose-400">Unable to load card popularity.</p>
-              ) : topCard && topCard.linked_auctions > 0 ? (
-                <>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Linked auctions</p>
-                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">
-                    {topCard.linked_auctions.toLocaleString('sv-SE')}
-                  </p>
-                  <Link to={`/cards/${topCard.id}`} className="text-sm font-semibold text-sky-600 hover:text-sky-700">
-                    Open card page
-                  </Link>
-                </>
-              ) : (
-                <p>No linked auctions yet.</p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </section>
-
-      <section className="space-y-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Card explorer</p>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">All tracked cards</h2>
@@ -415,80 +313,98 @@ export function DashboardPage(): JSX.Element {
 
       <section className="space-y-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Catalog refresh</p>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Newest sets and cards</h2>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Popularity snapshots</p>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Most linked eras, sets, and cards</h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Recently added expansions and card pages from the live catalog feed.
+            Ranked by how many linked auctions exist in the database.
           </p>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
-            <CardHeader className="space-y-1">
-              <CardTitle className="text-xl">Latest sets</CardTitle>
-              <CardDescription>Fresh expansions ready to explore.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
-              {expansionsLoading ? (
-                <p>Loading newest sets…</p>
-              ) : expansionsError ? (
-                <p className="text-rose-400">Unable to load newest sets.</p>
-              ) : latestSets.length ? (
-                <ul className="space-y-2">
-                  {latestSets.map((set) => (
-                    <li key={set.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/60">
-                      <div>
-                        <p className="font-semibold text-slate-900 dark:text-slate-50">
-                          {set.name ?? getExpansionIdentifier(set)}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {set.release_date ? new Date(set.release_date).toLocaleDateString('sv-SE') : 'Release date pending'}
-                        </p>
-                      </div>
-                      <Link to={`/sets/${getExpansionIdentifier(set)}`} className="text-xs font-semibold text-sky-600 hover:text-sky-700">
-                        View cards
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p>No new sets yet.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="space-y-1">
-              <CardTitle className="text-xl">Latest cards</CardTitle>
-              <CardDescription>Recently indexed card pages.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
-              {cardsLoading ? (
-                <p>Loading newest cards…</p>
-              ) : cardsError ? (
-                <p className="text-rose-400">Unable to load newest cards.</p>
-              ) : latestCards.length ? (
-                <ul className="space-y-2">
-                  {latestCards.map((card) => (
-                    <li key={card.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/60">
-                      <div>
-                        <p className="font-semibold text-slate-900 dark:text-slate-50">{card.name ?? 'Unknown card'}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {[card.set_name ?? card.set_code, card.card_number].filter(Boolean).join(' · ') || 'Set details pending'}
-                        </p>
-                      </div>
-                      <Link to={`/cards/${card.id}`} className="text-xs font-semibold text-sky-600 hover:text-sky-700">
-                        Open card
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p>No new cards yet.</p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        <Card>
+          <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <CardTitle className="text-lg">Popularity leaderboard</CardTitle>
+              <CardDescription>Live counts of the most active catalog entries.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {expansionsLoading || cardsLoading ? (
+              <p className="text-sm text-slate-500">Loading popularity data…</p>
+            ) : expansionsError || cardsError ? (
+              <p className="text-sm text-rose-400">Unable to load popularity data.</p>
+            ) : (
+              <DataTable>
+                <thead className="bg-amber-200">
+                  <tr className="border-b-2 border-slate-900 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
+                    <th className="px-3 py-2">Type</th>
+                    <th className="px-3 py-2">Name</th>
+                    <th className="px-3 py-2 text-center">Linked auctions</th>
+                    <th className="px-3 py-2 text-right">Link</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y-2 divide-slate-900">
+                  <tr className="bg-white">
+                    <td className="px-3 py-3 font-semibold text-slate-900">Era</td>
+                    <td className="px-3 py-3">{topEra?.name ?? '—'}</td>
+                    <td className="px-3 py-3 text-center font-semibold text-slate-900">
+                      {topEra?.linkedAuctions?.toLocaleString('sv-SE') ?? '—'}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      {topEra?.code ? (
+                        <Link
+                          to={`/era/${topEra.code}`}
+                          className="inline-flex items-center gap-1 border-2 border-slate-900 bg-white px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[2px_2px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
+                        >
+                          Explore era
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-slate-500">—</span>
+                      )}
+                    </td>
+                  </tr>
+                  <tr className="bg-white">
+                    <td className="px-3 py-3 font-semibold text-slate-900">Set</td>
+                    <td className="px-3 py-3">{topSet ? topSet.name ?? getExpansionIdentifier(topSet) : '—'}</td>
+                    <td className="px-3 py-3 text-center font-semibold text-slate-900">
+                      {(topSet?.linked_auctions ?? 0).toLocaleString('sv-SE')}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      {topSet ? (
+                        <Link
+                          to={`/sets/${getExpansionIdentifier(topSet)}`}
+                          className="inline-flex items-center gap-1 border-2 border-slate-900 bg-white px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[2px_2px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
+                        >
+                          View set
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-slate-500">—</span>
+                      )}
+                    </td>
+                  </tr>
+                  <tr className="bg-white">
+                    <td className="px-3 py-3 font-semibold text-slate-900">Card</td>
+                    <td className="px-3 py-3">{topCard?.name ?? '—'}</td>
+                    <td className="px-3 py-3 text-center font-semibold text-slate-900">
+                      {topCard?.linked_auctions?.toLocaleString('sv-SE') ?? '—'}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      {topCard ? (
+                        <Link
+                          to={`/cards/${topCard.id}`}
+                          className="inline-flex items-center gap-1 border-2 border-slate-900 bg-white px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[2px_2px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
+                        >
+                          View card
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-slate-500">—</span>
+                      )}
+                    </td>
+                  </tr>
+                </tbody>
+              </DataTable>
+            )}
+          </CardContent>
+        </Card>
       </section>
 
     </div>
