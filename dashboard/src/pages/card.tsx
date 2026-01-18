@@ -39,10 +39,9 @@ export function CardPage(): JSX.Element {
   const error = cardError
 
   const resolvedSetCode = setCode ?? (card ? getCardSetIdentifier(card) : null)
+  const resolvedSetName = card?.set_name || resolvedSetCode
   const backLink = resolvedSetCode ? `/sets/${resolvedSetCode}` : '/sets'
-  const backLabel = resolvedSetCode ? `Back to ${resolvedSetCode}` : 'Back to sets'
-
-  const cardSetIdentifier = card ? getCardSetIdentifier(card) : null
+  const backLabel = resolvedSetName ? `Back to ${resolvedSetName}` : 'Back to sets'
 
   return (
     <div className="space-y-8">
@@ -73,9 +72,6 @@ export function CardPage(): JSX.Element {
               </span>
               <span className="rounded-full border-2 border-slate-900 bg-white px-3 py-1 shadow-[2px_2px_0px_#0f172a]">
                 Set: {card.set_name || 'Unknown set'}
-              </span>
-              <span className="rounded-full border-2 border-slate-900 bg-white px-3 py-1 shadow-[2px_2px_0px_#0f172a]">
-                Set code: {cardSetIdentifier || 'N/A'}
               </span>
               <span className="rounded-full border-2 border-slate-900 bg-white px-3 py-1 shadow-[2px_2px_0px_#0f172a]">
                 Card number: {card.card_number || 'N/A'}
