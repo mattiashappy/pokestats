@@ -6,8 +6,7 @@ export function PublicLayout(): JSX.Element {
   const navItems = [
     { label: 'Home', to: '/' },
     { label: 'Auctions', to: '/auctions' },
-    { label: 'Sets', to: '/sets' },
-    { label: 'Eras', to: '/era' }
+    { label: 'Sets', to: '/sets' }
   ]
 
   return (

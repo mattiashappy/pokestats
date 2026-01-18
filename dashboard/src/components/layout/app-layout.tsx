@@ -13,8 +13,7 @@ export function AppLayout(): JSX.Element {
     { label: 'Dashboard', to: '/dashboard' },
     { label: 'Auctions', to: '/auctions' },
     { label: 'Sets', to: '/sets' },
-    { label: 'Eras', to: '/era' },
-    { label: 'Cards', to: '/cards/1' }
+    { label: 'Enrichment', to: '/admin/enrich' }
   ]
 
   return (
