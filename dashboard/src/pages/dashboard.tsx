@@ -24,8 +24,8 @@ export function DashboardPage(): JSX.Element {
     isLoading: cardsLoading,
     error: cardsError
   } = useQuery<CardListItem[]>({
-    queryKey: ['cards'],
-    queryFn: () => fetchCards()
+    queryKey: ['cards', searchTerm],
+    queryFn: () => fetchCards({ search: searchTerm.trim() || undefined })
   })
 
   const eraOptions = useMemo(() => {
