@@ -87,17 +87,15 @@ export function CardPage(): JSX.Element {
 
       {card && !isLoading && !error ? (
         <div className="grid gap-6 lg:grid-cols-[320px,1fr]">
-          <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
-            <CardContent className="p-4">
-              {card.image_url ? (
-                <img src={card.image_url} alt={card.name} className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-64 items-center justify-center bg-amber-50 text-sm font-semibold uppercase tracking-wide text-slate-600">
-                  No image available
-                </div>
-              )}
-            </CardContent>
-          </UiCard>
+          <div className="border-4 border-slate-900 shadow-[6px_6px_0px_#0f172a]">
+            {card.image_url ? (
+              <img src={card.image_url} alt={card.name} className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-64 items-center justify-center bg-amber-50 text-sm font-semibold uppercase tracking-wide text-slate-600">
+                No image available
+              </div>
+            )}
+          </div>
 
           <div className="grid gap-6 md:grid-cols-[minmax(0,1fr),240px]">
             <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
