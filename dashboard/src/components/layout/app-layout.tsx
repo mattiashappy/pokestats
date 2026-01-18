@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate } from 'react-router-dom'
-import { CreditCard, LogOut, Settings, Sparkles } from 'lucide-react'
+import { CreditCard, LogOut, Settings } from 'lucide-react'
 
 import { TopNav } from './top-nav'
 import { ThemeToggle } from '../theme-toggle'
@@ -49,10 +49,6 @@ export function AppLayout(): JSX.Element {
                 Settings
               </Link>
             ) : null}
-            <div className="flex items-center gap-2 rounded-full border-2 border-slate-900 bg-lime-200 px-3 py-2 text-xs font-bold uppercase tracking-wide shadow-[3px_3px_0px_#0f172a]">
-              <Sparkles className="h-4 w-4" />
-              {user?.role === 'admin' ? 'admin' : user?.subscriptionStatus ?? 'guest'}
-            </div>
             {user?.email === 'ash@pokestats.app' ? (
               <div className="flex items-center overflow-hidden rounded-full border-2 border-slate-900 bg-white text-[11px] font-bold uppercase tracking-wide shadow-[3px_3px_0px_#0f172a]">
                 <button
