@@ -6,7 +6,9 @@ import { ArrowUpRight, Layers, Search, Sparkles } from 'lucide-react'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import DataTable from '../components/ui/data-table'
 import { Input } from '../components/ui/input'
+import { Select } from '../components/ui/select'
 import { fetchCards, fetchEras, fetchExpansions, searchCards } from '../lib/api'
 import { formatEraYears, normalizeEraCode } from '../lib/era'
 import { getExpansionIdentifier } from '../lib/sets'
@@ -17,6 +19,8 @@ const SEARCH_DEBOUNCE_MS = 300
 export function DashboardPage(): JSX.Element {
   const [searchTerm, setSearchTerm] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [tableSearch, setTableSearch] = useState('')
+  const [tableFilter, setTableFilter] = useState('all')
 
   useEffect(() => {
     const handler = window.setTimeout(() => {
@@ -103,6 +107,27 @@ export function DashboardPage(): JSX.Element {
       })
       .slice(0, 5)
   }, [cards])
+
+  const filteredCards = useMemo(() => {
+    if (!cards) return []
+    const term = tableSearch.trim().toLowerCase()
+    if (!term) return cards
+
+    return cards.filter((card) => {
+      const matches = (value?: string | null) => value?.toLowerCase().includes(term)
+      if (tableFilter === 'name') return matches(card.name)
+      if (tableFilter === 'set') return matches(card.set_name) || matches(card.set_code)
+      if (tableFilter === 'number') return matches(card.card_number)
+      if (tableFilter === 'era') return matches(card.era)
+      return (
+        matches(card.name) ||
+        matches(card.set_name) ||
+        matches(card.set_code) ||
+        matches(card.card_number) ||
+        matches(card.era)
+      )
+    })
+  }, [cards, tableFilter, tableSearch])
 
   const topEra = useMemo(() => {
     if (!expansions?.length) return null
@@ -331,6 +356,103 @@ export function DashboardPage(): JSX.Element {
             </CardContent>
           </Card>
         </div>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Card explorer</p>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">All tracked cards</h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Filter the full catalog by card attributes and jump straight to a card page.
+          </p>
+        </div>
+
+        <Card>
+          <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <CardTitle className="text-lg">Card catalog</CardTitle>
+              <CardDescription>Search and filter across every card in the database.</CardDescription>
+            </div>
+            <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
+              <div className="relative w-full md:w-72">
+                <Input
+                  value={tableSearch}
+                  onChange={(event) => setTableSearch(event.target.value)}
+                  placeholder="Search cards"
+                  className="pr-10"
+                />
+                <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
+              <Select value={tableFilter} onChange={(event) => setTableFilter(event.target.value)} className="md:w-52">
+                <option value="all">All columns</option>
+                <option value="name">Card name</option>
+                <option value="set">Set</option>
+                <option value="number">Card number</option>
+                <option value="era">Era</option>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {cardsLoading ? (
+              <p className="text-sm text-slate-500">Loading cards…</p>
+            ) : cardsError ? (
+              <p className="text-sm text-rose-400">Unable to load cards.</p>
+            ) : filteredCards.length === 0 ? (
+              <p className="text-sm text-slate-500">No cards match that filter.</p>
+            ) : (
+              <DataTable>
+                <thead className="bg-amber-200">
+                  <tr className="border-b-2 border-slate-900 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
+                    <th className="px-3 py-2">Card</th>
+                    <th className="px-3 py-2">Set</th>
+                    <th className="px-3 py-2">Era</th>
+                    <th className="px-3 py-2 text-center">Linked auctions</th>
+                    <th className="px-3 py-2">Last seen</th>
+                    <th className="px-3 py-2 text-right">Link</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y-2 divide-slate-900">
+                  {filteredCards.map((card) => (
+                    <tr key={card.id} className="bg-white">
+                      <td className="px-3 py-3">
+                        <p className="font-semibold text-slate-900">{card.name ?? 'Unknown card'}</p>
+                        <p className="text-xs text-slate-500">
+                          {card.card_number ? `#${card.card_number}` : 'Unnumbered'}
+                        </p>
+                      </td>
+                      <td className="px-3 py-3">
+                        <p className="font-semibold text-slate-900">{card.set_name ?? 'Unknown set'}</p>
+                        <p className="text-xs text-slate-500">{card.set_code ?? 'Set code pending'}</p>
+                      </td>
+                      <td className="px-3 py-3">{card.era ?? 'Unknown era'}</td>
+                      <td className="px-3 py-3 text-center font-semibold text-slate-900">
+                        {card.linked_auctions.toLocaleString('sv-SE')}
+                      </td>
+                      <td className="px-3 py-3">
+                        {card.last_seen ? (
+                          <div className="space-y-0.5 text-sm">
+                            <p className="text-slate-900">{format(new Date(card.last_seen), 'PP')}</p>
+                            <p className="text-xs text-slate-600">Most recent linked auction</p>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-slate-500">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <Link
+                          to={`/cards/${card.id}`}
+                          className="inline-flex items-center gap-1 border-2 border-slate-900 bg-white px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[2px_2px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
+                        >
+                          View card
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </DataTable>
+            )}
+          </CardContent>
+        </Card>
       </section>
 
       <section className="space-y-4">

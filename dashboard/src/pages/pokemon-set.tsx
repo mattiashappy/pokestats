@@ -7,8 +7,8 @@ import { Link, useParams } from 'react-router-dom'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import DataTable from '../components/ui/data-table'
 import { Input } from '../components/ui/input'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { fetchCardsForSet, fetchExpansions } from '../lib/api'
 import { getCardSetIdentifier, getExpansionIdentifier } from '../lib/sets'
 import type { CardListItem, ExpansionSummary } from '../types'
@@ -43,7 +43,6 @@ export function PokemonSetPage(): JSX.Element {
       expansions.find((expansion) => getExpansionIdentifier(expansion).toLowerCase() === normalized) ?? null
     )
   }, [expansions, setCode])
-
 
   const filteredCards = useMemo(() => {
     if (!cards) return []
@@ -132,57 +131,56 @@ export function PokemonSetPage(): JSX.Element {
           ) : filteredCards.length === 0 ? (
             <p className="text-sm text-slate-500">No cards found in this set.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-24">Number</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead className="text-center">Linked auctions</TableHead>
-                    <TableHead>Last seen</TableHead>
-                    <TableHead className="text-right">Link</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredCards.map((card) => (
-                    <TableRow key={card.id}>
-                      <TableCell>
-                        <Badge variant="secondary" className="uppercase">
-                          {card.card_number ?? '—'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="space-y-1">
-                        <p className="font-semibold text-slate-900 dark:text-slate-100">{card.name}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {card.card_number ? `${card.card_number}` : 'Unnumbered'}
-                          {card.set_total ? ` / ${card.set_total}` : ''}
-                        </p>
-                      </TableCell>
-                      <TableCell className="text-center">{card.linked_auctions.toLocaleString('sv-SE')}</TableCell>
-                      <TableCell>
-                        {card.last_seen ? (
-                          <div className="space-y-0.5 text-sm">
-                            <p className="text-slate-900 dark:text-slate-100">{format(new Date(card.last_seen), 'PP')}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">Most recent linked auction</p>
-                          </div>
-                        ) : (
-                          <span className="text-sm text-slate-500">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button asChild size="sm" variant="secondary">
-                            <Link
-                              to={`/sets/${setCode}/${card.id}`}
-                            >
-                            View card
-                          </Link>
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+            <DataTable>
+              <thead className="bg-amber-200">
+                <tr className="border-b-2 border-slate-900 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
+                  <th className="px-3 py-2">Number</th>
+                  <th className="px-3 py-2">Name</th>
+                  <th className="px-3 py-2 text-center">Linked auctions</th>
+                  <th className="px-3 py-2">Last seen</th>
+                  <th className="px-3 py-2 text-right">Link</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y-2 divide-slate-900">
+                {filteredCards.map((card) => (
+                  <tr key={card.id} className="bg-white">
+                    <td className="px-3 py-3">
+                      <span className="inline-flex items-center border-2 border-slate-900 bg-amber-50 px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-700 shadow-[2px_2px_0px_#0f172a]">
+                        {card.card_number ?? '—'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <p className="font-semibold text-slate-900">{card.name}</p>
+                      <p className="text-xs text-slate-500">
+                        {card.card_number ? `${card.card_number}` : 'Unnumbered'}
+                        {card.set_total ? ` / ${card.set_total}` : ''}
+                      </p>
+                    </td>
+                    <td className="px-3 py-3 text-center font-semibold text-slate-900">
+                      {card.linked_auctions.toLocaleString('sv-SE')}
+                    </td>
+                    <td className="px-3 py-3">
+                      {card.last_seen ? (
+                        <div className="space-y-0.5 text-sm">
+                          <p className="text-slate-900">{format(new Date(card.last_seen), 'PP')}</p>
+                          <p className="text-xs text-slate-600">Most recent linked auction</p>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-slate-500">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <Link
+                        to={`/sets/${setCode}/${card.id}`}
+                        className="inline-flex items-center gap-1 border-2 border-slate-900 bg-white px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[2px_2px_0px_#0f172a] transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white"
+                      >
+                        View card
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </DataTable>
           )}
         </CardContent>
       </Card>
