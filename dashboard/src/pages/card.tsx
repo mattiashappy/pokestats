@@ -83,7 +83,7 @@ export function CardPage(): JSX.Element {
 
       {card && !isLoading && !error ? (
         <div className="grid gap-6 lg:grid-cols-[320px,1fr]">
-          <div className="border-4 border-slate-900 shadow-[6px_6px_0px_#0f172a]">
+          <div className="border-4 border-slate-900">
             {card.image_url ? (
               <img src={card.image_url} alt={card.name} className="h-auto w-full" />
             ) : (
@@ -95,9 +95,9 @@ export function CardPage(): JSX.Element {
 
           <div className="grid gap-6 md:grid-cols-[minmax(0,1fr),240px]">
             <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
-              <CardHeader className="border-b-4 border-slate-900 bg-amber-100">
-                <CardTitle className="text-lg font-black uppercase text-slate-900">Product details</CardTitle>
-                <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+              <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
+                <CardTitle className="text-lg font-black uppercase text-white">Product details</CardTitle>
+                <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
                   Reference data for this specific card.
                 </CardDescription>
               </CardHeader>
