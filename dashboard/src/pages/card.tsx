@@ -32,7 +32,7 @@ export function CardPage(): JSX.Element {
     return card.product_details
       .split('\n')
       .map((line) => line.trim())
-      .filter(Boolean)
+      .filter((line) => Boolean(line) && !line.toLowerCase().startsWith('last updated:'))
   }, [card?.product_details])
 
   const isLoading = isLoadingCard
@@ -89,7 +89,7 @@ export function CardPage(): JSX.Element {
         <div className="grid gap-6 lg:grid-cols-[320px,1fr]">
           <div className="border-4 border-slate-900 shadow-[6px_6px_0px_#0f172a]">
             {card.image_url ? (
-              <img src={card.image_url} alt={card.name} className="h-full w-full object-cover" />
+              <img src={card.image_url} alt={card.name} className="h-auto w-full" />
             ) : (
               <div className="flex h-64 items-center justify-center bg-amber-50 text-sm font-semibold uppercase tracking-wide text-slate-600">
                 No image available
