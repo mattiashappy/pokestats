@@ -15,7 +15,6 @@ export function DashboardPage(): JSX.Element {
   })
 
   const [searchTerm, setSearchTerm] = useState('')
-  const [eraFilter, setEraFilter] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
   const PAGE_SIZE = 10
 
@@ -43,17 +42,9 @@ export function DashboardPage(): JSX.Element {
     queryFn: () => fetchCards({ search: searchTerm.trim() || undefined })
   })
 
-  const eraOptions = useMemo(() => {
-    if (!cards) return []
-    return Array.from(new Set(cards.map((card) => card.era).filter(Boolean))).sort((a, b) =>
-      a && b ? a.localeCompare(b) : 0
-    )
-  }, [cards])
-
   const filteredCards = useMemo(() => {
     if (!cards) return []
     const term = searchTerm.trim().toLowerCase()
-    const era = eraFilter === 'all' ? null : eraFilter
 
     const matches = cards.filter((card) => {
       const cardSetIdentifier = getCardSetIdentifier(card) ?? ''
@@ -70,8 +61,7 @@ export function DashboardPage(): JSX.Element {
         .toLowerCase()
 
       const matchesSearch = !term || haystack.includes(term)
-      const matchesEra = !era || card.era === era
-      return matchesSearch && matchesEra
+      return matchesSearch
     })
 
     return [...matches].sort((a, b) => {
@@ -86,7 +76,7 @@ export function DashboardPage(): JSX.Element {
       }
       return bPrice - aPrice
     })
-  }, [cards, eraFilter, searchTerm])
+  }, [cards, searchTerm])
 
   const totalPages = useMemo(() => {
     if (!filteredCards.length) return 1
@@ -115,11 +105,6 @@ export function DashboardPage(): JSX.Element {
 
   const handleSearchChange = (value: string): void => {
     setSearchTerm(value)
-    setCurrentPage(1)
-  }
-
-  const handleEraChange = (value: string): void => {
-    setEraFilter(value)
     setCurrentPage(1)
   }
 
@@ -182,21 +167,6 @@ export function DashboardPage(): JSX.Element {
                 value={searchTerm}
                 onChange={(event) => handleSearchChange(event.target.value)}
               />
-            </label>
-            <label className="flex items-center gap-2 rounded-full border-2 border-slate-900 bg-slate-900 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white shadow-[3px_3px_0px_#0f172a]">
-              <span>Era</span>
-              <select
-                className="bg-transparent text-xs font-bold uppercase tracking-wide text-white outline-none"
-                value={eraFilter}
-                onChange={(event) => handleEraChange(event.target.value)}
-              >
-                <option value="all">All</option>
-                {eraOptions.map((era) => (
-                  <option key={era} value={era}>
-                    {era}
-                  </option>
-                ))}
-              </select>
             </label>
           </div>
         </div>
