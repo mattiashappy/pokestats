@@ -144,9 +144,6 @@ export function DashboardPage(): JSX.Element {
             >
               Pokémon Sets
             </Link>
-            <div className="rounded-full border-2 border-slate-900 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
-              Live auction coverage
-            </div>
           </div>
         </div>
       </section>
