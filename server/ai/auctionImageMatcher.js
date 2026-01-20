@@ -106,22 +106,24 @@ async function callVisionModel({ apiKey, model, imageUrl }) {
           ]
         }
       ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'vision_card_extract',
-          strict: true,
-          schema: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              card_number: { type: 'string' },
-              name: { type: 'string' },
-              set_name_hint: { type: ['string', 'null'] },
-              language: { type: 'string' },
-              confidence: { type: 'number' }
-            },
-            required: ['card_number', 'name', 'set_name_hint', 'language', 'confidence']
+      text: {
+        format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'vision_card_extract',
+            strict: true,
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                card_number: { type: 'string' },
+                name: { type: 'string' },
+                set_name_hint: { type: ['string', 'null'] },
+                language: { type: 'string' },
+                confidence: { type: 'number' }
+              },
+              required: ['card_number', 'name', 'set_name_hint', 'language', 'confidence']
+            }
           }
         }
       }
