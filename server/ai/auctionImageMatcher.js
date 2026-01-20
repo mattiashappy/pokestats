@@ -109,8 +109,8 @@ async function callVisionModel({ apiKey, model, imageUrl }) {
       text: {
         format: {
           type: 'json_schema',
+          name: 'vision_card_extract',
           json_schema: {
-            name: 'vision_card_extract',
             strict: true,
             schema: {
               type: 'object',
