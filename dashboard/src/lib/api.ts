@@ -166,7 +166,7 @@ export type TraderaParseSummary = {
 export type TraderaLinkedExample = {
   itemId: number
   title: string | null
-  cardId: number
+  cardId: string
   cardName: string | null
   setName: string | null
 }
@@ -188,9 +188,16 @@ export type TraderaLinkSummary = {
 export type AiMatchExample = {
   itemId: number
   title: string | null
-  cardId: number
+  cardId: string | null
   confidence: number
   rationale: string | null
+}
+
+export type MatchLogEntry = {
+  itemId: number
+  stage: string
+  message: string
+  data?: unknown
 }
 
 export type AiMatchSummary = {
@@ -199,11 +206,30 @@ export type AiMatchSummary = {
   skipped: number
   skipReasons: Record<string, number>
   matchedExamples: AiMatchExample[]
+  logs: MatchLogEntry[]
+}
+
+export type VisionMatchExample = {
+  itemId: number
+  title: string | null
+  cardId: string
+  confidence: number
+  method: string
+}
+
+export type VisionMatchSummary = {
+  scanned: number
+  matched: number
+  linked: number
+  skipped: number
+  skipReasons: Record<string, number>
+  matchedExamples: VisionMatchExample[]
+  logs: MatchLogEntry[]
 }
 
 export type AuctionCardLink = {
   itemId: number
-  cardId: number
+  cardId: string
   method: string | null
   confidence: number | null
   linkedAt: string | null
@@ -220,7 +246,7 @@ export type AuctionCardLink = {
 }
 
 export type CardSearchResult = {
-  id: number
+  id: string
   name: string | null
   cardNumber: string | null
   setName: string | null
@@ -268,7 +294,7 @@ export async function searchCards(
   return response.json()
 }
 
-export async function linkAuctionToCard(auctionId: number, cardId: number): Promise<void> {
+export async function linkAuctionToCard(auctionId: number, cardId: string): Promise<void> {
   const response = await fetch('/api/linking/manual', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -342,6 +368,25 @@ export async function runAiMatch(itemIds: number[], model?: string): Promise<AiM
     body: JSON.stringify(body)
   })
   if (!res.ok) throw new Error('Failed to run AI match')
+  return res.json()
+}
+
+export async function runVisionMatch(
+  itemIds: number[],
+  options: { model?: string; minConfidence?: number } = {}
+): Promise<VisionMatchSummary> {
+  const normalizedIds = Array.from(new Set(itemIds)).filter((id) => Number.isFinite(Number(id)))
+  const body = {
+    itemIds: normalizedIds,
+    model: options.model,
+    minConfidence: options.minConfidence
+  }
+  const res = await fetch('/api/ai/tradera/vision-match', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  if (!res.ok) throw new Error('Failed to run vision match')
   return res.json()
 }
 

@@ -497,13 +497,13 @@ async function ensureTraderaAuctionLinksTableAvailable() {
   if (hasCheckedTraderaAuctionLinksTable) return traderaAuctionLinksTableAvailable
 
   const { rows } = await pool.query(
-    "SELECT to_regclass('public.tradera_auction_card_links') AS tradera_auction_card_links"
+    "SELECT to_regclass('public.tradera_auction_pt_card_links') AS tradera_auction_pt_card_links"
   )
-  traderaAuctionLinksTableAvailable = Boolean(rows?.[0]?.tradera_auction_card_links)
+  traderaAuctionLinksTableAvailable = Boolean(rows?.[0]?.tradera_auction_pt_card_links)
   hasCheckedTraderaAuctionLinksTable = true
 
   if (!traderaAuctionLinksTableAvailable) {
-    console.warn('tradera_auction_card_links table does not exist')
+    console.warn('tradera_auction_pt_card_links table does not exist')
   }
   return traderaAuctionLinksTableAvailable
 }
@@ -981,7 +981,23 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
     ensureTraderaAuctionLinksTableAvailable(),
     ensureTraderaAuctionsTableAvailable()
   ])
-  if (!linksReady || !auctionsReady) return []
+  const cardsReady = await ensurePriceTrackerImportTablesAvailable()
+  if (!linksReady || !auctionsReady || !cardsReady) return []
+
+  const {
+    rows: [card]
+  } = await pool.query(
+    `
+      SELECT pt_card_id
+      FROM public.pt_cards
+      WHERE pt_card_id = $1
+         OR tcgplayer_product_id::text = $1
+      LIMIT 1
+    `,
+    [String(cardId)]
+  )
+
+  if (!card?.pt_card_id) return []
 
   const query = `
     SELECT
@@ -996,33 +1012,33 @@ async function fetchCardAuctions(cardId, { limit = 500 } = {}) {
       a.item_url,
       a.thumbnail_url,
       a.seller_alias
-    FROM public.tradera_auction_card_links l
+    FROM public.tradera_auction_pt_card_links l
     JOIN public.tradera_auctions a ON a.item_id = l.auction_id
-    WHERE l.card_id = $1
+    WHERE l.pt_card_id = $1
     ORDER BY a.end_date DESC
     LIMIT $2
   `
-  const result = await pool.query(query, [cardId, limit])
+  const result = await pool.query(query, [card.pt_card_id, limit])
   return result.rows.map(normalizeTraderaAuctionRow)
 }
 
-async function fetchLinkingExpansions() {
+async function fetchLinkingSets() {
   if (!pool) return []
-  const ok = await ensureExpansionsTableAvailable()
+  const ok = await ensurePriceTrackerImportTablesAvailable()
   if (!ok) return []
 
   const { rows } = await pool.query(`
-    SELECT id, set_name, set_code
-    FROM public.expansions
-    WHERE set_name IS NOT NULL OR set_code IS NOT NULL
+    SELECT pt_set_id, name
+    FROM public.pt_sets
+    WHERE name IS NOT NULL OR pt_set_id IS NOT NULL
   `)
 
   return rows.map((row) => ({
-    id: row.id,
-    name: row.set_name,
-    set_code: row.set_code,
-    normalizedName: row.set_name ? normalizeAuctionText(row.set_name) : null,
-    normalizedCode: row.set_code ? normalizeAuctionText(row.set_code) : null
+    pt_set_id: row.pt_set_id,
+    name: row.name,
+    set_code: row.pt_set_id,
+    normalizedName: row.name ? normalizeAuctionText(row.name) : null,
+    normalizedCode: row.pt_set_id ? normalizeAuctionText(row.pt_set_id) : null
   }))
 }
 
@@ -1037,7 +1053,7 @@ async function fetchUnlinkedAuctions(limit = null) {
   let query = `
     SELECT a.item_id, a.title, a.description
     FROM public.tradera_auctions a
-    LEFT JOIN public.tradera_auction_card_links l ON l.auction_id = a.item_id
+    LEFT JOIN public.tradera_auction_pt_card_links l ON l.auction_id = a.item_id
     WHERE l.auction_id IS NULL
     ORDER BY a.end_date DESC
   `
@@ -1079,7 +1095,7 @@ async function fetchUnlinkedAuctionSummaries(limit = null) {
         a.pokemon_language,
         a.item_condition
       FROM public.tradera_auctions a
-      LEFT JOIN public.tradera_auction_card_links l ON l.auction_id = a.item_id
+      LEFT JOIN public.tradera_auction_pt_card_links l ON l.auction_id = a.item_id
       WHERE l.auction_id IS NULL
       ORDER BY a.end_date DESC
       ${limitClause}
@@ -1087,7 +1103,7 @@ async function fetchUnlinkedAuctionSummaries(limit = null) {
     params
   )
 
-  const expansions = await fetchLinkingExpansions()
+  const expansions = await fetchLinkingSets()
 
   return rows.map((row) => {
     const text = normalizeAuctionText(`${row.title ?? ''} ${row.description ?? ''}`)
@@ -1116,7 +1132,7 @@ async function fetchUnlinkedAuctionSummaries(limit = null) {
 async function runDeterministicLinker({ limit = null } = {}) {
   if (!pool) return { total: 0, linked: 0, skipped: 0 }
 
-  const expansions = await fetchLinkingExpansions()
+  const expansions = await fetchLinkingSets()
   const auctions = await fetchUnlinkedAuctions(limit)
   let linked = 0
   let skipped = 0
@@ -1137,12 +1153,15 @@ async function runDeterministicLinker({ limit = null } = {}) {
 
     const { rows } = await pool.query(
       `
-        SELECT id
-        FROM public.cards
-        WHERE expansion_id = $1
-          AND collector_key = $2
+        SELECT pt_card_id
+        FROM public.pt_cards
+        WHERE pt_set_id = $1
+          AND (
+            card_number = $2
+            OR regexp_replace(card_number, '^0+(?=\\d)', '') = $2
+          )
       `,
-      [expansion.id, collectorKey]
+      [expansion.pt_set_id, collectorKey]
     )
 
     if (rows.length !== 1) {
@@ -1150,14 +1169,14 @@ async function runDeterministicLinker({ limit = null } = {}) {
       continue
     }
 
-    const cardId = rows[0].id
+    const cardId = rows[0].pt_card_id
     await pool.query(
       `
-        INSERT INTO public.tradera_auction_card_links (auction_id, card_id, method, confidence, created_at)
+        INSERT INTO public.tradera_auction_pt_card_links (auction_id, pt_card_id, method, confidence, created_at)
         VALUES ($1, $2, 'deterministic', 1.0, NOW())
         ON CONFLICT (auction_id)
         DO UPDATE SET
-          card_id = EXCLUDED.card_id,
+          pt_card_id = EXCLUDED.pt_card_id,
           method = 'deterministic',
           confidence = 1.0,
           created_at = NOW()
@@ -1985,7 +2004,7 @@ app.get('/api/linking/links', async (req, res) => {
     const [linksReady, auctionsReady, cardsReady] = await Promise.all([
       ensureTraderaAuctionLinksTableAvailable(),
       ensureTraderaAuctionsTableAvailable(),
-      ensureCardInfrastructure()
+      ensurePriceTrackerImportTablesAvailable()
     ])
     if (!linksReady || !auctionsReady || !cardsReady) {
       return res.status(500).json({ error: 'Required tables unavailable' })
@@ -2000,7 +2019,7 @@ app.get('/api/linking/links', async (req, res) => {
       `
         SELECT
           l.auction_id,
-          l.card_id,
+          l.pt_card_id,
           l.method,
           l.confidence,
           l.created_at,
@@ -2011,13 +2030,13 @@ app.get('/api/linking/links', async (req, res) => {
           a.bid_count AS auction_bid_count,
           a.seller_alias AS auction_seller_alias,
           c.name AS card_name,
-          c.collector_number_raw AS card_number,
-          e.set_name AS set_name,
-          e.set_code AS set_code
-        FROM public.tradera_auction_card_links l
+          c.card_number AS card_number,
+          COALESCE(s.name, c.set_name) AS set_name,
+          c.pt_set_id AS set_code
+        FROM public.tradera_auction_pt_card_links l
         LEFT JOIN public.tradera_auctions a ON a.item_id = l.auction_id
-        LEFT JOIN public.cards c ON c.id = l.card_id
-        LEFT JOIN public.expansions e ON e.id = c.expansion_id
+        LEFT JOIN public.pt_cards c ON c.pt_card_id = l.pt_card_id
+        LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
         ORDER BY l.created_at DESC NULLS LAST
         ${limitClause}
       `,
@@ -2027,7 +2046,7 @@ app.get('/api/linking/links', async (req, res) => {
     res.json(
       rows.map((row) => ({
         itemId: row.auction_id,
-        cardId: row.card_id,
+        cardId: row.pt_card_id,
         method: row.method ?? null,
         confidence: row.confidence ?? null,
         linkedAt: row.created_at ?? null,
@@ -2069,14 +2088,14 @@ app.get('/api/linking/stats', async (_req, res) => {
         COUNT(l.auction_id)::int AS linked,
         (COUNT(*) - COUNT(l.auction_id))::int AS unlinked
       FROM public.tradera_auctions a
-      LEFT JOIN public.tradera_auction_card_links l ON l.auction_id = a.item_id
+      LEFT JOIN public.tradera_auction_pt_card_links l ON l.auction_id = a.item_id
     `)
 
     const {
       rows: [latest]
     } = await pool.query(`
       SELECT MAX(created_at) AS last_linked_at
-      FROM public.tradera_auction_card_links
+      FROM public.tradera_auction_pt_card_links
     `)
 
     res.json({
@@ -2122,16 +2141,16 @@ app.post('/api/linking/manual', async (req, res) => {
 
   try {
     const auctionId = Number(req.body?.auctionId)
-    const cardId = Number(req.body?.cardId)
+    const cardId = String(req.body?.cardId ?? '').trim()
 
-    if (!Number.isFinite(auctionId) || !Number.isFinite(cardId)) {
+    if (!Number.isFinite(auctionId) || !cardId) {
       return res.status(400).json({ error: 'Invalid auction or card id' })
     }
 
     const [linksReady, auctionsReady, cardsReady] = await Promise.all([
       ensureTraderaAuctionLinksTableAvailable(),
       ensureTraderaAuctionsTableAvailable(),
-      ensureCardInfrastructure()
+      ensurePriceTrackerImportTablesAvailable()
     ])
 
     if (!linksReady || !auctionsReady || !cardsReady) {
@@ -2145,21 +2164,30 @@ app.post('/api/linking/manual', async (req, res) => {
 
     const {
       rows: [card]
-    } = await pool.query('SELECT id FROM public.cards WHERE id = $1', [cardId])
-    if (!card) return res.status(404).json({ error: 'Card not found' })
+    } = await pool.query(
+      `
+        SELECT pt_card_id
+        FROM public.pt_cards
+        WHERE pt_card_id = $1
+           OR tcgplayer_product_id::text = $1
+        LIMIT 1
+      `,
+      [cardId]
+    )
+    if (!card?.pt_card_id) return res.status(404).json({ error: 'Card not found' })
 
     await pool.query(
       `
-        INSERT INTO public.tradera_auction_card_links (auction_id, card_id, method, confidence, created_at)
+        INSERT INTO public.tradera_auction_pt_card_links (auction_id, pt_card_id, method, confidence, created_at)
         VALUES ($1, $2, 'manual', 1.0, NOW())
         ON CONFLICT (auction_id)
         DO UPDATE SET
-          card_id = EXCLUDED.card_id,
+          pt_card_id = EXCLUDED.pt_card_id,
           method = 'manual',
           confidence = 1.0,
           created_at = NOW()
       `,
-      [auctionId, cardId]
+      [auctionId, card.pt_card_id]
     )
 
     return res.json({ ok: true })

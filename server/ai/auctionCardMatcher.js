@@ -66,7 +66,7 @@ async function resolveLinkColumns(client) {
       SELECT column_name
       FROM information_schema.columns
       WHERE table_schema = 'public'
-        AND table_name = 'tradera_auction_card_links'
+        AND table_name = 'tradera_auction_pt_card_links'
     `
   )
 
@@ -74,7 +74,7 @@ async function resolveLinkColumns(client) {
   const itemColumn = columnNames.has('item_id') ? 'item_id' : columnNames.has('auction_id') ? 'auction_id' : null
 
   if (!itemColumn) {
-    throw new Error('tradera_auction_card_links is missing item_id/auction_id column')
+    throw new Error('tradera_auction_pt_card_links is missing item_id/auction_id column')
   }
 
   const timestampColumn = columnNames.has('matched_at')
@@ -88,7 +88,7 @@ async function resolveLinkColumns(client) {
   const cardColumn = columnNames.has('pt_card_id') ? 'pt_card_id' : columnNames.has('card_id') ? 'card_id' : null
 
   if (!cardColumn) {
-    throw new Error('tradera_auction_card_links is missing pt_card_id/card_id column')
+    throw new Error('tradera_auction_pt_card_links is missing pt_card_id/card_id column')
   }
 
   const methodColumn = columnNames.has('match_method') ? 'match_method' : columnNames.has('method') ? 'method' : null
@@ -321,7 +321,12 @@ async function matchAuction({ client, auction, apiKey, model, confidenceThreshol
     return {
       matched: false,
       reason: 'no_candidate_cards',
-      details: null
+      details: null,
+      diagnostics: {
+        parsed,
+        setCount: sets.length,
+        cardCount: cards.length
+      }
     }
   }
 
@@ -339,14 +344,24 @@ async function matchAuction({ client, auction, apiKey, model, confidenceThreshol
     return {
       matched: false,
       reason: 'low_confidence',
-      details: match
+      details: match,
+      diagnostics: {
+        parsed,
+        setCount: sets.length,
+        cardCount: cards.length
+      }
     }
   }
 
   return {
     matched: true,
     reason: 'matched',
-    details: match
+    details: match,
+    diagnostics: {
+      parsed,
+      setCount: sets.length,
+      cardCount: cards.length
+    }
   }
 }
 
@@ -381,7 +396,7 @@ async function matchAuctionsWithAi({ client, limit, apiKey, model, itemIds } = {
              a.title,
              a.description
       FROM public.tradera_auctions a
-      LEFT JOIN public.tradera_auction_card_links l
+      LEFT JOIN public.tradera_auction_pt_card_links l
         ON l.${linkColumns.itemColumn} = a.${auctionColumns.keyColumn}
       WHERE ${whereClauses.join(' AND ')}
       ORDER BY a.updated_at DESC NULLS LAST, a.${auctionColumns.itemIdColumn} DESC
@@ -395,7 +410,8 @@ async function matchAuctionsWithAi({ client, limit, apiKey, model, itemIds } = {
     matched: 0,
     skipped: 0,
     skipReasons: {},
-    matchedExamples: []
+    matchedExamples: [],
+    logs: []
   }
 
   const confidenceThreshold = DEFAULT_CONFIDENCE_THRESHOLD
@@ -409,9 +425,22 @@ async function matchAuctionsWithAi({ client, limit, apiKey, model, itemIds } = {
       confidenceThreshold
     })
 
+    summary.logs.push({
+      itemId: row.item_id,
+      stage: 'analysis',
+      message: 'Parsed auction and built candidates',
+      data: result.diagnostics ?? null
+    })
+
     if (!result.matched) {
       summary.skipped += 1
       summary.skipReasons[result.reason] = (summary.skipReasons[result.reason] || 0) + 1
+      summary.logs.push({
+        itemId: row.item_id,
+        stage: 'decision',
+        message: 'Skipped match',
+        data: { reason: result.reason, details: result.details }
+      })
       continue
     }
 
@@ -462,7 +491,7 @@ async function matchAuctionsWithAi({ client, limit, apiKey, model, itemIds } = {
 
     await client.query(
       `
-        INSERT INTO public.tradera_auction_card_links (${insertColumns.join(', ')})
+        INSERT INTO public.tradera_auction_pt_card_links (${insertColumns.join(', ')})
         VALUES (${insertValues.join(', ')})
         ON CONFLICT (${linkColumns.itemColumn}) DO UPDATE SET
           ${updateClauses.join(',\n          ')}
@@ -480,6 +509,13 @@ async function matchAuctionsWithAi({ client, limit, apiKey, model, itemIds } = {
         rationale: result.details.rationale || null
       })
     }
+
+    summary.logs.push({
+      itemId: row.item_id,
+      stage: 'linked',
+      message: 'Linked via title AI',
+      data: { cardId: result.details.cardId, confidence: result.details.confidence }
+    })
   }
 
   return summary
