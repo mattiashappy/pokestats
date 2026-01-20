@@ -157,43 +157,49 @@ async function callVisionModel({ imageUrl, model }) {
     throw new Error('OPENAI_API_KEY is not set')
   }
 
+  const requestBody = {
+    model,
+    input: [
+      {
+        role: 'user',
+        content: [
+          { type: 'input_text', text: buildVisionPrompt() },
+          { type: 'input_image', image_url: imageUrl }
+        ]
+      }
+    ],
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'vision_card_extract',
+        strict: true,
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            card_number: { type: 'string' },
+            name: { type: 'string' },
+            set_name_hint: { type: ['string', 'null'] },
+            language: { type: 'string' },
+            confidence: { type: 'number' }
+          },
+          required: ['card_number', 'name', 'set_name_hint', 'language', 'confidence']
+        }
+      }
+    }
+  }
+
+  if (['1', 'true', 'yes'].includes(String(process.env.AI_VISION_LOG_REQUEST || '').toLowerCase())) {
+    console.info('Vision request payload:', JSON.stringify(requestBody, null, 2))
+  }
+
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      model,
-      input: [
-        {
-          role: 'user',
-          content: [
-            { type: 'input_text', text: buildVisionPrompt() },
-            { type: 'input_image', image_url: imageUrl }
-          ]
-        }
-      ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'vision_card_extract',
-          strict: true,
-          schema: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              card_number: { type: 'string' },
-              name: { type: 'string' },
-              set_name_hint: { type: ['string', 'null'] },
-              language: { type: 'string' },
-              confidence: { type: 'number' }
-            },
-            required: ['card_number', 'name', 'set_name_hint', 'language', 'confidence']
-          }
-        }
-      }
-    })
+    body: JSON.stringify(requestBody)
   })
 
   if (!response.ok) {
@@ -230,6 +236,14 @@ function filterMatchesByName(matches, name) {
   return matches.filter((match) => normalizeName(match.name).includes(normalized))
 }
 
+function isNameCompatible(cardName, extractedName) {
+  if (!extractedName) return true
+  const normalizedExtracted = normalizeName(extractedName)
+  if (!normalizedExtracted) return true
+  const normalizedCard = normalizeName(cardName)
+  return normalizedCard.includes(normalizedExtracted) || normalizedExtracted.includes(normalizedCard)
+}
+
 async function matchPtCard(client, { cardNumber, setHint, name }) {
   if (cardNumber) {
     const { rows } = await client.query(
@@ -243,7 +257,9 @@ async function matchPtCard(client, { cardNumber, setHint, name }) {
     )
 
     if (rows.length === 1) {
-      return { card: rows[0], method: 'vision-number-exact' }
+      if (isNameCompatible(rows[0].name, name)) {
+        return { card: rows[0], method: 'vision-number-exact' }
+      }
     }
 
     if (rows.length > 1) {
