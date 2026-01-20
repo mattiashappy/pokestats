@@ -65,8 +65,9 @@ export function BillingPage(): JSX.Element {
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Seats</TableHead>
                   <TableHead>Plan</TableHead>
+                  <TableHead>Trial / renewal</TableHead>
+                  <TableHead>Collection</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -77,19 +78,30 @@ export function BillingPage(): JSX.Element {
                     <TableCell>
                       <Badge
                         variant={
-                          account.subscription === 'active'
+                          account.subscriptionStatus === 'active'
                             ? 'success'
-                            : account.subscription === 'trialing'
+                            : account.subscriptionStatus === 'trialing'
                               ? 'secondary'
                               : 'warning'
                         }
                       >
-                        {account.subscription}
+                        {account.subscriptionStatus === 'active'
+                          ? 'Paid'
+                          : account.subscriptionStatus === 'trialing'
+                            ? 'Trialing'
+                            : 'Inactive'}
                       </Badge>
                     </TableCell>
-                    <TableCell>{account.seats}</TableCell>
-                    <TableCell className="capitalize">
-                      {account.billingPlan === 'comped' ? 'Comped (admin)' : 'Standard paid'}
+                    <TableCell className="capitalize">{account.billingPlan === 'none' ? 'No plan' : account.billingPlan}</TableCell>
+                    <TableCell className="text-slate-600 dark:text-slate-300">
+                      {account.trialEndsAt
+                        ? `Trial ends ${format(new Date(account.trialEndsAt), 'PPP')}`
+                        : account.lastPaymentAt
+                          ? `Paid on ${format(new Date(account.lastPaymentAt), 'PPP')}`
+                          : '—'}
+                    </TableCell>
+                    <TableCell className="text-slate-600 dark:text-slate-300">
+                      {account.collection.totalCards} cards ({account.collection.uniqueCards} unique)
                     </TableCell>
                   </TableRow>
                 ))}
