@@ -1,4 +1,5 @@
 const { matchAuctionsWithAi, DEFAULT_MODEL } = require('../ai/auctionCardMatcher')
+const { matchAuctionsWithVision, DEFAULT_MODEL: DEFAULT_VISION_MODEL } = require('../ai/auctionImageMatcher')
 
 function parseLimit(value, fallback = null) {
   const numeric = Number(value)
@@ -38,6 +39,36 @@ function registerAiRoutes(app, { pool }) {
       return res.json(result)
     } catch (error) {
       console.error('Failed to match auctions with AI', error)
+      return res.status(500).json({ error: 'Failed to match auctions' })
+    } finally {
+      client.release()
+    }
+  })
+
+  app.post('/api/ai/tradera/vision-match', async (req, res) => {
+    if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+    const apiKey = process.env.OPEN_AI || process.env.OPENAI_API_KEY
+    if (!apiKey) {
+      return res.status(500).json({ error: 'OPEN_AI not set' })
+    }
+
+    const itemIds = parseItemIds(req.body?.itemIds)
+    const model = req.body?.model || DEFAULT_VISION_MODEL
+    const minConfidence = req.body?.minConfidence
+    const client = await pool.connect()
+
+    try {
+      const result = await matchAuctionsWithVision({
+        client,
+        apiKey,
+        model,
+        itemIds,
+        minConfidence
+      })
+      return res.json(result)
+    } catch (error) {
+      console.error('Failed to match auctions with vision', error)
       return res.status(500).json({ error: 'Failed to match auctions' })
     } finally {
       client.release()
