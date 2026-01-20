@@ -18,6 +18,32 @@ function createExpansionService({
     return Boolean(rows?.[0]?.pt_sets && rows?.[0]?.pt_cards)
   }
 
+  async function ensureLanguageColumns() {
+    if (!pool) return { ptSetsLanguageAvailable: false, expansionsLanguageAvailable: false }
+
+    const now = Date.now()
+    if (now - languageColumnsCheckedAt < LANGUAGE_CACHE_TTL_MS) {
+      return { ptSetsLanguageAvailable, expansionsLanguageAvailable }
+    }
+
+    languageColumnsCheckedAt = now
+
+    const { rows } = await pool.query(
+      `
+        SELECT table_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND column_name = 'language'
+          AND table_name IN ('pt_sets', 'expansions')
+      `
+    )
+
+    ptSetsLanguageAvailable = rows.some((row) => row.table_name === 'pt_sets')
+    expansionsLanguageAvailable = rows.some((row) => row.table_name === 'expansions')
+
+    return { ptSetsLanguageAvailable, expansionsLanguageAvailable }
+  }
+
   async function fetchExpansionSummaries() {
     if (!pool) return []
 
@@ -26,6 +52,15 @@ function createExpansionService({
         ? await ensureTraderaAuctionLinksTableAvailable()
         : false
       const priceTrackerReady = await ensurePriceTrackerTablesAvailable()
+      const { ptSetsLanguageAvailable, expansionsLanguageAvailable } = await ensureLanguageColumns()
+      const ptLanguageSelect = ptSetsLanguageAvailable ? 's.language' : 'NULL::text'
+      const expansionLanguageSelect = ptSetsLanguageAvailable
+        ? expansionsLanguageAvailable
+          ? 'COALESCE(s.language, e.language)'
+          : 's.language'
+        : expansionsLanguageAvailable
+          ? 'e.language'
+          : 'NULL::text'
 
       if (priceTrackerReady) {
         const { rows } = await pool.query(`
@@ -45,7 +80,7 @@ function createExpansionService({
             s.pt_set_id AS pt_set_id,
             s.name AS name,
             s.series AS era,
-            NULL::text AS language,
+            ${ptLanguageSelect} AS language,
             s.card_count AS set_number,
             s.card_count AS cards_in_set,
             COALESCE(s.card_count, pt_counts.cards_total) AS set_total,
@@ -93,7 +128,7 @@ function createExpansionService({
           e.set_code,
           COALESCE(s.name, e.set_name) AS name,
           e.era AS era,
-          NULL::text AS language,
+          ${expansionLanguageSelect} AS language,
           COALESCE(s.card_count, e.base_total) AS set_number,
           COALESCE(s.card_count, e.base_total) AS cards_in_set,
           COALESCE(e.set_total, s.card_count, pt_counts.cards_total) AS set_total,
@@ -144,7 +179,7 @@ function createExpansionService({
           e.set_code,
           e.set_name AS name,
           e.era AS era,
-          NULL::text AS language,
+          ${expansionsLanguageAvailable ? 'e.language' : 'NULL::text'} AS language,
           e.base_total AS set_number,
           e.base_total AS cards_in_set,
           e.set_total AS set_total,

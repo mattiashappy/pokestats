@@ -26,6 +26,7 @@ export type CardResponse = {
   card_number: string | null
   price_market: number | null
   image_url: string | null
+  language: string | null
   product_details: string | null
   expansion_id: number | null
   created_at: string | null

@@ -284,6 +284,7 @@ function mapPriceTrackerCard(card, { expansion = null, setCodeOverride = null } 
     card_number: card?.cardNumber ?? null,
     price_market: card?.prices?.market ?? null,
     image_url: imageUrl,
+    language: card?.language ?? 'English',
     product_details: buildPriceTrackerProductDetails(card),
     expansion_id: expansion?.id ?? null,
     created_at: null
@@ -315,6 +316,12 @@ let hasCheckedErasTable = false
 let erasTableAvailable = false
 let ptTablesAvailable = false
 let ptTablesCheckedAt = 0
+let ptLanguageColumnsCheckedAt = 0
+let ptSetsLanguageAvailable = false
+let ptCardsLanguageAvailable = false
+let localLanguageColumnsCheckedAt = 0
+let expansionsLanguageAvailable = false
+let cardsLanguageAvailable = false
 const PT_CACHE_TTL_MS = 60_000
 
 async function ensureColumnExists(tableName, columnName, definition) {
@@ -338,6 +345,21 @@ async function ensureColumnExists(tableName, columnName, definition) {
     console.error(`Failed to add ${columnName} column to ${tableName}`, error)
     return false
   }
+}
+
+async function hasColumn(tableName, columnName) {
+  const { rows } = await pool.query(
+    `
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema='public'
+        AND table_name = $1
+        AND column_name = $2
+      LIMIT 1
+    `,
+    [tableName, columnName]
+  )
+  return rows.length > 0
 }
 
 async function ensureIndexExists(tableName, indexName, definition) {
@@ -658,6 +680,53 @@ async function ensurePriceTrackerImportTablesAvailable() {
   return ptTablesAvailable
 }
 
+async function ensurePtLanguageColumns() {
+  if (!pool) return { ptSetsLanguageAvailable: false, ptCardsLanguageAvailable: false }
+
+  const now = Date.now()
+  if (now - ptLanguageColumnsCheckedAt < PT_CACHE_TTL_MS) {
+    return { ptSetsLanguageAvailable, ptCardsLanguageAvailable }
+  }
+
+  ptLanguageColumnsCheckedAt = now
+
+  const { rows } = await pool.query(
+    `
+      SELECT table_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND column_name = 'language'
+        AND table_name IN ('pt_sets', 'pt_cards')
+    `
+  )
+
+  ptSetsLanguageAvailable = rows.some((row) => row.table_name === 'pt_sets')
+  ptCardsLanguageAvailable = rows.some((row) => row.table_name === 'pt_cards')
+
+  return { ptSetsLanguageAvailable, ptCardsLanguageAvailable }
+}
+
+async function ensureLocalLanguageColumns() {
+  if (!pool) return { expansionsLanguageAvailable: false, cardsLanguageAvailable: false }
+
+  const now = Date.now()
+  if (now - localLanguageColumnsCheckedAt < PT_CACHE_TTL_MS) {
+    return { expansionsLanguageAvailable, cardsLanguageAvailable }
+  }
+
+  localLanguageColumnsCheckedAt = now
+
+  const [expansionsHasLanguage, cardsHasLanguage] = await Promise.all([
+    hasColumn('expansions', 'language'),
+    hasColumn('cards', 'language')
+  ])
+
+  expansionsLanguageAvailable = expansionsHasLanguage
+  cardsLanguageAvailable = cardsHasLanguage
+
+  return { expansionsLanguageAvailable, cardsLanguageAvailable }
+}
+
 async function ensureCardInfrastructure() {
   if (!pool) return false
   if (ensureCardInfrastructurePromise) return ensureCardInfrastructurePromise
@@ -873,6 +942,15 @@ async function fetchCardFromDatabase(cardId) {
   const ok = await ensureCardInfrastructure()
   if (!ok) return null
 
+  const { expansionsLanguageAvailable, cardsLanguageAvailable } = await ensureLocalLanguageColumns()
+  const languageSelect = cardsLanguageAvailable
+    ? expansionsLanguageAvailable
+      ? 'COALESCE(c.language, e.language) AS language'
+      : 'c.language AS language'
+    : expansionsLanguageAvailable
+      ? 'e.language AS language'
+      : 'NULL::text AS language'
+
   const query = `
     SELECT
       c.id,
@@ -884,6 +962,7 @@ async function fetchCardFromDatabase(cardId) {
       c.collector_number_raw AS card_number,
       NULL::numeric AS price_market,
       c.image_url,
+      ${languageSelect},
       NULL::text AS product_details,
       c.created_at,
       c.expansion_id
@@ -1190,11 +1269,19 @@ async function fetchCardsListFromDatabase({ setCode = null, expansionId = null }
   const ok = await ensureCardInfrastructure()
   if (!ok) return []
 
+  const { expansionsLanguageAvailable, cardsLanguageAvailable } = await ensureLocalLanguageColumns()
   const [linksReady, auctionsReady] = await Promise.all([
     ensureTraderaAuctionLinksTableAvailable(),
     ensureTraderaAuctionsTableAvailable()
   ])
   const canJoinAuctions = linksReady && auctionsReady
+  const languageSelect = cardsLanguageAvailable
+    ? expansionsLanguageAvailable
+      ? 'COALESCE(c.language, e.language) AS language'
+      : 'c.language AS language'
+    : expansionsLanguageAvailable
+      ? 'e.language AS language'
+      : 'NULL::text AS language'
 
   let whereClause = ''
   const params = []
@@ -1221,6 +1308,7 @@ async function fetchCardsListFromDatabase({ setCode = null, expansionId = null }
       c.collector_number_raw AS card_number,
       NULL::numeric AS price_market,
       c.image_url,
+      ${languageSelect},
       NULL::text AS product_details,
       c.created_at,
       c.expansion_id,
@@ -1242,6 +1330,15 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
   if (!pool) return []
   const ok = await ensurePriceTrackerImportTablesAvailable()
   if (!ok) return []
+
+  const { ptSetsLanguageAvailable, ptCardsLanguageAvailable } = await ensurePtLanguageColumns()
+  const languageSelect = ptCardsLanguageAvailable
+    ? ptSetsLanguageAvailable
+      ? 'COALESCE(c.language, s.language) AS language'
+      : 'c.language AS language'
+    : ptSetsLanguageAvailable
+      ? 's.language AS language'
+      : 'NULL::text AS language'
 
   const params = []
   const clauses = []
@@ -1300,6 +1397,7 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
       c.price_market,
       COALESCE(c.image_cdn_url800, c.image_cdn_url400, c.image_cdn_url200, c.image_cdn_url) AS image_url,
       c.tcgplayer_product_id,
+      ${languageSelect},
       NULL::text AS product_details,
       c.updated_at AS created_at,
       NULL::int AS expansion_id,
@@ -1329,6 +1427,15 @@ async function fetchCardFromPtImport(cardId) {
   const ok = await ensurePriceTrackerImportTablesAvailable()
   if (!ok) return null
 
+  const { ptSetsLanguageAvailable, ptCardsLanguageAvailable } = await ensurePtLanguageColumns()
+  const languageSelect = ptCardsLanguageAvailable
+    ? ptSetsLanguageAvailable
+      ? 'COALESCE(c.language, s.language) AS language'
+      : 'c.language AS language'
+    : ptSetsLanguageAvailable
+      ? 's.language AS language'
+      : 'NULL::text AS language'
+
   const query = `
     SELECT
       c.pt_card_id AS id,
@@ -1344,6 +1451,7 @@ async function fetchCardFromPtImport(cardId) {
       c.card_number AS card_number,
       COALESCE(c.image_cdn_url800, c.image_cdn_url400, c.image_cdn_url200, c.image_cdn_url) AS image_url,
       c.tcgplayer_product_id,
+      ${languageSelect},
       c.rarity,
       c.card_type,
       c.hp,
@@ -1377,6 +1485,7 @@ async function fetchCardFromPtImport(cardId) {
     set_total: row.set_total ?? null,
     card_number: row.card_number ?? null,
     image_url: row.image_url ?? null,
+    language: row.language ?? null,
     product_details: buildPtCardDetails(row),
     expansion_id: null,
     created_at: row.created_at ?? null,
