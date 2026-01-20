@@ -24,18 +24,12 @@ export function SignupPage(): JSX.Element {
     handleSubmit,
     formState: { errors, isSubmitting }
   } = useForm<z.infer<typeof signupSchema>>({
-    resolver: zodResolver(signupSchema),
-    defaultValues: {
-      name: 'Ash Ketchum',
-      email: 'ash@pokestats.app',
-      password: 'password'
-    }
+    resolver: zodResolver(signupSchema)
   })
 
   const onSubmit = async (data: z.infer<typeof signupSchema>): Promise<void> => {
     await signup(data.name, data.email, data.password)
-    const path = data.email.toLowerCase() === 'ash@pokestats.app' ? '/app' : '/dashboard'
-    navigate(path, { replace: true })
+    navigate('/dashboard', { replace: true })
   }
 
   return (
