@@ -1,5 +1,10 @@
 const { resolveEraCode } = require('../era')
 
+let languageColumnsCheckedAt = 0
+let ptSetsLanguageAvailable = false
+let expansionsLanguageAvailable = false
+const LANGUAGE_CACHE_TTL_MS = 5 * 60 * 1000
+
 function createExpansionService({
   pool,
   ensureCardInfrastructure,
@@ -48,6 +53,10 @@ function createExpansionService({
     if (!pool) return []
 
     try {
+      const { ptSetsLanguageAvailable, expansionsLanguageAvailable } = await ensureLanguageColumns()
+      const ptLanguageSelect = ptSetsLanguageAvailable ? 's.language' : 'NULL::text'
+      const expansionLanguageSelect = expansionsLanguageAvailable ? 'e.language' : 'NULL::text'
+
       const linksReady = ensureTraderaAuctionLinksTableAvailable
         ? await ensureTraderaAuctionLinksTableAvailable()
         : false
@@ -148,7 +157,9 @@ function createExpansionService({
             card_count,
             release_date,
             image_cdn_url,
+            image_cdn_url200,
             image_cdn_url400,
+            image_cdn_url800,
             image_url,
             pt_set_id
           FROM public.pt_sets
@@ -167,8 +178,11 @@ function createExpansionService({
           s.card_count,
           s.release_date,
           s.image_cdn_url,
+          s.image_cdn_url200,
           s.image_cdn_url400,
+          s.image_cdn_url800,
           s.image_url,
+          s.pt_set_id,
           pt_counts.cards_total,
           pt_market_totals.market_total
         ORDER BY e.set_name NULLS LAST, e.set_code NULLS LAST
