@@ -5,10 +5,6 @@ function createExpansionService({
   ensureCardInfrastructure,
   ensureTraderaAuctionLinksTableAvailable
 }) {
-  let languageColumnsCheckedAt = 0
-  let ptSetsLanguageAvailable = false
-  let expansionsLanguageAvailable = false
-  const LANGUAGE_CACHE_TTL_MS = 60_000
 
   async function ensurePriceTrackerTablesAvailable() {
     if (!pool) return false
