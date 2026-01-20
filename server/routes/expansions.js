@@ -51,16 +51,14 @@ function createExpansionService({
       const linksReady = ensureTraderaAuctionLinksTableAvailable
         ? await ensureTraderaAuctionLinksTableAvailable()
         : false
-      const priceTrackerReady = await ensurePriceTrackerTablesAvailable()
-      const { ptSetsLanguageAvailable, expansionsLanguageAvailable } = await ensureLanguageColumns()
-      const ptLanguageSelect = ptSetsLanguageAvailable ? 's.language' : 'NULL::text'
-      const expansionLanguageSelect = ptSetsLanguageAvailable
-        ? expansionsLanguageAvailable
-          ? 'COALESCE(s.language, e.language)'
-          : 's.language'
-        : expansionsLanguageAvailable
-          ? 'e.language'
-          : 'NULL::text'
+      let priceTrackerReady = await ensurePriceTrackerTablesAvailable()
+
+      if (priceTrackerReady) {
+        const { rows: ptSetRows } = await pool.query(`SELECT COUNT(*)::int AS total FROM public.pt_sets`)
+        if ((ptSetRows?.[0]?.total ?? 0) === 0) {
+          priceTrackerReady = false
+        }
+      }
 
       if (priceTrackerReady) {
         const { rows } = await pool.query(`
