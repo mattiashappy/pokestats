@@ -193,12 +193,38 @@ export type AiMatchExample = {
   rationale: string | null
 }
 
+export type MatchLogEntry = {
+  itemId: number
+  stage: string
+  message: string
+  data?: unknown
+}
+
 export type AiMatchSummary = {
   scanned: number
   matched: number
   skipped: number
   skipReasons: Record<string, number>
   matchedExamples: AiMatchExample[]
+  logs: MatchLogEntry[]
+}
+
+export type VisionMatchExample = {
+  itemId: number
+  title: string | null
+  cardId: string
+  confidence: number
+  method: string
+}
+
+export type VisionMatchSummary = {
+  scanned: number
+  matched: number
+  linked: number
+  skipped: number
+  skipReasons: Record<string, number>
+  matchedExamples: VisionMatchExample[]
+  logs: MatchLogEntry[]
 }
 
 export type AuctionCardLink = {
@@ -342,6 +368,25 @@ export async function runAiMatch(itemIds: number[], model?: string): Promise<AiM
     body: JSON.stringify(body)
   })
   if (!res.ok) throw new Error('Failed to run AI match')
+  return res.json()
+}
+
+export async function runVisionMatch(
+  itemIds: number[],
+  options: { model?: string; minConfidence?: number } = {}
+): Promise<VisionMatchSummary> {
+  const normalizedIds = Array.from(new Set(itemIds)).filter((id) => Number.isFinite(Number(id)))
+  const body = {
+    itemIds: normalizedIds,
+    model: options.model,
+    minConfidence: options.minConfidence
+  }
+  const res = await fetch('/api/ai/tradera/vision-match', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  if (!res.ok) throw new Error('Failed to run vision match')
   return res.json()
 }
 

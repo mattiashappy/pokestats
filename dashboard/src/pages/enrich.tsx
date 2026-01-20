@@ -17,6 +17,7 @@ import {
   linkAuctionToCard,
   runAiMatch,
   runTraderaLink,
+  runVisionMatch,
   searchCards
 } from '../lib/api'
 import type {
@@ -24,9 +25,11 @@ import type {
   AuctionCardLink,
   CardSearchResult,
   LinkingStats,
+  MatchLogEntry,
   TraderaLinkSummary,
   UnlinkedAuction
 } from '../lib/api'
+import type { VisionMatchSummary } from '../lib/api'
 
 const formatCardLabel = (link: AuctionCardLink): string => {
   const parts = [link.cardName, link.cardNumber].filter(Boolean)
@@ -112,8 +115,12 @@ export function EnrichPage(): JSX.Element {
   const [aiSummary, setAiSummary] = useState<AiMatchSummary | null>(null)
   const [aiPending, setAiPending] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
-  const [aiProgress, setAiProgress] = useState<{ completed: number; total: number } | null>(null)
+  const [visionSummary, setVisionSummary] = useState<VisionMatchSummary | null>(null)
+  const [visionPending, setVisionPending] = useState(false)
+  const [visionError, setVisionError] = useState<string | null>(null)
+  const [enrichProgress, setEnrichProgress] = useState<{ completed: number; total: number } | null>(null)
   const [selectedAiAuctionIds, setSelectedAiAuctionIds] = useState<number[]>([])
+  const [enrichLogs, setEnrichLogs] = useState<MatchLogEntry[]>([])
   const [selectedSkipReason, setSelectedSkipReason] = useState('set_total_mismatch')
   const [searchOpen, setSearchOpen] = useState(false)
   const [selectedAuction, setSelectedAuction] = useState<UnlinkedAuction | null>(null)
@@ -122,7 +129,6 @@ export function EnrichPage(): JSX.Element {
   const [manualLinkPending, setManualLinkPending] = useState(false)
   const [manualLinkError, setManualLinkError] = useState<string | null>(null)
   const [manualLinkSuccess, setManualLinkSuccess] = useState<string | null>(null)
-  const [activeLinkView, setActiveLinkView] = useState<'linked' | 'unlinked' | 'ready'>('linked')
   const [languageFilter, setLanguageFilter] = useState('all')
   const [unlinkedPage, setUnlinkedPage] = useState(1)
 
@@ -147,7 +153,10 @@ export function EnrichPage(): JSX.Element {
     setAiError(null)
     setAiPending(true)
     setAiSummary(null)
-    setAiProgress({ completed: 0, total: auctionIds.length })
+    setVisionSummary(null)
+    setVisionError(null)
+    setEnrichLogs([])
+    setEnrichProgress({ completed: 0, total: auctionIds.length })
     try {
       const batchSize = 10
       const batches = []
@@ -160,7 +169,8 @@ export function EnrichPage(): JSX.Element {
         matched: 0,
         skipped: 0,
         skipReasons: {},
-        matchedExamples: []
+        matchedExamples: [],
+        logs: []
       }
 
       for (const batch of batches) {
@@ -172,18 +182,20 @@ export function EnrichPage(): JSX.Element {
           combined.skipReasons[reason] = (combined.skipReasons[reason] || 0) + count
         }
         combined.matchedExamples.push(...result.matchedExamples)
-        setAiProgress((prev) =>
+        combined.logs.push(...(result.logs ?? []))
+        setEnrichProgress((prev) =>
           prev ? { ...prev, completed: Math.min(prev.total, prev.completed + batch.length) } : prev
         )
       }
 
       setAiSummary(combined)
+      setEnrichLogs(combined.logs)
       await Promise.all([refetchLinks(), refetchUnlinked()])
     } catch (error) {
       setAiError(`AI matching failed: ${String(error)}`)
     } finally {
       setAiPending(false)
-      setAiProgress(null)
+      setEnrichProgress(null)
     }
   }
 
@@ -193,15 +205,63 @@ export function EnrichPage(): JSX.Element {
     setSelectedAiAuctionIds([])
   }
 
-  const handleRunAllAiMatch = async (): Promise<void> => {
-    const allIds = unlinkedAuctions.map((auction) => auction.itemId)
-    if (!allIds.length) return
-    const confirmed = window.confirm(
-      `Run AI matching for all ${allIds.length.toLocaleString('sv-SE')} unlinked auctions?`
-    )
-    if (!confirmed) return
+  const runVisionMatchForIds = async (auctionIds: number[]): Promise<void> => {
+    if (!auctionIds.length) return
+    setVisionError(null)
+    setVisionPending(true)
+    setVisionSummary(null)
+    setAiSummary(null)
+    setAiError(null)
+    setEnrichLogs([])
+    setEnrichProgress({ completed: 0, total: auctionIds.length })
+    try {
+      const batchSize = 5
+      const batches = []
+      for (let i = 0; i < auctionIds.length; i += batchSize) {
+        batches.push(auctionIds.slice(i, i + batchSize))
+      }
+
+      const combined: VisionMatchSummary = {
+        scanned: 0,
+        matched: 0,
+        linked: 0,
+        skipped: 0,
+        skipReasons: {},
+        matchedExamples: [],
+        logs: []
+      }
+
+      for (const batch of batches) {
+        const result = await runVisionMatch(batch)
+        combined.scanned += result.scanned
+        combined.matched += result.matched
+        combined.linked += result.linked
+        combined.skipped += result.skipped
+        for (const [reason, count] of Object.entries(result.skipReasons)) {
+          combined.skipReasons[reason] = (combined.skipReasons[reason] || 0) + count
+        }
+        combined.matchedExamples.push(...result.matchedExamples)
+        combined.logs.push(...(result.logs ?? []))
+        setEnrichProgress((prev) =>
+          prev ? { ...prev, completed: Math.min(prev.total, prev.completed + batch.length) } : prev
+        )
+      }
+
+      setVisionSummary(combined)
+      setEnrichLogs(combined.logs)
+      await Promise.all([refetchLinks(), refetchUnlinked()])
+    } catch (error) {
+      setVisionError(`Vision matching failed: ${String(error)}`)
+    } finally {
+      setVisionPending(false)
+      setEnrichProgress(null)
+    }
+  }
+
+  const handleRunVisionMatch = async (): Promise<void> => {
+    if (!selectedAiAuctionIds.length) return
+    await runVisionMatchForIds(selectedAiAuctionIds)
     setSelectedAiAuctionIds([])
-    await runAiMatchForIds(allIds)
   }
 
   const links = linkData ?? []
@@ -215,9 +275,6 @@ export function EnrichPage(): JSX.Element {
       return left.itemId - right.itemId
     })
   }, [unlinkedAuctions])
-  const sortedReadyToLinkAuctions = useMemo(() => {
-    return sortedUnlinkedAuctions.filter((auction) => buildDiagnostics(auction).length === 0)
-  }, [sortedUnlinkedAuctions])
   const {
     data: cardSearchResults,
     isLoading: cardSearchLoading,
@@ -231,19 +288,18 @@ export function EnrichPage(): JSX.Element {
     const linkedCards = links.filter((link) => link.cardId).length
     return {
       linkedCards,
-      unlinkedCards: linkingStats?.unlinked ?? unlinkedAuctions.length,
-      readyToLink: sortedReadyToLinkAuctions.length
+      unlinkedCards: linkingStats?.unlinked ?? unlinkedAuctions.length
     }
-  }, [links, linkingStats?.unlinked, unlinkedAuctions.length, sortedReadyToLinkAuctions.length])
+  }, [links, linkingStats?.unlinked, unlinkedAuctions.length])
   const visibleUnlinkedAuctions = useMemo(() => {
-    const base = activeLinkView === 'ready' ? sortedReadyToLinkAuctions : sortedUnlinkedAuctions
+    const base = sortedUnlinkedAuctions
     if (languageFilter === 'all') return base
     const normalizedFilter = languageFilter.toLowerCase()
     return base.filter((auction) => {
       const normalizedLanguage = normalizeLanguage(auction.pokemonLanguage).toLowerCase()
       return normalizedLanguage === normalizedFilter
     })
-  }, [activeLinkView, languageFilter, sortedReadyToLinkAuctions, sortedUnlinkedAuctions])
+  }, [languageFilter, sortedUnlinkedAuctions])
   const pagedUnlinkedAuctions = useMemo(() => {
     const start = (unlinkedPage - 1) * pageSize
     return visibleUnlinkedAuctions.slice(start, start + pageSize)
@@ -252,16 +308,6 @@ export function EnrichPage(): JSX.Element {
   const selectedAiSet = useMemo(() => new Set(selectedAiAuctionIds), [selectedAiAuctionIds])
   const allPageSelected = visiblePageIds.length > 0 && visiblePageIds.every((id) => selectedAiSet.has(id))
   const totalUnlinkedPages = Math.max(1, Math.ceil(visibleUnlinkedAuctions.length / pageSize))
-  const activeCount = activeLinkView === 'linked'
-    ? counts.linkedCards
-    : activeLinkView === 'ready'
-      ? counts.readyToLink
-      : counts.unlinkedCards
-  const activeCountLabel = activeLinkView === 'linked'
-    ? 'linked cards'
-    : activeLinkView === 'ready'
-      ? 'ready to link'
-      : 'unlinked auctions'
   const skipReasonEntries = useMemo(() => {
     if (!linkSummary) return []
     const knownReasons = orderedSkipReasons.map((reason) => [reason, linkSummary.skipReasons[reason] ?? 0] as const)
@@ -307,10 +353,7 @@ export function EnrichPage(): JSX.Element {
 
   useEffect(() => {
     setUnlinkedPage(1)
-    if (activeLinkView === 'linked') {
-      setSelectedAiAuctionIds([])
-    }
-  }, [activeLinkView, languageFilter])
+  }, [languageFilter])
 
   useEffect(() => {
     if (unlinkedPage <= totalUnlinkedPages) return
@@ -543,38 +586,41 @@ export function EnrichPage(): JSX.Element {
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>AI Matching</CardTitle>
-          <CardDescription>
-            Run the AI model on selected unlinked auctions so you control spend and scope. Requests are batched
-            to avoid timeouts.
-          </CardDescription>
+        <CardHeader className="flex flex-col gap-2 space-y-0 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <CardTitle>Unlinked auctions</CardTitle>
+            <CardDescription>Select auctions, then choose which enrichment model to run.</CardDescription>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge variant="outline">{counts.unlinkedCards.toLocaleString('sv-SE')} unlinked</Badge>
+            <Badge variant="secondary">{selectedAiAuctionIds.length.toLocaleString('sv-SE')} selected</Badge>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-slate-600 dark:text-slate-400">
               {selectedAiAuctionIds.length
                 ? `${selectedAiAuctionIds.length.toLocaleString('sv-SE')} auction(s) selected.`
-                : 'Select auctions from the list below to run the AI matcher.'}
+                : 'Select auctions from the table below to run enrichment.'}
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={handleRunAiMatch} disabled={aiPending || selectedAiAuctionIds.length === 0}>
-                {aiPending ? 'Matching…' : 'Run AI matching'}
+              <Button onClick={handleRunAiMatch} disabled={aiPending || visionPending || selectedAiAuctionIds.length === 0}>
+                {aiPending ? 'Running title AI…' : 'Run title AI'}
               </Button>
               <Button
                 variant="secondary"
-                onClick={handleRunAllAiMatch}
-                disabled={aiPending || !unlinkedAuctions.length}
+                onClick={handleRunVisionMatch}
+                disabled={aiPending || visionPending || selectedAiAuctionIds.length === 0}
               >
-                Run all unlinked
+                {visionPending ? 'Running image AI…' : 'Run image AI'}
               </Button>
             </div>
           </div>
 
-          {aiProgress ? (
+          {enrichProgress ? (
             <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
-              Processed {aiProgress.completed.toLocaleString('sv-SE')} of{' '}
-              {aiProgress.total.toLocaleString('sv-SE')} selected auctions.
+              Processed {enrichProgress.completed.toLocaleString('sv-SE')} of{' '}
+              {enrichProgress.total.toLocaleString('sv-SE')} selected auctions.
             </div>
           ) : null}
 
@@ -584,28 +630,261 @@ export function EnrichPage(): JSX.Element {
             </div>
           ) : null}
 
-          {aiSummary ? (
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Matched</p>
-                <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                  {aiSummary.matched.toLocaleString('sv-SE')}
-                </p>
-              </div>
-              <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Skipped</p>
-                <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                  {aiSummary.skipped.toLocaleString('sv-SE')}
-                </p>
-              </div>
-              <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Scanned</p>
-                <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                  {aiSummary.scanned.toLocaleString('sv-SE')}
-                </p>
-              </div>
+          {visionError ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-100">
+              {visionError}
             </div>
           ) : null}
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Title AI summary</p>
+              {aiSummary ? (
+                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs text-slate-500">Matched</p>
+                    <p className="font-semibold text-slate-900 dark:text-slate-50">
+                      {aiSummary.matched.toLocaleString('sv-SE')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Skipped</p>
+                    <p className="font-semibold text-slate-900 dark:text-slate-50">
+                      {aiSummary.skipped.toLocaleString('sv-SE')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Scanned</p>
+                    <p className="font-semibold text-slate-900 dark:text-slate-50">
+                      {aiSummary.scanned.toLocaleString('sv-SE')}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-slate-500">No title AI run yet.</p>
+              )}
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Image AI summary</p>
+              {visionSummary ? (
+                <div className="mt-2 grid gap-2 sm:grid-cols-4">
+                  <div>
+                    <p className="text-xs text-slate-500">Matched</p>
+                    <p className="font-semibold text-slate-900 dark:text-slate-50">
+                      {visionSummary.matched.toLocaleString('sv-SE')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Linked</p>
+                    <p className="font-semibold text-slate-900 dark:text-slate-50">
+                      {visionSummary.linked.toLocaleString('sv-SE')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Skipped</p>
+                    <p className="font-semibold text-slate-900 dark:text-slate-50">
+                      {visionSummary.skipped.toLocaleString('sv-SE')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Scanned</p>
+                    <p className="font-semibold text-slate-900 dark:text-slate-50">
+                      {visionSummary.scanned.toLocaleString('sv-SE')}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-slate-500">No image AI run yet.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Enrichment logs</p>
+            {enrichLogs.length ? (
+              <div className="mt-2 max-h-64 space-y-2 overflow-y-auto">
+                {enrichLogs.map((entry, index) => (
+                  <div key={`${entry.itemId}-${entry.stage}-${index}`} className="rounded-md bg-slate-50 p-2">
+                    <p className="text-xs font-semibold text-slate-700">
+                      #{entry.itemId} · {entry.stage}
+                    </p>
+                    <p className="text-xs text-slate-600">{entry.message}</p>
+                    {entry.data ? (
+                      <pre className="mt-1 whitespace-pre-wrap text-[11px] text-slate-500">
+                        {JSON.stringify(entry.data, null, 2)}
+                      </pre>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-slate-500">Run an enrichment model to see logs here.</p>
+            )}
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-slate-900/80">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-300">
+              <div className="flex flex-wrap items-center gap-3">
+                <Label htmlFor="language-filter" className="text-xs uppercase tracking-wide text-slate-500">
+                  Language
+                </Label>
+                <select
+                  id="language-filter"
+                  className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
+                  value={languageFilter}
+                  onChange={(event) => setLanguageFilter(event.target.value)}
+                >
+                  <option value="all">All languages</option>
+                  {languageOptions.map((language) => (
+                    <option key={language} value={language}>
+                      {language}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-slate-300"
+                    checked={allPageSelected}
+                    onChange={toggleSelectAllPage}
+                    aria-label="Select all auctions on this page"
+                  />
+                  <span>Select page</span>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <span>
+                  Showing {(pagedUnlinkedAuctions.length
+                    ? (unlinkedPage - 1) * pageSize + 1
+                    : 0).toLocaleString('sv-SE')}
+                  –
+                  {Math.min(unlinkedPage * pageSize, visibleUnlinkedAuctions.length).toLocaleString('sv-SE')} of{' '}
+                  {visibleUnlinkedAuctions.length.toLocaleString('sv-SE')}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={unlinkedPage <= 1}
+                    onClick={() => setUnlinkedPage((prev) => Math.max(1, prev - 1))}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={unlinkedPage >= totalUnlinkedPages}
+                    onClick={() => setUnlinkedPage((prev) => Math.min(totalUnlinkedPages, prev + 1))}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10 text-left">Select</TableHead>
+                  <TableHead className="text-left">Auction</TableHead>
+                  <TableHead className="text-left">Era</TableHead>
+                  <TableHead className="text-left">Language</TableHead>
+                  <TableHead className="text-left">Condition</TableHead>
+                  <TableHead className="text-left">Detected card #</TableHead>
+                  <TableHead className="text-left">Detected set</TableHead>
+                  <TableHead className="text-left">Diagnostics</TableHead>
+                  <TableHead className="text-left">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pagedUnlinkedAuctions.length ? (
+                  pagedUnlinkedAuctions.map((auction) => {
+                    const diagnostics = buildDiagnostics(auction)
+                    const isSelected = selectedAiSet.has(auction.itemId)
+
+                    return (
+                      <TableRow key={auction.itemId}>
+                        <TableCell className="text-left">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-slate-300"
+                            checked={isSelected}
+                            onChange={() => toggleAiSelection(auction.itemId)}
+                            aria-label={`Select auction ${auction.itemId}`}
+                          />
+                        </TableCell>
+                        <TableCell className="text-left">
+                          <div className="space-y-1">
+                            {auction.itemUrl ? (
+                              <a
+                                href={auction.itemUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-semibold text-indigo-600 hover:underline"
+                              >
+                                {auction.title ?? `Auction #${auction.itemId}`}
+                              </a>
+                            ) : (
+                              <p className="font-semibold text-slate-900 dark:text-slate-50">
+                                {auction.title ?? `Auction #${auction.itemId}`}
+                              </p>
+                            )}
+                            <p className="text-xs text-slate-600 dark:text-slate-400">
+                              Item #{auction.itemId}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                          {auction.pokemonEra ?? '—'}
+                        </TableCell>
+                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                          {auction.pokemonLanguage ?? '—'}
+                        </TableCell>
+                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                          {auction.itemCondition ?? '—'}
+                        </TableCell>
+                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                          {auction.detectedCollectorNumber ?? '—'}
+                        </TableCell>
+                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                          {formatDetectedExpansion(auction)}
+                        </TableCell>
+                        <TableCell className="text-left">
+                          {diagnostics.length ? (
+                            <div className="flex flex-wrap gap-2">
+                              {diagnostics.map((note) => (
+                                <Badge key={note} variant="secondary" className="whitespace-nowrap">
+                                  {note}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <Badge variant="outline">Ready to link</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-left">
+                          <Button variant="secondary" size="sm" onClick={() => handleOpenSearch(auction)}>
+                            Search for card
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center text-sm text-slate-500">
+                      {unlinkedLoading
+                        ? 'Loading unlinked auctions…'
+                        : unlinkedError
+                          ? 'Unable to load unlinked auctions.'
+                          : 'No unlinked auctions found.'}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
@@ -614,301 +893,81 @@ export function EnrichPage(): JSX.Element {
           <div className="min-w-0">
             <CardTitle className="flex items-center gap-2">
               <Link2 className="h-5 w-5 text-indigo-500" />
-              Auction-to-card links
+              Linked auctions
             </CardTitle>
             <CardDescription>Snapshots of the enrichment table linking auctions to cards.</CardDescription>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <Badge variant="outline">
-              {activeCount.toLocaleString('sv-SE')} {activeCountLabel}
-            </Badge>
+            <Badge variant="outline">{counts.linkedCards.toLocaleString('sv-SE')} linked</Badge>
           </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <button
-              type="button"
-              onClick={() => setActiveLinkView('linked')}
-              className={`rounded-lg p-3 text-left text-sm text-slate-700 transition dark:text-slate-200 ${
-                activeLinkView === 'linked'
-                  ? 'bg-white shadow-sm ring-2 ring-indigo-500 dark:bg-slate-950/70'
-                  : 'bg-slate-100 hover:bg-slate-200/70 dark:bg-slate-900/60 dark:hover:bg-slate-900'
-              }`}
-            >
-              <p className="text-xs uppercase tracking-wide text-slate-500">Linked cards</p>
-              <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                {counts.linkedCards.toLocaleString('sv-SE')}
-              </p>
-              <p className="text-xs text-slate-600 dark:text-slate-400">Rows with card metadata.</p>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveLinkView('unlinked')}
-              className={`rounded-lg p-3 text-left text-sm text-slate-700 transition dark:text-slate-200 ${
-                activeLinkView === 'unlinked'
-                  ? 'bg-white shadow-sm ring-2 ring-indigo-500 dark:bg-slate-950/70'
-                  : 'bg-slate-100 hover:bg-slate-200/70 dark:bg-slate-900/60 dark:hover:bg-slate-900'
-              }`}
-            >
-              <p className="text-xs uppercase tracking-wide text-slate-500">Not Linked Cards</p>
-              <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                {counts.unlinkedCards.toLocaleString('sv-SE')}
-              </p>
-              <p className="text-xs text-slate-600 dark:text-slate-400">Auctions that are not linked.</p>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveLinkView('ready')}
-              className={`rounded-lg p-3 text-left text-sm text-slate-700 transition dark:text-slate-200 ${
-                activeLinkView === 'ready'
-                  ? 'bg-white shadow-sm ring-2 ring-indigo-500 dark:bg-slate-950/70'
-                  : 'bg-slate-100 hover:bg-slate-200/70 dark:bg-slate-900/60 dark:hover:bg-slate-900'
-              }`}
-            >
-              <p className="text-xs uppercase tracking-wide text-slate-500">Ready to Link</p>
-              <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                {counts.readyToLink.toLocaleString('sv-SE')}
-              </p>
-              <p className="text-xs text-slate-600 dark:text-slate-400">Auctions that are ready to link.</p>
-            </button>
+          <div className="overflow-hidden rounded-xl border border-slate-900/80">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-left">Auction</TableHead>
+                  <TableHead className="text-left">Card</TableHead>
+                  <TableHead className="text-left">Set</TableHead>
+                  <TableHead className="text-left">Method</TableHead>
+                  <TableHead className="text-left">Confidence</TableHead>
+                  <TableHead className="text-left">Linked</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {links.length ? (
+                  links.map((link) => (
+                    <TableRow key={`${link.itemId}-${link.cardId}`}>
+                      <TableCell className="text-left">
+                        <div className="space-y-1">
+                          {link.auctionUrl ? (
+                            <a
+                              href={link.auctionUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-semibold text-indigo-600 hover:underline"
+                            >
+                              {link.auctionTitle ?? `Auction #${link.itemId}`}
+                            </a>
+                          ) : (
+                            <p className="font-semibold text-slate-900 dark:text-slate-50">
+                              {link.auctionTitle ?? `Auction #${link.itemId}`}
+                            </p>
+                          )}
+                          <p className="text-xs text-slate-600 dark:text-slate-400">Item #{link.itemId}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-left text-slate-700 dark:text-slate-200">
+                        <div className="space-y-1">
+                          <p className="font-semibold text-slate-900 dark:text-slate-50">{formatCardLabel(link)}</p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400">Card #{link.cardId}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {formatSetLabel(link)}
+                      </TableCell>
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {link.method ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {formatConfidence(link.confidence)}
+                      </TableCell>
+                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                        {link.linkedAt ? format(new Date(link.linkedAt), 'PPpp') : '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-sm text-slate-500">
+                      {linksLoading ? 'Loading auction links…' : 'No auction links found.'}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
           </div>
-
-          {activeLinkView === 'linked' ? (
-            <div className="overflow-hidden rounded-xl border border-slate-900/80">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-left">Auction</TableHead>
-                    <TableHead className="text-left">Card</TableHead>
-                    <TableHead className="text-left">Set</TableHead>
-                    <TableHead className="text-left">Method</TableHead>
-                    <TableHead className="text-left">Confidence</TableHead>
-                    <TableHead className="text-left">Linked</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {links.length ? (
-                    links.map((link) => (
-                      <TableRow key={`${link.itemId}-${link.cardId}`}>
-                        <TableCell className="text-left">
-                          <div className="space-y-1">
-                            {link.auctionUrl ? (
-                              <a
-                                href={link.auctionUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="font-semibold text-indigo-600 hover:underline"
-                              >
-                                {link.auctionTitle ?? `Auction #${link.itemId}`}
-                              </a>
-                            ) : (
-                              <p className="font-semibold text-slate-900 dark:text-slate-50">
-                                {link.auctionTitle ?? `Auction #${link.itemId}`}
-                              </p>
-                            )}
-                            <p className="text-xs text-slate-600 dark:text-slate-400">Item #{link.itemId}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-left text-slate-700 dark:text-slate-200">
-                          <div className="space-y-1">
-                            <p className="font-semibold text-slate-900 dark:text-slate-50">{formatCardLabel(link)}</p>
-                            <p className="text-xs text-slate-600 dark:text-slate-400">Card #{link.cardId}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                          {formatSetLabel(link)}
-                        </TableCell>
-                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                          {link.method ?? '—'}
-                        </TableCell>
-                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                          {formatConfidence(link.confidence)}
-                        </TableCell>
-                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                          {link.linkedAt ? format(new Date(link.linkedAt), 'PPpp') : '—'}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center text-sm text-slate-500">
-                        {linksLoading ? 'Loading auction links…' : 'No auction links found.'}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          ) : (
-            <div className="overflow-hidden rounded-xl border border-slate-900/80">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-300">
-                <div className="flex flex-wrap items-center gap-3">
-                  <Label htmlFor="language-filter" className="text-xs uppercase tracking-wide text-slate-500">
-                    Language
-                  </Label>
-                  <select
-                    id="language-filter"
-                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
-                    value={languageFilter}
-                    onChange={(event) => setLanguageFilter(event.target.value)}
-                  >
-                    <option value="all">All languages</option>
-                    {languageOptions.map((language) => (
-                      <option key={language} value={language}>
-                        {language}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="flex items-center gap-2 text-xs text-slate-500">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300"
-                      checked={allPageSelected}
-                      onChange={toggleSelectAllPage}
-                      aria-label="Select all auctions on this page"
-                    />
-                    <span>Select page</span>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                  <span>
-                    Showing {(pagedUnlinkedAuctions.length
-                      ? (unlinkedPage - 1) * pageSize + 1
-                      : 0).toLocaleString('sv-SE')}
-                    –
-                    {Math.min(unlinkedPage * pageSize, visibleUnlinkedAuctions.length).toLocaleString('sv-SE')} of{' '}
-                    {visibleUnlinkedAuctions.length.toLocaleString('sv-SE')}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      disabled={unlinkedPage <= 1}
-                      onClick={() => setUnlinkedPage((prev) => Math.max(1, prev - 1))}
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      disabled={unlinkedPage >= totalUnlinkedPages}
-                      onClick={() => setUnlinkedPage((prev) => Math.min(totalUnlinkedPages, prev + 1))}
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10 text-left">Select</TableHead>
-                    <TableHead className="text-left">Auction</TableHead>
-                    <TableHead className="text-left">Era</TableHead>
-                    <TableHead className="text-left">Language</TableHead>
-                    <TableHead className="text-left">Condition</TableHead>
-                    <TableHead className="text-left">Detected card #</TableHead>
-                    <TableHead className="text-left">Detected set</TableHead>
-                    <TableHead className="text-left">Diagnostics</TableHead>
-                    <TableHead className="text-left">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pagedUnlinkedAuctions.length ? (
-                    pagedUnlinkedAuctions.map((auction) => {
-                      const diagnostics = buildDiagnostics(auction)
-                      const isSelected = selectedAiSet.has(auction.itemId)
-
-                      return (
-                        <TableRow key={auction.itemId}>
-                          <TableCell className="text-left">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-slate-300"
-                              checked={isSelected}
-                              onChange={() => toggleAiSelection(auction.itemId)}
-                              aria-label={`Select auction ${auction.itemId}`}
-                            />
-                          </TableCell>
-                          <TableCell className="text-left">
-                            <div className="space-y-1">
-                              {auction.itemUrl ? (
-                                <a
-                                  href={auction.itemUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="font-semibold text-indigo-600 hover:underline"
-                                >
-                                  {auction.title ?? `Auction #${auction.itemId}`}
-                                </a>
-                              ) : (
-                                <p className="font-semibold text-slate-900 dark:text-slate-50">
-                                  {auction.title ?? `Auction #${auction.itemId}`}
-                                </p>
-                              )}
-                              <p className="text-xs text-slate-600 dark:text-slate-400">
-                                Item #{auction.itemId}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                            {auction.pokemonEra ?? '—'}
-                          </TableCell>
-                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                            {auction.pokemonLanguage ?? '—'}
-                          </TableCell>
-                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                            {auction.itemCondition ?? '—'}
-                          </TableCell>
-                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                            {auction.detectedCollectorNumber ?? '—'}
-                          </TableCell>
-                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                            {formatDetectedExpansion(auction)}
-                          </TableCell>
-                          <TableCell className="text-left">
-                            {diagnostics.length ? (
-                              <div className="flex flex-wrap gap-2">
-                                {diagnostics.map((note) => (
-                                  <Badge key={note} variant="secondary" className="whitespace-nowrap">
-                                    {note}
-                                  </Badge>
-                                ))}
-                              </div>
-                            ) : (
-                              <Badge variant="outline">Ready to link</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-left">
-                            <Button variant="secondary" size="sm" onClick={() => handleOpenSearch(auction)}>
-                              Search for card
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={9} className="text-center text-sm text-slate-500">
-                        {unlinkedLoading
-                          ? 'Loading unlinked auctions…'
-                          : unlinkedError
-                            ? 'Unable to load unlinked auctions.'
-                            : activeLinkView === 'ready'
-                              ? 'No ready-to-link auctions found.'
-                              : 'No unlinked auctions found.'}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          )}
         </CardContent>
       </Card>
 

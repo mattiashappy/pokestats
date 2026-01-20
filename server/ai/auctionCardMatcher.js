@@ -321,7 +321,12 @@ async function matchAuction({ client, auction, apiKey, model, confidenceThreshol
     return {
       matched: false,
       reason: 'no_candidate_cards',
-      details: null
+      details: null,
+      diagnostics: {
+        parsed,
+        setCount: sets.length,
+        cardCount: cards.length
+      }
     }
   }
 
@@ -339,14 +344,24 @@ async function matchAuction({ client, auction, apiKey, model, confidenceThreshol
     return {
       matched: false,
       reason: 'low_confidence',
-      details: match
+      details: match,
+      diagnostics: {
+        parsed,
+        setCount: sets.length,
+        cardCount: cards.length
+      }
     }
   }
 
   return {
     matched: true,
     reason: 'matched',
-    details: match
+    details: match,
+    diagnostics: {
+      parsed,
+      setCount: sets.length,
+      cardCount: cards.length
+    }
   }
 }
 
@@ -395,7 +410,8 @@ async function matchAuctionsWithAi({ client, limit, apiKey, model, itemIds } = {
     matched: 0,
     skipped: 0,
     skipReasons: {},
-    matchedExamples: []
+    matchedExamples: [],
+    logs: []
   }
 
   const confidenceThreshold = DEFAULT_CONFIDENCE_THRESHOLD
@@ -409,9 +425,22 @@ async function matchAuctionsWithAi({ client, limit, apiKey, model, itemIds } = {
       confidenceThreshold
     })
 
+    summary.logs.push({
+      itemId: row.item_id,
+      stage: 'analysis',
+      message: 'Parsed auction and built candidates',
+      data: result.diagnostics ?? null
+    })
+
     if (!result.matched) {
       summary.skipped += 1
       summary.skipReasons[result.reason] = (summary.skipReasons[result.reason] || 0) + 1
+      summary.logs.push({
+        itemId: row.item_id,
+        stage: 'decision',
+        message: 'Skipped match',
+        data: { reason: result.reason, details: result.details }
+      })
       continue
     }
 
@@ -480,6 +509,13 @@ async function matchAuctionsWithAi({ client, limit, apiKey, model, itemIds } = {
         rationale: result.details.rationale || null
       })
     }
+
+    summary.logs.push({
+      itemId: row.item_id,
+      stage: 'linked',
+      message: 'Linked via title AI',
+      data: { cardId: result.details.cardId, confidence: result.details.confidence }
+    })
   }
 
   return summary
