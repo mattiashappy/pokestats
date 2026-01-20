@@ -5,6 +5,7 @@ function createExpansionService({
   ensureCardInfrastructure,
   ensureTraderaAuctionLinksTableAvailable
 }) {
+
   async function ensurePriceTrackerTablesAvailable() {
     if (!pool) return false
 
@@ -62,14 +63,16 @@ function createExpansionService({
           ORDER BY s.release_date NULLS LAST, s.name NULLS LAST, s.pt_set_id NULLS LAST
         `)
 
-        return rows.map((row) => {
-          const eraLabel = row.era ?? null
-          return {
-            ...row,
-            era_code: resolveEraCode(eraLabel),
-            era_name: eraLabel
-          }
-        })
+        if (rows.length) {
+          return rows.map((row) => {
+            const eraLabel = row.era ?? null
+            return {
+              ...row,
+              era_code: resolveEraCode(eraLabel),
+              era_name: eraLabel
+            }
+          })
+        }
       }
 
       const cardInfraReady = await ensureCardInfrastructure()
