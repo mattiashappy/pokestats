@@ -5,6 +5,7 @@ function createExpansionService({
   ensureCardInfrastructure,
   ensureTraderaAuctionLinksTableAvailable
 }) {
+
   async function ensurePriceTrackerTablesAvailable() {
     if (!pool) return false
 
