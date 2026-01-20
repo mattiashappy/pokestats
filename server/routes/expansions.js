@@ -5,6 +5,7 @@ function createExpansionService({
   ensureCardInfrastructure,
   ensureTraderaAuctionLinksTableAvailable
 }) {
+
   async function ensurePriceTrackerTablesAvailable() {
     if (!pool) return false
 
@@ -24,7 +25,14 @@ function createExpansionService({
       const linksReady = ensureTraderaAuctionLinksTableAvailable
         ? await ensureTraderaAuctionLinksTableAvailable()
         : false
-      const priceTrackerReady = await ensurePriceTrackerTablesAvailable()
+      let priceTrackerReady = await ensurePriceTrackerTablesAvailable()
+
+      if (priceTrackerReady) {
+        const { rows: ptSetRows } = await pool.query(`SELECT COUNT(*)::int AS total FROM public.pt_sets`)
+        if ((ptSetRows?.[0]?.total ?? 0) === 0) {
+          priceTrackerReady = false
+        }
+      }
 
       if (priceTrackerReady) {
         const { rows } = await pool.query(`
