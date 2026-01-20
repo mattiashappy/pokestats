@@ -74,6 +74,9 @@ export function CardPage(): JSX.Element {
                 Set: {card.set_name || 'Unknown set'}
               </span>
               <span className="rounded-full border-2 border-slate-900 bg-white px-3 py-1 shadow-[2px_2px_0px_#0f172a]">
+                Language: {card.language || 'Unknown language'}
+              </span>
+              <span className="rounded-full border-2 border-slate-900 bg-white px-3 py-1 shadow-[2px_2px_0px_#0f172a]">
                 Card number: {card.card_number || 'N/A'}
               </span>
             </div>
@@ -134,6 +137,10 @@ export function CardPage(): JSX.Element {
                 <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
                   Set
                   <div className="text-base font-black">{card.set_name || 'Unknown set'}</div>
+                </div>
+                <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                  Language
+                  <div className="text-base font-black">{card.language || 'Unknown language'}</div>
                 </div>
                 <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
                   Card #
