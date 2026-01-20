@@ -166,7 +166,7 @@ export type TraderaParseSummary = {
 export type TraderaLinkedExample = {
   itemId: number
   title: string | null
-  cardId: number
+  cardId: string
   cardName: string | null
   setName: string | null
 }
@@ -188,7 +188,7 @@ export type TraderaLinkSummary = {
 export type AiMatchExample = {
   itemId: number
   title: string | null
-  cardId: number
+  cardId: string | null
   confidence: number
   rationale: string | null
 }
@@ -203,7 +203,7 @@ export type AiMatchSummary = {
 
 export type AuctionCardLink = {
   itemId: number
-  cardId: number
+  cardId: string
   method: string | null
   confidence: number | null
   linkedAt: string | null
@@ -220,7 +220,7 @@ export type AuctionCardLink = {
 }
 
 export type CardSearchResult = {
-  id: number
+  id: string
   name: string | null
   cardNumber: string | null
   setName: string | null
@@ -268,7 +268,7 @@ export async function searchCards(
   return response.json()
 }
 
-export async function linkAuctionToCard(auctionId: number, cardId: number): Promise<void> {
+export async function linkAuctionToCard(auctionId: number, cardId: string): Promise<void> {
   const response = await fetch('/api/linking/manual', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

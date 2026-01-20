@@ -22,7 +22,7 @@ async function parseAuctions({ client, limit } = {}) {
     `
       SELECT a.${auctionColumns.itemIdColumn} AS item_id, a.title, a.description
       FROM public.tradera_auctions a
-      LEFT JOIN public.tradera_auction_card_links l
+      LEFT JOIN public.tradera_auction_pt_card_links l
         ON l.${linkColumns.itemColumn} = a.${auctionColumns.keyColumn}
       WHERE l.${linkColumns.itemColumn} IS NULL
       ORDER BY a.updated_at DESC NULLS LAST, a.${auctionColumns.itemIdColumn} DESC
@@ -290,7 +290,7 @@ async function resolveLinkColumns(client) {
       SELECT column_name
       FROM information_schema.columns
       WHERE table_schema = 'public'
-        AND table_name = 'tradera_auction_card_links'
+        AND table_name = 'tradera_auction_pt_card_links'
     `
   )
 
@@ -298,7 +298,7 @@ async function resolveLinkColumns(client) {
   const itemColumn = columnNames.has('item_id') ? 'item_id' : columnNames.has('auction_id') ? 'auction_id' : null
 
   if (!itemColumn) {
-    throw new Error('tradera_auction_card_links is missing item_id/auction_id column')
+    throw new Error('tradera_auction_pt_card_links is missing item_id/auction_id column')
   }
 
   const timestampColumn = columnNames.has('matched_at')
@@ -312,7 +312,7 @@ async function resolveLinkColumns(client) {
   const cardColumn = columnNames.has('pt_card_id') ? 'pt_card_id' : columnNames.has('card_id') ? 'card_id' : null
 
   if (!cardColumn) {
-    throw new Error('tradera_auction_card_links is missing pt_card_id/card_id column')
+    throw new Error('tradera_auction_pt_card_links is missing pt_card_id/card_id column')
   }
 
   const methodColumn = columnNames.has('match_method') ? 'match_method' : columnNames.has('method') ? 'method' : null
@@ -377,7 +377,7 @@ async function linkAuctions({ client, limit } = {}) {
              a.title,
              a.description
       FROM public.tradera_auctions a
-      LEFT JOIN public.tradera_auction_card_links l
+      LEFT JOIN public.tradera_auction_pt_card_links l
         ON l.${linkColumns.itemColumn} = a.${auctionColumns.keyColumn}
       WHERE l.${linkColumns.itemColumn} IS NULL
       ORDER BY a.updated_at DESC NULLS LAST, a.${auctionColumns.itemIdColumn} DESC
@@ -514,7 +514,7 @@ async function linkAuctions({ client, limit } = {}) {
 
     await client.query(
       `
-        INSERT INTO public.tradera_auction_card_links (${insertColumns.join(', ')})
+        INSERT INTO public.tradera_auction_pt_card_links (${insertColumns.join(', ')})
         VALUES (${insertValues.join(', ')})
         ON CONFLICT (${linkColumns.itemColumn}) DO UPDATE SET
           ${updateClauses.join(',\n          ')}
