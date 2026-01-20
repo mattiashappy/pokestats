@@ -331,7 +331,7 @@ export function EnrichPage(): JSX.Element {
     setManualLinkSuccess(null)
   }
 
-  const handleManualLink = async (cardId: number): Promise<void> => {
+  const handleManualLink = async (cardId: string): Promise<void> => {
     if (!selectedAuction) return
     setManualLinkPending(true)
     setManualLinkError(null)
