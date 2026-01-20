@@ -19,11 +19,22 @@ export type AuthContextValue = {
   logout: () => void
   updateSubscription: (status: SubscriptionStatus) => void
   startTrial: (cardLast4: string) => void
-  switchRole: (role: AuthUser['role']) => void
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 const STORAGE_KEY = 'pokestats-auth-user'
+const ADMIN_EMAIL = import.meta.env.ADMIN_EMAIL?.trim().toLowerCase() ?? ''
+const ADMIN_PASS = import.meta.env.ADMIN_PASS ?? ''
+
+export const isAdminLogin = (email: string, password: string): boolean => {
+  if (!ADMIN_EMAIL || !ADMIN_PASS) return false
+  return email.trim().toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASS
+}
+
+const matchesAdminEmail = (email: string): boolean => {
+  if (!ADMIN_EMAIL) return false
+  return email.trim().toLowerCase() === ADMIN_EMAIL
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }): JSX.Element {
   const [user, setUser] = useState<AuthUser | null>(null)
@@ -63,10 +74,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
     }
   }
 
-  const login = async (email: string, _password: string): Promise<void> => {
+  const login = async (email: string, password: string): Promise<void> => {
     const baseName = email.split('@')[0]
     const name = baseName ? `${baseName.charAt(0).toUpperCase()}${baseName.slice(1)}` : 'Trainer'
-    const role = email.toLowerCase() === 'ash@pokestats.app' ? 'admin' : 'member'
+    if (matchesAdminEmail(email) && ADMIN_PASS && password !== ADMIN_PASS) {
+      throw new Error('Invalid admin credentials')
+    }
+    const role = isAdminLogin(email, password) ? 'admin' : 'member'
     const nextUser: AuthUser = {
       name,
       email,
@@ -77,7 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
   }
 
   const signup = async (name: string, email: string, _password: string): Promise<void> => {
-    const role = email.toLowerCase() === 'ash@pokestats.app' ? 'admin' : 'member'
+    const role = 'member'
     const nextUser: AuthUser = {
       name: name.trim() || 'New Trainer',
       email,
@@ -117,17 +131,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
     persistUser(nextUser)
   }
 
-  const switchRole = (role: AuthUser['role']): void => {
-    if (!user || user.email.toLowerCase() !== 'ash@pokestats.app') return
-    const nextUser: AuthUser = {
-      ...user,
-      role
-    }
-    persistUser(nextUser)
-  }
-
   const value = useMemo(
-    () => ({ user, loading, login, signup, logout, updateSubscription, startTrial, switchRole }),
+    () => ({ user, loading, login, signup, logout, updateSubscription, startTrial }),
     [user, loading]
   )
 

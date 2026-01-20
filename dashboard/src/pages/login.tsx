@@ -1,4 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useLocation, useNavigate, type Location } from 'react-router-dom'
 import { z } from 'zod'
@@ -8,7 +9,7 @@ import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
-import { useAuth } from '../providers/auth'
+import { isAdminLogin, useAuth } from '../providers/auth'
 
 const loginSchema = z.object({
   email: z.string().email('Enter a valid email'),
@@ -19,23 +20,28 @@ export function LoginPage(): JSX.Element {
   const navigate = useNavigate()
   const location = useLocation()
   const { login } = useAuth()
+  const [authError, setAuthError] = useState<string | null>(null)
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting }
   } = useForm<z.infer<typeof loginSchema>>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: 'ash@pokestats.app',
-      password: 'password'
-    }
+    resolver: zodResolver(loginSchema)
   })
 
   const onSubmit = async (data: z.infer<typeof loginSchema>): Promise<void> => {
-    await login(data.email, data.password)
-    const fallbackPath = data.email.toLowerCase() === 'ash@pokestats.app' ? '/app' : '/dashboard'
-    const redirectPath = (location.state as { from?: Location })?.from?.pathname ?? fallbackPath
-    navigate(redirectPath, { replace: true })
+    setAuthError(null)
+    try {
+      await login(data.email, data.password)
+      const fallbackPath = isAdminLogin(data.email, data.password) ? '/app' : '/dashboard'
+      const redirectPath = (location.state as { from?: Location })?.from?.pathname ?? fallbackPath
+      navigate(redirectPath, { replace: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to log in'
+      setAuthError(message)
+      setError('password', { message })
+    }
   }
 
   return (
@@ -84,6 +90,7 @@ export function LoginPage(): JSX.Element {
                 />
                 {errors.password ? <p className="text-xs text-rose-600">{errors.password.message}</p> : null}
               </div>
+              {authError ? <p className="text-xs font-semibold text-rose-600">{authError}</p> : null}
               <p className="text-xs text-slate-500">Demo auth stores a session locally. Replace with OAuth/Clerk later.</p>
             </CardContent>
             <CardFooter className="flex flex-col gap-3">
