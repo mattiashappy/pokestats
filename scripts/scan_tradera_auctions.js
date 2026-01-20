@@ -236,6 +236,14 @@ function filterMatchesByName(matches, name) {
   return matches.filter((match) => normalizeName(match.name).includes(normalized))
 }
 
+function isNameCompatible(cardName, extractedName) {
+  if (!extractedName) return true
+  const normalizedExtracted = normalizeName(extractedName)
+  if (!normalizedExtracted) return true
+  const normalizedCard = normalizeName(cardName)
+  return normalizedCard.includes(normalizedExtracted) || normalizedExtracted.includes(normalizedCard)
+}
+
 async function matchPtCard(client, { cardNumber, setHint, name }) {
   if (cardNumber) {
     const { rows } = await client.query(
@@ -249,7 +257,9 @@ async function matchPtCard(client, { cardNumber, setHint, name }) {
     )
 
     if (rows.length === 1) {
-      return { card: rows[0], method: 'vision-number-exact' }
+      if (isNameCompatible(rows[0].name, name)) {
+        return { card: rows[0], method: 'vision-number-exact' }
+      }
     }
 
     if (rows.length > 1) {
