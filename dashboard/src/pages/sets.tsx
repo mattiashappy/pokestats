@@ -4,14 +4,15 @@ import { Layers, Loader2 } from 'lucide-react'
 
 import { Button } from '../components/ui/button'
 import { SetCard } from '../components/pokemon/set-card'
-import { fetchCardsPreview, fetchExpansions } from '../lib/api'
-import { getCardSetIdentifier, getExpansionIdentifier } from '../lib/sets'
-import type { CardListItem, ExpansionSummary } from '../types'
+import { fetchExpansions } from '../lib/api'
+import { getExpansionIdentifier } from '../lib/sets'
+import type { ExpansionSummary } from '../types'
 
 const PAGE_SIZE = 12
 
 export function SetsPage(): JSX.Element {
   const [page, setPage] = useState(1)
+  const [searchTerm, setSearchTerm] = useState('')
 
   const {
     data: expansions,
@@ -22,33 +23,34 @@ export function SetsPage(): JSX.Element {
     queryFn: fetchExpansions
   })
 
-  const { data: previewCards } = useQuery<CardListItem[]>({
-    queryKey: ['cards-preview'],
-    queryFn: () => fetchCardsPreview(),
-    staleTime: 1000 * 60
-  })
-
-  const previewLinks = useMemo(() => {
-    if (!previewCards?.length) return []
-    return previewCards.slice(0, 4).map((card) => {
-      const setIdentifier = getCardSetIdentifier(card)
-      return {
-        id: card.id,
-        name: card.name ?? 'Unknown card',
-        href: setIdentifier ? `/sets/${setIdentifier}/${card.id}` : `/cards/${card.id}`
-      }
+  const filteredExpansions = useMemo(() => {
+    if (!expansions) return []
+    const term = searchTerm.trim().toLowerCase()
+    if (!term) return expansions
+    return expansions.filter((expansion) => {
+      const haystack = [expansion.name, expansion.set_code, expansion.era, expansion.era_name]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(term)
     })
-  }, [previewCards])
+  }, [expansions, searchTerm])
 
   const sortedExpansions = useMemo(() => {
-    if (!expansions) return []
-    return [...expansions].sort((a, b) => {
-      const releaseA = a.release_date ? new Date(a.release_date).getTime() : Number.MAX_SAFE_INTEGER
-      const releaseB = b.release_date ? new Date(b.release_date).getTime() : Number.MAX_SAFE_INTEGER
-      if (releaseA !== releaseB) return releaseA - releaseB
+    if (!filteredExpansions.length) return []
+    return [...filteredExpansions].sort((a, b) => {
+      const marketA = Number.isFinite(Number(a.set_market_total)) ? Number(a.set_market_total) : null
+      const marketB = Number.isFinite(Number(b.set_market_total)) ? Number(b.set_market_total) : null
+
+      if (marketA === null && marketB === null) {
+        return (a.name ?? getExpansionIdentifier(a)).localeCompare(b.name ?? getExpansionIdentifier(b))
+      }
+      if (marketA === null) return 1
+      if (marketB === null) return -1
+      if (marketA !== marketB) return marketB - marketA
       return (a.name ?? getExpansionIdentifier(a)).localeCompare(b.name ?? getExpansionIdentifier(b))
     })
-  }, [expansions])
+  }, [filteredExpansions])
 
   const totalPages = Math.max(1, Math.ceil(sortedExpansions.length / PAGE_SIZE))
 
@@ -61,27 +63,33 @@ export function SetsPage(): JSX.Element {
     return sortedExpansions.slice(startIndex, startIndex + PAGE_SIZE)
   }, [page, sortedExpansions])
 
+  const handleSearchChange = (value: string): void => {
+    setSearchTerm(value)
+    setPage(1)
+  }
+
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pokemon set index</p>
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Pokemon Sets</h1>
-        <p className="text-sm text-slate-600 dark:text-slate-400">
-          Browse every Pokemon TCG set in one place with simple pagination.
-        </p>
-        {previewLinks.length > 0 ? (
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pokemon set index</p>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Pokemon Sets</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Featured cards:{' '}
-            {previewLinks.map((card, index) => (
-              <span key={card.id}>
-                <a className="font-semibold text-sky-600 hover:text-sky-700" href={card.href}>
-                  {card.name}
-                </a>
-                {index < previewLinks.length - 1 ? ', ' : '.'}
-              </span>
-            ))}
+            Browse every Pokemon TCG set in one place with simple pagination.
           </p>
-        ) : null}
+        </div>
+        <div className="flex items-start justify-end">
+          <label className="flex items-center gap-2 rounded-full border-2 border-slate-900 bg-white px-3 py-2 text-sm shadow-[3px_3px_0px_#0f172a]">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Search</span>
+            <input
+              className="w-40 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+              placeholder="Evolving Skies..."
+              type="text"
+              value={searchTerm}
+              onChange={(event) => handleSearchChange(event.target.value)}
+            />
+          </label>
+        </div>
       </div>
 
       {isLoading ? (
