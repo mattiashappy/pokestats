@@ -4,8 +4,7 @@ import { TopNav } from './top-nav'
 
 export function PublicLayout(): JSX.Element {
   const navItems = [
-    { label: 'Home', to: '/' },
-    { label: 'Sets', to: '/sets' }
+    { label: 'Home', to: '/' }
   ]
 
   return (
