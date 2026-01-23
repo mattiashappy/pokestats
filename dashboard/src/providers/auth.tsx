@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
+import { registeredUsers } from '../data/users'
+
 export type SubscriptionStatus = 'active' | 'inactive' | 'trialing'
 
 export type AuthUser = {
@@ -25,6 +27,8 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 const STORAGE_KEY = 'pokestats-auth-user'
 const ADMIN_EMAIL = import.meta.env.ADMIN_EMAIL?.trim().toLowerCase() ?? ''
 const ADMIN_PASS = import.meta.env.ADMIN_PASS ?? ''
+const MEMBER_PASS = import.meta.env.MEMBER_PASS ?? ''
+const SELF_SIGNUP_ENABLED = import.meta.env.SELF_SIGNUP_ENABLED === 'true'
 
 export const isAdminLogin = (email: string, password: string): boolean => {
   if (!ADMIN_EMAIL || !ADMIN_PASS) return false
@@ -34,6 +38,11 @@ export const isAdminLogin = (email: string, password: string): boolean => {
 const matchesAdminEmail = (email: string): boolean => {
   if (!ADMIN_EMAIL) return false
   return email.trim().toLowerCase() === ADMIN_EMAIL
+}
+
+const findRegisteredUser = (email: string): (typeof registeredUsers)[number] | null => {
+  const normalized = email.trim().toLowerCase()
+  return registeredUsers.find((user) => user.email.trim().toLowerCase() === normalized) ?? null
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }): JSX.Element {
@@ -80,17 +89,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
     if (matchesAdminEmail(email) && ADMIN_PASS && password !== ADMIN_PASS) {
       throw new Error('Invalid admin credentials')
     }
-    const role = isAdminLogin(email, password) ? 'admin' : 'member'
+    const isAdmin = isAdminLogin(email, password)
+    if (!isAdmin) {
+      if (!MEMBER_PASS) {
+        throw new Error('Member login is disabled until MEMBER_PASS is configured')
+      }
+      if (password !== MEMBER_PASS) {
+        throw new Error('Invalid member credentials')
+      }
+    }
+    const registeredUser = isAdmin ? null : findRegisteredUser(email)
+    if (!isAdmin && !registeredUser) {
+      throw new Error('Account not found. Contact an administrator to request access.')
+    }
+    const role = isAdmin ? 'admin' : 'member'
     const nextUser: AuthUser = {
-      name,
+      name: registeredUser?.name ?? name,
       email,
-      subscriptionStatus: role === 'admin' ? 'active' : 'inactive',
+      subscriptionStatus: role === 'admin' ? 'active' : (registeredUser?.subscriptionStatus ?? 'inactive'),
+      trialEndsAt: registeredUser?.trialEndsAt,
       role
     }
     persistUser(nextUser)
   }
 
   const signup = async (name: string, email: string, _password: string): Promise<void> => {
+    if (!SELF_SIGNUP_ENABLED) {
+      throw new Error('Self-service signup is disabled. Contact an administrator to request access.')
+    }
     const role = 'member'
     const nextUser: AuthUser = {
       name: name.trim() || 'New Trainer',

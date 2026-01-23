@@ -18,12 +18,13 @@ import { SignupPage } from "./pages/signup"
 import { AuctionImportsPage } from "./pages/auction-imports"
 import { ErasPage } from "./pages/eras"
 import { EraSetsPage } from "./pages/era-sets"
+import { LandingPage } from "./pages/landing"
 
 function App(): JSX.Element {
   return (
     <Routes>
       <Route element={<PublicLayout />}>
-        <Route path="/" element={<DashboardPage />} />
+        <Route path="/" element={<LandingPage />} />
       </Route>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />

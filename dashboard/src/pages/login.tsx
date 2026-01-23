@@ -91,7 +91,9 @@ export function LoginPage(): JSX.Element {
                 {errors.password ? <p className="text-xs text-rose-600">{errors.password.message}</p> : null}
               </div>
               {authError ? <p className="text-xs font-semibold text-rose-600">{authError}</p> : null}
-              <p className="text-xs text-slate-500">Demo auth stores a session locally. Replace with OAuth/Clerk later.</p>
+              <p className="text-xs text-slate-500">
+                Credentials are validated against configured access rules. Contact an administrator if you need access.
+              </p>
             </CardContent>
             <CardFooter className="flex flex-col gap-3">
               <Button

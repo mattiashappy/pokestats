@@ -1,4 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router-dom'
 import { z } from 'zod'
@@ -19,6 +20,7 @@ const signupSchema = z.object({
 export function SignupPage(): JSX.Element {
   const navigate = useNavigate()
   const { signup } = useAuth()
+  const [authError, setAuthError] = useState<string | null>(null)
   const {
     register,
     handleSubmit,
@@ -28,8 +30,14 @@ export function SignupPage(): JSX.Element {
   })
 
   const onSubmit = async (data: z.infer<typeof signupSchema>): Promise<void> => {
-    await signup(data.name, data.email, data.password)
-    navigate('/dashboard', { replace: true })
+    setAuthError(null)
+    try {
+      await signup(data.name, data.email, data.password)
+      navigate('/dashboard', { replace: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to create account'
+      setAuthError(message)
+    }
   }
 
   return (
@@ -91,7 +99,10 @@ export function SignupPage(): JSX.Element {
                 />
                 {errors.password ? <p className="text-xs text-rose-600">{errors.password.message}</p> : null}
               </div>
-              <p className="text-xs text-slate-500">This is mock auth. Replace with a real identity provider later.</p>
+              {authError ? <p className="text-xs font-semibold text-rose-600">{authError}</p> : null}
+              <p className="text-xs text-slate-500">
+                Self-service signup can be disabled in production. Contact support if you need access.
+              </p>
             </CardContent>
             <CardFooter className="flex flex-col gap-3">
               <Button
