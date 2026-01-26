@@ -1,9 +1,10 @@
-const DEFAULT_MODEL = process.env.AI_VISION_MODEL || process.env.GEMINI_MODEL || 'gemini-1.5-pro-002'
+const DEFAULT_MODEL = process.env.AI_VISION_MODEL || process.env.GEMINI_MODEL || 'gemini-1.5-pro'
 const DEFAULT_CONFIDENCE_THRESHOLD = Number(process.env.AI_VISION_CONFIDENCE_THRESHOLD || 0.7)
 const DEFAULT_MAX_MATCHES = Number(process.env.AI_VISION_MAX_MATCHES || 200)
 const SHOULD_LOG_VISION_REQUEST = ['1', 'true', 'yes'].includes(
   String(process.env.AI_VISION_LOG_REQUEST || '').toLowerCase()
 )
+const DEFAULT_FALLBACK_MODELS = ['gemini-1.5-pro', 'gemini-1.5-flash']
 
 function clampLimit(value, fallback) {
   const numeric = Number(value)
@@ -61,7 +62,36 @@ function getMimeType(url) {
   return 'image/jpeg'
 }
 
-async function callVisionModel({ apiKey, model, imageUrl }) {
+async function requestVisionModel({ apiKey, model, requestBody }) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestBody)
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    const error = new Error(`Gemini API error ${response.status}: ${errorText}`)
+    error.status = response.status
+    throw error
+  }
+
+  const payload = await response.json()
+  const textResponse = payload.candidates?.[0]?.content?.parts?.[0]?.text
+  if (!textResponse) {
+    throw new Error('Empty response from Gemini')
+  }
+
+  try {
+    return JSON.parse(textResponse)
+  } catch (error) {
+    console.error('Failed to parse Gemini response:', JSON.stringify(payload, null, 2))
+    throw error
+  }
+}
+
+async function callVisionModel({ apiKey, model, imageUrl, fallbackModels = [] }) {
   const base64Image = await fetchImageAsBase64(imageUrl)
   const mimeType = getMimeType(imageUrl)
   const schema = {
@@ -104,30 +134,27 @@ Prioritize the collector number as the most authoritative identifier.`
     console.info('Vision request model:', model)
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestBody)
-  })
+  const orderedModels = [model, ...fallbackModels].filter(Boolean)
+  const seenModels = new Set()
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Gemini API error ${response.status}: ${errorText}`)
+  let lastError
+  for (const candidate of orderedModels) {
+    if (seenModels.has(candidate)) continue
+    seenModels.add(candidate)
+
+    try {
+      return await requestVisionModel({ apiKey, model: candidate, requestBody })
+    } catch (error) {
+      lastError = error
+      const message = String(error.message || '')
+      if (error.status === 404 || message.includes('not found')) {
+        continue
+      }
+      throw error
+    }
   }
 
-  const payload = await response.json()
-  const textResponse = payload.candidates?.[0]?.content?.parts?.[0]?.text
-  if (!textResponse) {
-    throw new Error('Empty response from Gemini')
-  }
-
-  try {
-    return JSON.parse(textResponse)
-  } catch (error) {
-    console.error('Failed to parse Gemini response:', JSON.stringify(payload, null, 2))
-    throw error
-  }
+  throw lastError || new Error('Failed to call Gemini vision model')
 }
 
 function normalizeCardNumber(cardNumber) {
@@ -230,6 +257,7 @@ async function upsertLink(client, { auctionId, ptCardId, confidence, method }) {
 
 async function matchAuctionsWithVision({ client, apiKey, model, itemIds, minConfidence } = {}) {
   const resolvedModel = model || DEFAULT_MODEL
+  const fallbackModels = DEFAULT_FALLBACK_MODELS.filter((entry) => entry !== resolvedModel)
   const confidenceThreshold = Number.isFinite(Number(minConfidence))
     ? Math.min(Math.max(Number(minConfidence), 0), 1)
     : DEFAULT_CONFIDENCE_THRESHOLD
@@ -307,7 +335,12 @@ async function matchAuctionsWithVision({ client, apiKey, model, itemIds, minConf
 
     let vision
     try {
-      vision = await callVisionModel({ apiKey, model: resolvedModel, imageUrl })
+      vision = await callVisionModel({
+        apiKey,
+        model: resolvedModel,
+        imageUrl,
+        fallbackModels
+      })
       summary.logs.push({
         itemId: row.item_id,
         stage: 'vision',
