@@ -9,18 +9,24 @@ import { getExpansionIdentifier } from '../lib/sets'
 import type { ExpansionSummary } from '../types'
 
 const PAGE_SIZE = 12
+const LANGUAGE_OPTIONS = [
+  { label: 'All', value: 'all' },
+  { label: 'English', value: 'english' },
+  { label: 'Japanese', value: 'japanese' }
+]
 
 export function SetsPage(): JSX.Element {
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
+  const [languageFilter, setLanguageFilter] = useState('english')
 
   const {
     data: expansions,
     isLoading,
     error
   } = useQuery<ExpansionSummary[]>({
-    queryKey: ['expansions'],
-    queryFn: fetchExpansions
+    queryKey: ['expansions', languageFilter],
+    queryFn: () => fetchExpansions(languageFilter)
   })
 
   const filteredExpansions = useMemo(() => {
@@ -78,7 +84,7 @@ export function SetsPage(): JSX.Element {
             Browse every Pokemon TCG set in one place with simple pagination.
           </p>
         </div>
-        <div className="flex items-start justify-end">
+        <div className="flex flex-wrap items-start justify-end gap-2">
           <label className="flex items-center gap-2 rounded-full border-2 border-slate-900 bg-white px-3 py-2 text-sm shadow-[3px_3px_0px_#0f172a]">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Search</span>
             <input
@@ -88,6 +94,23 @@ export function SetsPage(): JSX.Element {
               value={searchTerm}
               onChange={(event) => handleSearchChange(event.target.value)}
             />
+          </label>
+          <label className="flex items-center gap-2 rounded-full border-2 border-slate-900 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 shadow-[3px_3px_0px_#0f172a]">
+            <span>Language</span>
+            <select
+              className="bg-transparent text-sm font-semibold text-slate-900 outline-none"
+              value={languageFilter}
+              onChange={(event) => {
+                setLanguageFilter(event.target.value)
+                setPage(1)
+              }}
+            >
+              {LANGUAGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
       </div>
@@ -115,7 +138,7 @@ export function SetsPage(): JSX.Element {
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {pagedExpansions.map((expansion) => (
-              <SetCard key={expansion.id} expansion={expansion} />
+              <SetCard key={expansion.id} expansion={expansion} language={languageFilter} />
             ))}
           </div>
 

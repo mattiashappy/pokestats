@@ -62,6 +62,14 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 const PYTHON_BIN = process.env.PYTHON_BIN || 'python'
 const PRICE_TRACKER_API_KEY = process.env.PRICE_TRACKER_API
 const PRICE_TRACKER_BASE_URL = 'https://www.pokemonpricetracker.com/api/v2'
+const SUPPORTED_LANGUAGES = new Set(['english', 'japanese'])
+
+function normalizeLanguage(value) {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  if (!normalized) return 'english'
+  if (normalized === 'all') return null
+  return SUPPORTED_LANGUAGES.has(normalized) ? normalized : 'english'
+}
 
 // --------------------
 // Card metadata overrides
@@ -1283,7 +1291,7 @@ function runImporterScript(runUuid) {
   })
 }
 
-async function fetchCardsListFromDatabase({ setCode = null, expansionId = null } = {}) {
+async function fetchCardsListFromDatabase({ setCode = null, expansionId = null, language = null } = {}) {
   if (!pool) return []
   const ok = await ensureCardInfrastructure()
   if (!ok) return []
@@ -1302,19 +1310,29 @@ async function fetchCardsListFromDatabase({ setCode = null, expansionId = null }
       ? 'e.language AS language'
       : 'NULL::text AS language'
 
-  let whereClause = ''
   const params = []
+  const clauses = []
 
   if (Number.isFinite(expansionId)) {
-    whereClause = 'WHERE c.expansion_id = $1'
     params.push(Number(expansionId))
+    clauses.push(`c.expansion_id = $${params.length}`)
   } else if (setCode) {
-    whereClause = `
-      WHERE LOWER(e.set_code) = LOWER($1)
-         OR LOWER(e.set_name) = LOWER($1)
-    `
     params.push(setCode.trim())
+    clauses.push(`(LOWER(e.set_code) = LOWER($${params.length}) OR LOWER(e.set_name) = LOWER($${params.length}))`)
   }
+
+  if (language && (cardsLanguageAvailable || expansionsLanguageAvailable)) {
+    params.push(language)
+    if (cardsLanguageAvailable && expansionsLanguageAvailable) {
+      clauses.push(`COALESCE(c.language, e.language) = $${params.length}`)
+    } else if (cardsLanguageAvailable) {
+      clauses.push(`c.language = $${params.length}`)
+    } else if (expansionsLanguageAvailable) {
+      clauses.push(`e.language = $${params.length}`)
+    }
+  }
+
+  const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
 
   const query = `
     SELECT
@@ -1345,7 +1363,13 @@ async function fetchCardsListFromDatabase({ setCode = null, expansionId = null }
   return result.rows.map(applyCardOverrides)
 }
 
-async function fetchCardsListFromPtImport({ setCode = null, search = null, limit = null, offset = 0 } = {}) {
+async function fetchCardsListFromPtImport({
+  setCode = null,
+  search = null,
+  limit = null,
+  offset = 0,
+  language = null
+} = {}) {
   if (!pool) return []
   const ok = await ensurePriceTrackerImportTablesAvailable()
   if (!ok) return []
@@ -1380,6 +1404,17 @@ async function fetchCardsListFromPtImport({ setCode = null, search = null, limit
     clauses.push(
       `(c.name ILIKE $${params.length} OR c.card_number ILIKE $${params.length} OR c.set_name ILIKE $${params.length} OR s.name ILIKE $${params.length} OR s.pt_set_id ILIKE $${params.length})`
     )
+  }
+
+  if (language && (ptCardsLanguageAvailable || ptSetsLanguageAvailable)) {
+    params.push(language)
+    if (ptCardsLanguageAvailable && ptSetsLanguageAvailable) {
+      clauses.push(`COALESCE(c.language, s.language) = $${params.length}`)
+    } else if (ptCardsLanguageAvailable) {
+      clauses.push(`c.language = $${params.length}`)
+    } else if (ptSetsLanguageAvailable) {
+      clauses.push(`s.language = $${params.length}`)
+    }
   }
 
   const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
@@ -1514,9 +1549,15 @@ async function fetchCardFromPtImport(cardId) {
   return card
 }
 
-async function fetchCardsListFromPriceTracker({ setCode = null, search = null, limit = 100, offset = 0 } = {}) {
+async function fetchCardsListFromPriceTracker({
+  setCode = null,
+  search = null,
+  limit = 100,
+  offset = 0,
+  language = 'english'
+} = {}) {
   const params = {
-    language: 'english',
+    language,
     limit,
     offset,
     includeHistory: 'false',
@@ -1574,9 +1615,9 @@ async function fetchCardFromPriceTracker(cardId) {
   })
 }
 
-async function fetchCardSearchFromPriceTracker(query, limit = 50) {
+async function fetchCardSearchFromPriceTracker(query, limit = 50, language = 'english') {
   const params = {
-    language: 'english',
+    language,
     search: query,
     limit,
     offset: 0,
@@ -1602,12 +1643,23 @@ async function fetchCardSearchFromPriceTracker(query, limit = 50) {
   })
 }
 
-async function fetchCardSearchFromPtImport(query, limit = 50) {
+async function fetchCardSearchFromPtImport(query, limit = 50, language = null) {
   if (!pool) return []
   const ok = await ensurePriceTrackerImportTablesAvailable()
   if (!ok) return []
 
   const needle = `%${query}%`
+  const { ptSetsLanguageAvailable, ptCardsLanguageAvailable } = await ensurePtLanguageColumns()
+  const params = [needle]
+  const languageFilter =
+    language && (ptCardsLanguageAvailable || ptSetsLanguageAvailable)
+      ? ptCardsLanguageAvailable && ptSetsLanguageAvailable
+        ? `AND COALESCE(c.language, s.language) = $${params.push(language)}`
+        : ptCardsLanguageAvailable
+          ? `AND c.language = $${params.push(language)}`
+          : `AND s.language = $${params.push(language)}`
+      : ''
+
   const { rows } = await pool.query(
     `
       SELECT
@@ -1621,17 +1673,20 @@ async function fetchCardSearchFromPtImport(query, limit = 50) {
       FROM public.pt_cards c
       LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
       WHERE
-        c.name ILIKE $1
-        OR c.card_number ILIKE $1
-        OR c.set_name ILIKE $1
-        OR s.name ILIKE $1
-        OR c.pt_set_id ILIKE $1
+        (
+          c.name ILIKE $1
+          OR c.card_number ILIKE $1
+          OR c.set_name ILIKE $1
+          OR s.name ILIKE $1
+          OR c.pt_set_id ILIKE $1
+        )
+        ${languageFilter}
       ORDER BY
         c.name NULLS LAST,
         c.card_number NULLS LAST
-      LIMIT $2
+      LIMIT $${params.length + 1}
     `,
-    [needle, limit]
+    [...params, limit]
   )
 
   return rows.map((row) => ({
@@ -1645,12 +1700,22 @@ async function fetchCardSearchFromPtImport(query, limit = 50) {
   }))
 }
 
-async function fetchCardSearchFromDatabase(query, limit = 50) {
+async function fetchCardSearchFromDatabase(query, limit = 50, language = null) {
   if (!pool) return []
   const ok = await ensureCardInfrastructure()
   if (!ok) return []
 
   const needle = `%${query}%`
+  const { expansionsLanguageAvailable, cardsLanguageAvailable } = await ensureLocalLanguageColumns()
+  const params = [needle]
+  const languageFilter =
+    language && (cardsLanguageAvailable || expansionsLanguageAvailable)
+      ? cardsLanguageAvailable && expansionsLanguageAvailable
+        ? `AND COALESCE(c.language, e.language) = $${params.push(language)}`
+        : cardsLanguageAvailable
+          ? `AND c.language = $${params.push(language)}`
+          : `AND e.language = $${params.push(language)}`
+      : ''
 
   const { rows } = await pool.query(
     `
@@ -1664,16 +1729,19 @@ async function fetchCardSearchFromDatabase(query, limit = 50) {
       FROM public.cards c
       LEFT JOIN public.expansions e ON e.id = c.expansion_id
       WHERE
-        c.name ILIKE $1
-        OR c.collector_number_raw ILIKE $1
-        OR e.set_name ILIKE $1
-        OR e.set_code ILIKE $1
+        (
+          c.name ILIKE $1
+          OR c.collector_number_raw ILIKE $1
+          OR e.set_name ILIKE $1
+          OR e.set_code ILIKE $1
+        )
+        ${languageFilter}
       ORDER BY
         c.name NULLS LAST,
         c.collector_number_raw NULLS LAST
-      LIMIT $2
+      LIMIT $${params.length + 1}
     `,
-    [needle, limit]
+    [...params, limit]
   )
 
   return rows.map((row) => ({
@@ -1705,29 +1773,30 @@ app.get('/api/expansions/:setCode/cards', async (req, res) => {
   try {
     const setCode = String(req.params.setCode || '').trim()
     if (!setCode) return res.status(400).json({ error: 'Invalid set code' })
+    const language = normalizeLanguage(req.query.language)
 
     const ptReady = await ensurePriceTrackerImportTablesAvailable()
     console.log('[expansions cards]', { setCode, ptReady })
     if (ptReady) {
-      let cards = await fetchCardsListFromPtImport({ setCode })
+      let cards = await fetchCardsListFromPtImport({ setCode, language })
       console.log('[expansions cards]', { setCode, ptReady, count: cards.length })
 
       if (!cards.length) {
         const ptSet = await fetchPtSetByIdentifier(setCode)
         if (ptSet?.pt_set_id) {
-          cards = await fetchCardsListFromPtImport({ setCode: ptSet.pt_set_id })
+          cards = await fetchCardsListFromPtImport({ setCode: ptSet.pt_set_id, language })
         }
 
         if (!cards.length) {
           if (ptSet?.name) {
-            cards = await fetchCardsListFromPtImport({ setCode: ptSet.name })
+            cards = await fetchCardsListFromPtImport({ setCode: ptSet.name, language })
           }
         }
 
         if (!cards.length) {
           const expansion = await fetchExpansionBySetCodeOrName(setCode)
           if (expansion?.set_name) {
-            cards = await fetchCardsListFromPtImport({ setCode: expansion.set_name })
+            cards = await fetchCardsListFromPtImport({ setCode: expansion.set_name, language })
           }
         }
       }
@@ -1736,11 +1805,11 @@ app.get('/api/expansions/:setCode/cards', async (req, res) => {
     }
 
     if (PRICE_TRACKER_API_KEY) {
-      const cards = await fetchCardsListFromPriceTracker({ setCode })
+      const cards = await fetchCardsListFromPriceTracker({ setCode, language })
       return res.json(cards)
     }
 
-    const cards = await fetchCardsListFromDatabase({ setCode })
+    const cards = await fetchCardsListFromDatabase({ setCode, language })
     return res.json(cards)
   } catch (error) {
     console.error('Failed to fetch cards for expansion', error)
@@ -1767,7 +1836,8 @@ app.get('/api/eras/:code/expansions', async (req, res) => {
     const requestedCode = normalizeEraCode(req.params.code)
     if (!requestedCode) return res.status(400).json({ error: 'Invalid era code' })
 
-    const expansions = await fetchExpansionSummaries()
+    const language = normalizeLanguage(req.query.language)
+    const expansions = await fetchExpansionSummaries(language)
 
     const filtered = expansions.filter((expansion) => {
       const expansionCode = normalizeEraCode(expansion.era_code ?? resolveEraCode(expansion.era))
@@ -1813,11 +1883,12 @@ app.get('/api/cards', async (req, res) => {
     const search = typeof req.query.search === 'string' ? req.query.search : typeof req.query.q === 'string' ? req.query.q : null
     const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : 100
     const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0
+    const language = normalizeLanguage(req.query.language)
 
     const ptReady = await ensurePriceTrackerImportTablesAvailable()
     console.log('[api cards]', { setCode, ptReady })
     if (ptReady) {
-      let cards = await fetchCardsListFromPtImport({ setCode, search, limit, offset })
+      let cards = await fetchCardsListFromPtImport({ setCode, search, limit, offset, language })
 
       if (!cards.length && setCode) {
         const ptSet = await fetchPtSetByIdentifier(setCode)
@@ -1826,7 +1897,8 @@ app.get('/api/cards', async (req, res) => {
             setCode: ptSet.pt_set_id,
             search,
             limit,
-            offset
+            offset,
+            language
           })
         }
 
@@ -1836,7 +1908,8 @@ app.get('/api/cards', async (req, res) => {
               setCode: ptSet.name,
               search,
               limit,
-              offset
+              offset,
+              language
             })
           }
         }
@@ -1848,7 +1921,8 @@ app.get('/api/cards', async (req, res) => {
               setCode: expansion.set_name,
               search,
               limit,
-              offset
+              offset,
+              language
             })
           }
         }
@@ -1858,11 +1932,11 @@ app.get('/api/cards', async (req, res) => {
     }
 
     if (PRICE_TRACKER_API_KEY) {
-      const cards = await fetchCardsListFromPriceTracker({ setCode, search, limit, offset })
+      const cards = await fetchCardsListFromPriceTracker({ setCode, search, limit, offset, language })
       return res.json(cards)
     }
 
-    const cards = await fetchCardsListFromDatabase({ setCode, expansionId })
+    const cards = await fetchCardsListFromDatabase({ setCode, expansionId, language })
     return res.json(cards)
   } catch (error) {
     console.error('Failed to fetch cards', error)
@@ -1878,13 +1952,15 @@ app.get('/api/expansions/id/:id/cards', async (req, res) => {
   try {
     const expansionId = Number(req.params.id)
     if (!Number.isFinite(expansionId)) return res.status(400).json({ error: 'Invalid expansion id' })
+    const language = normalizeLanguage(req.query.language)
 
     if (PRICE_TRACKER_API_KEY) {
       try {
         const expansion = await fetchExpansionById(expansionId)
         if (!expansion) return res.json([])
         const cards = await fetchCardsListFromPriceTracker({
-          setCode: expansion.set_code ?? expansion.set_name ?? String(expansionId)
+          setCode: expansion.set_code ?? expansion.set_name ?? String(expansionId),
+          language
         })
         return res.json(cards)
       } catch (error) {
@@ -1896,12 +1972,13 @@ app.get('/api/expansions/id/:id/cards', async (req, res) => {
       const expansion = await fetchExpansionById(expansionId)
       if (!expansion) return res.json([])
       const cards = await fetchCardsListFromPtImport({
-        setCode: expansion.set_code ?? expansion.set_name ?? String(expansionId)
+        setCode: expansion.set_code ?? expansion.set_name ?? String(expansionId),
+        language
       })
       return res.json(cards)
     }
 
-    const cards = await fetchCardsListFromDatabase({ expansionId })
+    const cards = await fetchCardsListFromDatabase({ expansionId, language })
     return res.json(cards)
   } catch (error) {
     console.error('Failed to fetch cards for expansion id', error)
@@ -1916,22 +1993,23 @@ app.get('/api/cards/search', async (req, res) => {
 
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200)
     const source = String(req.query.source ?? '').trim()
+    const language = normalizeLanguage(req.query.language)
 
     if (source === 'database' || !PRICE_TRACKER_API_KEY) {
       const ptReady = await ensurePriceTrackerImportTablesAvailable()
       const results = ptReady
-        ? await fetchCardSearchFromPtImport(query, limit)
-        : await fetchCardSearchFromDatabase(query, limit)
+        ? await fetchCardSearchFromPtImport(query, limit, language)
+        : await fetchCardSearchFromDatabase(query, limit, language)
       return res.json(results)
     }
 
     const ptReady = await ensurePriceTrackerImportTablesAvailable()
     if (ptReady) {
-      const results = await fetchCardSearchFromPtImport(query, limit)
+      const results = await fetchCardSearchFromPtImport(query, limit, language)
       return res.json(results)
     }
 
-    const results = await fetchCardSearchFromPriceTracker(query, limit)
+    const results = await fetchCardSearchFromPriceTracker(query, limit, language)
     return res.json(results)
   } catch (error) {
     console.error('Failed to search cards', error)

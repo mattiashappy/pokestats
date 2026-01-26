@@ -4,6 +4,14 @@ let languageColumnsCheckedAt = 0
 let ptSetsLanguageAvailable = false
 let expansionsLanguageAvailable = false
 const LANGUAGE_CACHE_TTL_MS = 5 * 60 * 1000
+const SUPPORTED_LANGUAGES = new Set(['english', 'japanese'])
+
+function normalizeLanguage(value) {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  if (!normalized) return 'english'
+  if (normalized === 'all') return null
+  return SUPPORTED_LANGUAGES.has(normalized) ? normalized : 'english'
+}
 
 function createExpansionService({
   pool,
@@ -49,7 +57,7 @@ function createExpansionService({
     return { ptSetsLanguageAvailable, expansionsLanguageAvailable }
   }
 
-  async function fetchExpansionSummaries() {
+  async function fetchExpansionSummaries(language = null) {
     if (!pool) return []
 
     try {
@@ -70,7 +78,12 @@ function createExpansionService({
       }
 
       if (priceTrackerReady) {
-        const { rows } = await pool.query(`
+        const ptParams = []
+        const ptLanguageClause =
+          ptSetsLanguageAvailable && language ? `WHERE s.language = $${ptParams.push(language)}` : ''
+
+        const { rows } = await pool.query(
+          `
           WITH pt_counts AS (
             SELECT pt_set_id, COUNT(*)::int AS cards_total
             FROM public.pt_cards
@@ -102,8 +115,11 @@ function createExpansionService({
           FROM public.pt_sets s
           LEFT JOIN pt_counts ON pt_counts.pt_set_id = s.pt_set_id
           LEFT JOIN pt_market_totals ON pt_market_totals.pt_set_id = s.pt_set_id
+          ${ptLanguageClause}
           ORDER BY s.release_date NULLS LAST, s.name NULLS LAST, s.pt_set_id NULLS LAST
-        `)
+        `,
+          ptParams
+        )
 
         if (rows.length) {
           return rows.map((row) => {
@@ -119,6 +135,17 @@ function createExpansionService({
 
       const cardInfraReady = await ensureCardInfrastructure()
       if (!cardInfraReady) return []
+
+      const expansionParams = []
+      const fallbackParams = []
+      const expansionLanguageClause =
+        expansionsLanguageAvailable && language
+          ? `WHERE e.language = $${expansionParams.push(language)}`
+          : ptSetsLanguageAvailable && language
+            ? `WHERE s.language = $${expansionParams.push(language)}`
+            : ''
+      const fallbackLanguageClause =
+        expansionsLanguageAvailable && language ? `WHERE e.language = $${fallbackParams.push(language)}` : ''
 
       const query = priceTrackerReady
         ? `
@@ -172,6 +199,7 @@ function createExpansionService({
         LEFT JOIN pt_market_totals ON pt_market_totals.pt_set_id = s.pt_set_id
         LEFT JOIN public.cards c ON c.expansion_id = e.id
         ${linksReady ? 'LEFT JOIN public.tradera_auction_card_links l ON l.card_id = c.id' : ''}
+        ${expansionLanguageClause}
         GROUP BY
           e.id,
           s.name,
@@ -209,11 +237,13 @@ function createExpansionService({
         FROM public.expansions e
         LEFT JOIN public.cards c ON c.expansion_id = e.id
         ${linksReady ? 'LEFT JOIN public.tradera_auction_card_links l ON l.card_id = c.id' : ''}
+        ${fallbackLanguageClause}
         GROUP BY e.id
         ORDER BY e.set_name NULLS LAST, e.set_code NULLS LAST
       `
 
-      const { rows } = await pool.query(query)
+      const params = priceTrackerReady ? expansionParams : fallbackParams
+      const { rows } = await pool.query(query, params)
       return rows.map((row) => {
         const eraLabel = row.era ?? null
         return {
@@ -229,9 +259,10 @@ function createExpansionService({
   }
 
   function registerRoutes(app) {
-    app.get('/api/expansions', async (_req, res) => {
+    app.get('/api/expansions', async (req, res) => {
       try {
-        const expansions = await fetchExpansionSummaries()
+        const language = normalizeLanguage(req.query.language)
+        const expansions = await fetchExpansionSummaries(language)
         return res.json(expansions)
       } catch (error) {
         console.error('Failed to fetch expansions', error)
@@ -239,9 +270,10 @@ function createExpansionService({
       }
     })
 
-    app.get('/api/sets', async (_req, res) => {
+    app.get('/api/sets', async (req, res) => {
       try {
-        const expansions = await fetchExpansionSummaries()
+        const language = normalizeLanguage(req.query.language)
+        const expansions = await fetchExpansionSummaries(language)
         return res.json(expansions)
       } catch (error) {
         console.error('Failed to fetch sets', error)

@@ -6,12 +6,14 @@ import type { ExpansionSummary } from '../../types'
 
 type SetCardProps = {
   expansion: ExpansionSummary
+  language?: string
 }
 
-export function SetCard({ expansion }: SetCardProps): JSX.Element {
+export function SetCard({ expansion, language }: SetCardProps): JSX.Element {
   const cardsLabel = expansion.set_total ?? expansion.cards_total
   const setIdentifier = getExpansionIdentifier(expansion)
-  const setLink = `/sets/${setIdentifier}`
+  const params = language ? new URLSearchParams({ language }).toString() : ''
+  const setLink = params ? `/sets/${setIdentifier}?${params}` : `/sets/${setIdentifier}`
   const imageUrl =
     expansion.image_cdn_url800 ?? expansion.image_cdn_url400 ?? expansion.image_cdn_url200 ?? expansion.image_url
   const formatMarketTotal = (value: number | null | undefined): string => {

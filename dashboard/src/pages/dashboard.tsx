@@ -16,6 +16,7 @@ export function DashboardPage(): JSX.Element {
 
   const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
+  const [languageFilter, setLanguageFilter] = useState('english')
   const PAGE_SIZE = 10
 
   const formatCardNumber = (card: CardListItem): string | null => {
@@ -38,8 +39,8 @@ export function DashboardPage(): JSX.Element {
     isLoading: cardsLoading,
     error: cardsError
   } = useQuery<CardListItem[]>({
-    queryKey: ['cards', searchTerm],
-    queryFn: () => fetchCards({ search: searchTerm.trim() || undefined })
+    queryKey: ['cards', searchTerm, languageFilter],
+    queryFn: () => fetchCards({ search: searchTerm.trim() || undefined, language: languageFilter })
   })
 
   const filteredCards = useMemo(() => {
@@ -164,6 +165,21 @@ export function DashboardPage(): JSX.Element {
                 value={searchTerm}
                 onChange={(event) => handleSearchChange(event.target.value)}
               />
+            </label>
+            <label className="flex items-center gap-2 rounded-full border-2 border-slate-900 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 shadow-[3px_3px_0px_#0f172a]">
+              <span>Language</span>
+              <select
+                className="bg-transparent text-sm font-semibold text-slate-900 outline-none"
+                value={languageFilter}
+                onChange={(event) => {
+                  setLanguageFilter(event.target.value)
+                  setCurrentPage(1)
+                }}
+              >
+                <option value="all">All</option>
+                <option value="english">English</option>
+                <option value="japanese">Japanese</option>
+              </select>
             </label>
           </div>
         </div>
