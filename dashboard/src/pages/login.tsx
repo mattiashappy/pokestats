@@ -9,7 +9,7 @@ import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
-import { isAdminLogin, useAuth } from '../providers/auth'
+import { useAuth } from '../providers/auth'
 
 const loginSchema = z.object({
   email: z.string().email('Enter a valid email'),
@@ -34,7 +34,7 @@ export function LoginPage(): JSX.Element {
     setAuthError(null)
     try {
       await login(data.email, data.password)
-      const fallbackPath = isAdminLogin(data.email, data.password) ? '/app' : '/dashboard'
+      const fallbackPath = '/sets'
       const redirectPath = (location.state as { from?: Location })?.from?.pathname ?? fallbackPath
       navigate(redirectPath, { replace: true })
     } catch (error) {
