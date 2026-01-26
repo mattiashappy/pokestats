@@ -1,12 +1,10 @@
 const { Pool } = require('pg');
 // Inbyggd fetch används (Node v20+)
 
-// Hämta inställningar från dina befintliga Heroku-variabler
 const API_BASE_URL = process.env.PT_API_BASE_URL || 'https://www.pokemonpricetracker.com/api/v2';
 const API_TOKEN = process.env.PT_API_TOKEN;
 const KEY_PREFIX = process.env.PT_API_KEY_PREFIX || 'Bearer';
 
-// Bygg auth-headern: "Bearer XXXXXX"
 const AUTH_HEADER = `${KEY_PREFIX} ${API_TOKEN}`.trim();
 
 const pool = new Pool({
@@ -21,7 +19,6 @@ async function fetchSetsByLanguage(language) {
 
   console.log(`\n--- 📦 Fetching ${language.toUpperCase()} sets ---`);
 
-  // Säkerhetskoll: Stoppa om ingen token finns
   if (!API_TOKEN) {
     console.error("❌ Error: PT_API_TOKEN saknas i miljövariablerna.");
     return [];
@@ -40,7 +37,6 @@ async function fetchSetsByLanguage(language) {
 
       if (!response.ok) {
         console.warn(`⚠️ Skipped ${language} (Status ${response.status}): Plan restriction or invalid key.`);
-        // Om första sidan misslyckas, avbryt loopen för detta språk
         if (offset === 0) return [];
         break;
       }
@@ -56,7 +52,6 @@ async function fetchSetsByLanguage(language) {
       hasMore = json.metadata?.hasMore || false;
       offset += 100;
       
-      // Säkerhetsspärr mot oändliga loopar
       if (offset > 5000) hasMore = false;
 
     } catch (error) {
@@ -79,12 +74,14 @@ async function upsertSets(client, sets, language) {
       INSERT INTO public.pt_sets 
         (pt_set_id, tcgplayer_set_id, name, series, release_date, card_count, language, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-      ON CONFLICT (pt_set_id) DO UPDATE
+      -- ÄNDRING HÄR: Vi kollar konflikt på 'tcgplayer_set_id' istället för 'pt_set_id'
+      ON CONFLICT (tcgplayer_set_id) DO UPDATE
       SET name = EXCLUDED.name,
           series = EXCLUDED.series,
           card_count = EXCLUDED.card_count,
           language = EXCLUDED.language,
           updated_at = NOW()
+          -- Vi uppdaterar INTE pt_set_id, för att behålla kopplingar till dina kort
       `,
       [
         set.id, 
