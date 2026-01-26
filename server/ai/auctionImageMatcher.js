@@ -109,7 +109,6 @@ async function requestVisionModel({ apiKey, model, requestBody }) {
 
   if (!response.ok) {
     const errorText = await response.text()
-    // Kept the clean error message format
     const error = new Error(`Gemini API error ${response.status} (model ${model}): ${errorText}`)
     error.status = response.status
     throw error
@@ -186,7 +185,6 @@ Prioritize the collector number as the most authoritative identifier.`
     } catch (error) {
       lastError = error
       
-      // CRITICAL FIX: Enhanced retry logic to handle 503 Overloaded errors
       const message = String(error.message || '').toLowerCase()
       const status = error.status
 
@@ -302,6 +300,7 @@ async function matchPtCard(client, { cardNumber, setHint, name }) {
     if (rows.length === 0) return null
 
     const candidates = filterMatchesBySetName(rows, setHint)
+    
     if (candidates.length === 1) {
       return { card: candidates[0], method: 'vision-name+set-fuzzy' }
     }
@@ -316,7 +315,8 @@ async function matchPtCard(client, { cardNumber, setHint, name }) {
           return { card: exact, method: 'vision-name+set+number' }
         }
       }
-      return null
+      // Best guess fallback if set matches but number doesn't
+      return { card: candidates[0], method: 'vision-name+set-best-guess' }
     }
   }
 
