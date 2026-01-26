@@ -39,7 +39,7 @@ function registerAiRoutes(app, { pool }) {
       return res.json(result)
     } catch (error) {
       console.error('Failed to match auctions with AI', error)
-      return res.status(500).json({ error: 'Failed to match auctions' })
+      return res.status(500).json({ error: error.message || 'Failed to match auctions' })
     } finally {
       client.release()
     }
@@ -69,7 +69,7 @@ function registerAiRoutes(app, { pool }) {
       return res.json(result)
     } catch (error) {
       console.error('Failed to match auctions with vision', error)
-      return res.status(500).json({ error: 'Failed to match auctions' })
+      return res.status(500).json({ error: error.message || 'Failed to match auctions' })
     } finally {
       client.release()
     }
