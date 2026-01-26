@@ -1,8 +1,10 @@
 const { Pool } = require('pg')
+const fetch = require('node-fetch') // Ensure you have node-fetch or use Node 18+ native fetch
 
 const DEFAULT_LIMIT = 50
 const DEFAULT_MIN_CONFIDENCE = 0.7
-const DEFAULT_MODEL = 'gpt-4o-mini'
+// Using the latest production version of 1.5 Pro
+const DEFAULT_MODEL = 'gemini-1.5-pro-002'
 
 function buildPool() {
   return new Pool({
@@ -24,7 +26,6 @@ function parseArgs(argv) {
       args.dryRun = true
       continue
     }
-
     if (value === '--limit') {
       const next = Number(argv[i + 1])
       if (Number.isFinite(next)) {
@@ -33,7 +34,6 @@ function parseArgs(argv) {
       }
       continue
     }
-
     if (value === '--min-confidence') {
       const next = Number(argv[i + 1])
       if (Number.isFinite(next)) {
@@ -42,7 +42,6 @@ function parseArgs(argv) {
       }
     }
   }
-
   return args
 }
 
@@ -104,118 +103,99 @@ async function fetchAuctions(client, limit) {
     `,
     [limit]
   )
-
   return rows
 }
 
-function buildVisionPrompt() {
-  return [
-    'You are extracting printed details from a Pokémon TCG card listing image.',
-    'Return JSON ONLY with these fields:',
-    '- card_number (string, exact printed collector number like "197/193")',
-    '- name (string, printed card name)',
-    '- set_name_hint (string or null)',
-    '- language (string, use values like English, Japanese, Swedish, Unknown)',
-    '- confidence (number 0-1)',
-    'Prioritize the collector number as the most authoritative identifier.'
-  ].join('\n')
+// Gemini requires base64 image data, it cannot fetch URLs directly from the prompt
+async function fetchImageAsBase64(url) {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`)
+  const arrayBuffer = await response.arrayBuffer()
+  return Buffer.from(arrayBuffer).toString('base64')
 }
 
-function extractResponseText(payload) {
-  if (payload.output_text) return payload.output_text
-  if (Array.isArray(payload.output)) {
-    for (const item of payload.output) {
-      if (!item?.content) continue
-      for (const content of item.content) {
-        if (content.type === 'output_text' || content.type === 'text') {
-          return content.text
-        }
-      }
-    }
-  }
-  return null
-}
-
-function safeParseJson(text) {
-  if (!text) return null
-  try {
-    return JSON.parse(text)
-  } catch (error) {
-    const match = text.match(/\{[\s\S]*\}/)
-    if (!match) return null
-    try {
-      return JSON.parse(match[0])
-    } catch (parseError) {
-      return null
-    }
-  }
+// Helper to determine mime type roughly from url or default to jpeg
+function getMimeType(url) {
+  if (url.toLowerCase().endsWith('.png')) return 'image/png'
+  if (url.toLowerCase().endsWith('.webp')) return 'image/webp'
+  return 'image/jpeg'
 }
 
 async function callVisionModel({ imageUrl, model }) {
-  const apiKey = process.env.OPENAI_API_KEY
+  // 1. Get API Key
+  const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
-    throw new Error('OPENAI_API_KEY is not set')
+    throw new Error('GEMINI_API_KEY is not set')
+  }
+
+  // 2. Download and prepare Image
+  const base64Image = await fetchImageAsBase64(imageUrl)
+  const mimeType = getMimeType(imageUrl)
+
+  // 3. Define the Schema (Strict JSON Output)
+  const schema = {
+    type: "OBJECT",
+    properties: {
+      card_number: { type: "STRING", description: "The exact printed collector number like '197/193'" },
+      name: { type: "STRING", description: "The printed card name" },
+      set_name_hint: { type: "STRING", description: "A hint for the set name found on the card, or null", nullable: true },
+      language: { type: "STRING", description: "The language of the card (English, Japanese, etc)" },
+      confidence: { type: "NUMBER", description: "Confidence score between 0 and 1" }
+    },
+    required: ["card_number", "name", "set_name_hint", "language", "confidence"]
   }
 
   const requestBody = {
-    model,
-    input: [
-      {
-        role: 'user',
-        content: [
-          { type: 'input_text', text: buildVisionPrompt() },
-          { type: 'input_image', image_url: imageUrl }
-        ]
-      }
-    ],
-    text: {
-      format: {
-        type: 'json_schema',
-        name: 'vision_card_extract',
-        strict: true,
-        schema: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            card_number: { type: 'string' },
-            name: { type: 'string' },
-            set_name_hint: { type: ['string', 'null'] },
-            language: { type: 'string' },
-            confidence: { type: 'number' }
-          },
-          required: ['card_number', 'name', 'set_name_hint', 'language', 'confidence']
+    contents: [{
+      parts: [
+        {
+          text: `You are extracting printed details from a Pokémon TCG card listing image. 
+                 Prioritize the collector number as the most authoritative identifier.`
+        },
+        {
+          inline_data: {
+            mime_type: mimeType,
+            data: base64Image
+          }
         }
-      }
+      ]
+    }],
+    generationConfig: {
+      response_mime_type: "application/json",
+      response_schema: schema,
+      temperature: 0.1 // Low temperature for factual extraction
     }
   }
 
   if (['1', 'true', 'yes'].includes(String(process.env.AI_VISION_LOG_REQUEST || '').toLowerCase())) {
-    console.info('Vision request payload:', JSON.stringify(requestBody, null, 2))
+    console.info('Vision request model:', model)
   }
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  // 4. Call Gemini API
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+  
+  const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(requestBody)
   })
 
   if (!response.ok) {
     const errorText = await response.text()
-    throw new Error(`OpenAI API error ${response.status}: ${errorText}`)
+    throw new Error(`Gemini API error ${response.status}: ${errorText}`)
   }
 
   const payload = await response.json()
-  const outputText = extractResponseText(payload)
-  const parsed = safeParseJson(outputText)
 
-  if (!parsed) {
-    throw new Error(`Unable to parse model response: ${outputText || 'empty response'}`)
+  // 5. Parse Response
+  try {
+    const textResponse = payload.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!textResponse) throw new Error('Empty response from Gemini')
+    return JSON.parse(textResponse)
+  } catch (error) {
+    console.error('Failed to parse Gemini response:', JSON.stringify(payload, null, 2))
+    throw error
   }
-
-  return parsed
 }
 
 function normalizeCardNumber(cardNumber) {
@@ -323,7 +303,8 @@ async function run() {
   }
 
   const { limit, dryRun, minConfidence } = parseArgs(process.argv)
-  const model = process.env.OPENAI_MODEL || DEFAULT_MODEL
+  // Fallback to Gemini Pro 1.5 if env var not set
+  const model = process.env.GEMINI_MODEL || DEFAULT_MODEL
 
   const pool = buildPool()
   const client = await pool.connect()
