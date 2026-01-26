@@ -6,21 +6,26 @@ const API_TOKEN = process.env.PT_API_TOKEN;
 const KEY_PREFIX = process.env.PT_API_KEY_PREFIX || 'Bearer';
 const AUTH_HEADER = `${KEY_PREFIX} ${API_TOKEN}`.trim();
 
+// 🛑 SETTING: Wait 1.5 seconds between API calls to stay under 60/minute limit
+const DELAY_MS = 1500; 
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false }
 });
 
+// Helper function to pause execution
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 async function fetchCardsForSet(setId, language) {
-  // We use fetchAllInSet=true to get everything in one go (up to 200 limit usually handled by API pagination internally or we check hasMore)
-  // However, specifically for this API, fetchAllInSet increases limit but we should still handle pagination if a set is huge.
-  
   let allCards = [];
   let offset = 0;
   let hasMore = true;
   
   while (hasMore) {
-    // We use the MongoDB ID (pt_set_id) as the setId filter
+    // ⏱️ SLEEP before every request
+    await sleep(DELAY_MS);
+
     const url = `${API_BASE_URL}/cards?setId=${setId}&language=${language}&fetchAllInSet=true&limit=200&offset=${offset}`;
     
     try {
@@ -29,8 +34,11 @@ async function fetchCardsForSet(setId, language) {
       });
 
       if (!res.ok) {
+        if (res.status === 403 || res.status === 429) {
+          throw new Error(`Rate Limit Exceeded (${res.status})`);
+        }
         console.warn(`   ⚠️ Failed to fetch cards for set ${setId} (${res.status}): ${res.statusText}`);
-        return allCards; // Return what we have
+        return allCards;
       }
 
       const json = await res.json();
@@ -41,11 +49,10 @@ async function fetchCardsForSet(setId, language) {
       }
 
       hasMore = json.metadata?.hasMore || false;
-      offset += 200; // API 'fetchAllInSet' usually allows higher limits, but safe to paginate
+      offset += 200;
 
     } catch (err) {
-      console.error(`   ❌ Error fetching cards: ${err.message}`);
-      hasMore = false;
+      throw err;
     }
   }
   return allCards;
@@ -72,9 +79,9 @@ async function upsertCards(client, cards, language) {
           updated_at = NOW()
       `,
       [
-        card.id, // pt_card_id
+        card.id, 
         card.tcgPlayerId ? parseInt(card.tcgPlayerId) : null,
-        card.setId || null, // Matches the pt_set_id we stored earlier
+        card.setId || null, 
         card.setName,
         card.name,
         card.cardNumber,
@@ -83,7 +90,7 @@ async function upsertCards(client, cards, language) {
         card.cardType,
         card.artist,
         card.tcgPlayerUrl,
-        card.imageCdnUrl, // 800x800 image
+        card.imageCdnUrl, 
         card.prices?.market || null,
         language
       ]
@@ -94,37 +101,52 @@ async function upsertCards(client, cards, language) {
 async function run() {
   const client = await pool.connect();
   try {
-    console.log("🔄 Fetching all sets from database...");
+    console.log("🔄 Finding sets that are MISSING cards...");
     
-    // We prioritize Japanese sets first since those were missing
+    // Find sets with 0 cards in the database
     const res = await client.query(`
-      SELECT pt_set_id, name, language, card_count 
-      FROM public.pt_sets 
-      ORDER BY language DESC, release_date DESC
+      SELECT s.pt_set_id, s.name, s.language 
+      FROM public.pt_sets s
+      LEFT JOIN public.pt_cards c ON s.pt_set_id = c.pt_set_id
+      WHERE c.pt_card_id IS NULL
+      GROUP BY s.pt_set_id
+      ORDER BY s.release_date DESC
     `);
     
-    const totalSets = res.rows.length;
-    console.log(`📋 Found ${totalSets} sets to process.`);
+    const setsToSync = res.rows;
+    console.log(`📋 Found ${setsToSync.length} sets that need syncing.`);
+
+    if (setsToSync.length === 0) {
+      console.log("🎉 All sets appear to be populated!");
+      return;
+    }
 
     let processed = 0;
 
-    for (const set of res.rows) {
+    for (const set of setsToSync) {
       processed++;
-      const progress = ((processed / totalSets) * 100).toFixed(1);
+      const progress = ((processed / setsToSync.length) * 100).toFixed(1);
       
-      process.stdout.write(`[${progress}%] Syncing ${set.language.toUpperCase()} set: ${set.name}... `);
+      process.stdout.write(`[${progress}%] Resuming ${set.language.toUpperCase()} set: ${set.name}... `);
       
-      const cards = await fetchCardsForSet(set.pt_set_id, set.language);
-      
-      if (cards.length > 0) {
-        await upsertCards(client, cards, set.language);
-        console.log(`✅ Saved ${cards.length} cards.`);
-      } else {
-        console.log(`⚠️ No cards found (expected ~${set.card_count}).`);
+      try {
+        const cards = await fetchCardsForSet(set.pt_set_id, set.language);
+        
+        if (cards.length > 0) {
+          await upsertCards(client, cards, set.language);
+          console.log(`✅ Saved ${cards.length} cards.`);
+        } else {
+          console.log(`⚠️ API returned 0 cards.`);
+        }
+      } catch (err) {
+        if (err.message.includes("Rate Limit")) {
+          console.error(`\n⛔ ${err.message}. Waiting 60 seconds before retrying...`);
+          await sleep(60000); // Wait 1 minute if we hit a hard block
+        } else {
+          console.error(`\n❌ Error: ${err.message}`);
+        }
       }
     }
-
-    console.log("\n🎉 All cards synced successfully!");
 
   } catch (err) {
     console.error("\n❌ Fatal Error:", err);
@@ -133,5 +155,4 @@ async function run() {
     await pool.end();
   }
 }
-
-run();
+run()

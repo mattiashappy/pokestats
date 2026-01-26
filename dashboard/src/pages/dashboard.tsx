@@ -3,12 +3,14 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
 import DataTable from '../components/ui/data-table'
+import { useRegion } from '../contexts/region-context'
 import { fetchCardDetails, fetchCards } from '../lib/api'
 import { getCardSetIdentifier } from '../lib/sets'
 import type { CardListItem, CardResponse } from '../types'
 
 export function DashboardPage(): JSX.Element {
   const featuredCardId = '68af87b6c4f780b5153e99c5'
+  const { language } = useRegion()
   const { data: featuredCard } = useQuery<CardResponse>({
     queryKey: ['featured-card', featuredCardId],
     queryFn: () => fetchCardDetails(featuredCardId)

@@ -8,6 +8,7 @@ import App from './App'
 import { AuthProvider } from './providers/auth'
 import { AdminSettingsProvider } from './providers/admin-settings'
 import { ThemeProvider } from './providers/theme'
+import { RegionProvider } from './contexts/region-context'
 import './index.css'
 
 const queryClient = new QueryClient()
@@ -16,13 +17,15 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <AdminSettingsProvider>
-          <AuthProvider>
-            <BrowserRouter>
-              <App />
-            </BrowserRouter>
-          </AuthProvider>
-        </AdminSettingsProvider>
+        <RegionProvider>
+          <AdminSettingsProvider>
+            <AuthProvider>
+              <BrowserRouter>
+                <App />
+              </BrowserRouter>
+            </AuthProvider>
+          </AdminSettingsProvider>
+        </RegionProvider>
       </ThemeProvider>
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>

@@ -4,6 +4,7 @@ import { Layers, Loader2 } from 'lucide-react'
 
 import { Button } from '../components/ui/button'
 import { SetCard } from '../components/pokemon/set-card'
+import { useRegion } from '../contexts/region-context'
 import { fetchExpansions } from '../lib/api'
 import { getExpansionIdentifier } from '../lib/sets'
 import type { ExpansionSummary } from '../types'
