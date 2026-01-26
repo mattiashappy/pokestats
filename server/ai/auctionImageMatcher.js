@@ -1,10 +1,47 @@
-const DEFAULT_MODEL = process.env.AI_VISION_MODEL || process.env.GEMINI_MODEL || 'gemini-1.5-pro'
+const DEFAULT_MODEL = process.env.AI_VISION_MODEL || process.env.GEMINI_MODEL || 'gemini-1.5-pro-latest'
 const DEFAULT_CONFIDENCE_THRESHOLD = Number(process.env.AI_VISION_CONFIDENCE_THRESHOLD || 0.7)
 const DEFAULT_MAX_MATCHES = Number(process.env.AI_VISION_MAX_MATCHES || 200)
 const SHOULD_LOG_VISION_REQUEST = ['1', 'true', 'yes'].includes(
   String(process.env.AI_VISION_LOG_REQUEST || '').toLowerCase()
 )
-const DEFAULT_FALLBACK_MODELS = ['gemini-1.5-pro', 'gemini-1.5-flash']
+
+// RESOLVED CONFLICT: Accepted Codex's dynamic fallback system
+const DEFAULT_FALLBACK_MODELS = ['gemini-1.5-pro-latest', 'gemini-1.5-flash-latest', 'gemini-1.5-pro', 'gemini-1.5-flash']
+
+async function listVisionModels(apiKey) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+  const response = await fetch(url)
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Gemini API model list error ${response.status}: ${errorText}`)
+  }
+  const payload = await response.json()
+  return Array.isArray(payload.models) ? payload.models : []
+}
+
+function filterGenerateContentModels(models) {
+  return models.filter((model) => Array.isArray(model.supportedGenerationMethods)
+    && model.supportedGenerationMethods.includes('generateContent'))
+}
+
+function extractModelId(modelName) {
+  if (!modelName) return null
+  const parts = String(modelName).split('/')
+  return parts[parts.length - 1] || null
+}
+
+async function resolveFallbackModels(apiKey, preferredModels) {
+  try {
+    const models = filterGenerateContentModels(await listVisionModels(apiKey))
+    const modelIds = models.map((model) => extractModelId(model.name)).filter(Boolean)
+    const preferred = preferredModels.filter((entry) => modelIds.includes(entry))
+    if (preferred.length) return preferred
+    return modelIds
+  } catch (error) {
+    console.warn('Failed to list Gemini models, using fallback list', error.message)
+    return preferredModels
+  }
+}
 
 function clampLimit(value, fallback) {
   const numeric = Number(value)
@@ -72,7 +109,8 @@ async function requestVisionModel({ apiKey, model, requestBody }) {
 
   if (!response.ok) {
     const errorText = await response.text()
-    const error = new Error(`Gemini API error ${response.status}: ${errorText}`)
+    // RESOLVED CONFLICT: Kept the better error message (includes model name)
+    const error = new Error(`Gemini API error ${response.status} (model ${model}): ${errorText}`)
     error.status = response.status
     throw error
   }
@@ -134,7 +172,9 @@ Prioritize the collector number as the most authoritative identifier.`
     console.info('Vision request model:', model)
   }
 
-  const orderedModels = [model, ...fallbackModels].filter(Boolean)
+  // RESOLVED CONFLICT: Used the dynamic fallback logic from the fix branch
+  const dynamicFallback = await resolveFallbackModels(apiKey, fallbackModels)
+  const orderedModels = [model, ...dynamicFallback].filter(Boolean)
   const seenModels = new Set()
 
   let lastError
