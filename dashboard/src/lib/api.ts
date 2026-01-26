@@ -386,7 +386,16 @@ export async function runVisionMatch(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   })
-  if (!res.ok) throw new Error('Failed to run vision match')
+  if (!res.ok) {
+    let message = 'Failed to run vision match'
+    try {
+      const payload = await res.json()
+      if (payload?.error) message = payload.error
+    } catch (error) {
+      // Ignore JSON parsing errors and use fallback message.
+    }
+    throw new Error(message)
+  }
   return res.json()
 }
 
