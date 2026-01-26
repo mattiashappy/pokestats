@@ -5,7 +5,7 @@ const SHOULD_LOG_VISION_REQUEST = ['1', 'true', 'yes'].includes(
   String(process.env.AI_VISION_LOG_REQUEST || '').toLowerCase()
 )
 
-// RESOLVED CONFLICT: Accepted Codex's dynamic fallback system
+// Dynamic fallback system
 const DEFAULT_FALLBACK_MODELS = ['gemini-1.5-pro-latest', 'gemini-1.5-flash-latest', 'gemini-1.5-pro', 'gemini-1.5-flash']
 
 async function listVisionModels(apiKey) {
@@ -109,7 +109,7 @@ async function requestVisionModel({ apiKey, model, requestBody }) {
 
   if (!response.ok) {
     const errorText = await response.text()
-    // RESOLVED CONFLICT: Kept the better error message (includes model name)
+    // Kept the clean error message format
     const error = new Error(`Gemini API error ${response.status} (model ${model}): ${errorText}`)
     error.status = response.status
     throw error
@@ -172,7 +172,6 @@ Prioritize the collector number as the most authoritative identifier.`
     console.info('Vision request model:', model)
   }
 
-  // RESOLVED CONFLICT: Used the dynamic fallback logic from the fix branch
   const dynamicFallback = await resolveFallbackModels(apiKey, fallbackModels)
   const orderedModels = [model, ...dynamicFallback].filter(Boolean)
   const seenModels = new Set()
@@ -186,10 +185,24 @@ Prioritize the collector number as the most authoritative identifier.`
       return await requestVisionModel({ apiKey, model: candidate, requestBody })
     } catch (error) {
       lastError = error
-      const message = String(error.message || '')
-      if (error.status === 404 || message.includes('not found')) {
+      
+      // CRITICAL FIX: Enhanced retry logic to handle 503 Overloaded errors
+      const message = String(error.message || '').toLowerCase()
+      const status = error.status
+
+      const isRetryable = 
+           status === 404 
+        || status === 500 
+        || status === 503 
+        || message.includes('not found')
+        || message.includes('overloaded')
+        || message.includes('unavailable')
+
+      if (isRetryable) {
+        console.warn(`Vision model ${candidate} failed (${status || 'error'}), trying next fallback.`)
         continue
       }
+      
       throw error
     }
   }
