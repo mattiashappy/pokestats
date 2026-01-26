@@ -1,7 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom"
 
 import { AppLayout } from "./components/layout/app-layout"
-import { PublicLayout } from "./components/layout/public-layout"
 import { ProtectedRoute } from "./components/protected-route"
 import { AdminPage } from "./pages/admin"
 import { AuctionsPage } from "./pages/auctions"
@@ -22,8 +21,9 @@ import { EraSetsPage } from "./pages/era-sets"
 function App(): JSX.Element {
   return (
     <Routes>
-      <Route element={<PublicLayout />}>
-        <Route path="/" element={<DashboardPage />} />
+      <Route element={<AppLayout />}>
+        <Route index element={<DashboardPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
       </Route>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
@@ -31,7 +31,6 @@ function App(): JSX.Element {
       {/* Protected app routes – user/member access */}
       <Route element={<ProtectedRoute allowedRoles={["admin", "member"]} />}>
         <Route element={<AppLayout />}>
-          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/collections" element={<CollectionsPage />} />
           <Route path="/sets" element={<SetsPage />} />
           <Route path="/sets/:setCode" element={<PokemonSetPage />} />
