@@ -12,13 +12,13 @@ export function AppLayout(): JSX.Element {
   const navItems =
     user?.role === 'admin'
       ? [
-          { label: 'Dashboard', to: '/dashboard' },
+          { label: 'Dashboard', to: '/' },
           { label: 'Auctions', to: '/auctions' },
           { label: 'Sets', to: '/sets' },
           { label: 'Enrichment', to: '/admin/enrich' }
         ]
       : [
-          { label: 'Dashboard', to: '/dashboard' },
+          { label: 'Dashboard', to: '/' },
           { label: 'Collections', to: '/collections' },
           { label: 'Sets', to: '/sets' }
         ]

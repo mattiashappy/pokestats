@@ -18,13 +18,12 @@ import { SignupPage } from "./pages/signup"
 import { AuctionImportsPage } from "./pages/auction-imports"
 import { ErasPage } from "./pages/eras"
 import { EraSetsPage } from "./pages/era-sets"
-import { LandingPage } from "./pages/landing"
 
 function App(): JSX.Element {
   return (
     <Routes>
       <Route element={<PublicLayout />}>
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={<DashboardPage />} />
       </Route>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
@@ -32,7 +31,6 @@ function App(): JSX.Element {
       {/* Protected app routes – user/member access */}
       <Route element={<ProtectedRoute allowedRoles={["admin", "member"]} />}>
         <Route element={<AppLayout />}>
-          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/collections" element={<CollectionsPage />} />
           <Route path="/sets" element={<SetsPage />} />
           <Route path="/sets/:setCode" element={<PokemonSetPage />} />
@@ -65,7 +63,8 @@ function App(): JSX.Element {
         </Route>
       </Route>
 
-      <Route path="/app/*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/dashboard" element={<Navigate to="/" replace />} />
+      <Route path="/app/*" element={<Navigate to="/" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
