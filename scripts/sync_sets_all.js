@@ -1,5 +1,5 @@
 const { Pool } = require('pg');
-const fetch = require('node-fetch'); // Se till att node-fetch är installerat
+// OBS: Tog bort 'node-fetch' eftersom Node v20 har inbyggd fetch
 
 const API_BASE_URL = 'https://www.pokemonpricetracker.com/api/v2';
 const API_KEY = process.env.POKEMON_PRICE_TRACKER_API_KEY;
@@ -50,12 +50,13 @@ async function fetchSetsByLanguage(language) {
 
 async function upsertSets(client, sets, language) {
   for (const set of sets) {
+    // VIKTIGT: Vi använder set.id (från API) som pt_set_id i databasen för att matcha din schema
     await client.query(
       `
       INSERT INTO public.pt_sets 
         (pt_set_id, tcgplayer_set_id, name, series, release_date, card_count, language, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-      ON CONFLICT (pt_set_id) DO UPDATE -- OBS: Kontrollera om din PRIMARY KEY är pt_set_id eller tcgplayer_set_id i din kod
+      ON CONFLICT (pt_set_id) DO UPDATE
       SET name = EXCLUDED.name,
           series = EXCLUDED.series,
           card_count = EXCLUDED.card_count,
@@ -63,7 +64,7 @@ async function upsertSets(client, sets, language) {
           updated_at = NOW()
       `,
       [
-        set.id, // API:ts interna ID mapar ofta till pt_set_id
+        set.id, 
         set.tcgPlayerId, 
         set.name, 
         set.series, 
@@ -99,4 +100,5 @@ async function run() {
     await pool.end();
   }
 }
+
 run().catch(e => console.error(e));
