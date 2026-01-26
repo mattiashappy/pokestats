@@ -6,6 +6,7 @@ import { Link, useParams } from 'react-router-dom'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { SetCard } from '../components/pokemon/set-card'
+import { useRegion } from '../contexts/region-context'
 import { fetchEraExpansions, fetchEras } from '../lib/api'
 import { formatEraYears, normalizeEraCode } from '../lib/era'
 import { getExpansionIdentifier } from '../lib/sets'
@@ -14,6 +15,7 @@ import type { EraSummary, ExpansionSummary } from '../types'
 export function EraSetsPage(): JSX.Element {
   const { eraCode = '' } = useParams()
   const normalizedEraCode = normalizeEraCode(eraCode) ?? eraCode
+  const { language } = useRegion()
 
   const { data: eras } = useQuery<EraSummary[]>({
     queryKey: ['eras'],
@@ -25,8 +27,8 @@ export function EraSetsPage(): JSX.Element {
     isLoading,
     error
   } = useQuery<ExpansionSummary[]>({
-    queryKey: ['era-expansions', normalizedEraCode],
-    queryFn: () => fetchEraExpansions(normalizedEraCode),
+    queryKey: ['era-expansions', normalizedEraCode, language],
+    queryFn: () => fetchEraExpansions(normalizedEraCode, language),
     enabled: Boolean(normalizedEraCode)
   })
 
