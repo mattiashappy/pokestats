@@ -3,7 +3,6 @@ import { CreditCard, LogOut, Settings } from 'lucide-react'
 
 import { TopNav } from './top-nav'
 import { ThemeToggle } from '../theme-toggle'
-import { RegionToggle } from '../region-toggle'
 import { useAuth } from '../../providers/auth'
 
 export function AppLayout(): JSX.Element {
@@ -30,7 +29,6 @@ export function AppLayout(): JSX.Element {
         items={navItems}
         actions={
           <>
-            <RegionToggle />
             <ThemeToggle />
             {user?.role !== 'admin' ? (
               <button
