@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { ArrowLeft, Calendar, Layers, Loader2, Search } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
@@ -17,7 +17,8 @@ import type { CardListItem, ExpansionSummary } from '../types'
 export function PokemonSetPage(): JSX.Element {
   const { setCode = '' } = useParams()
   const [searchTerm, setSearchTerm] = useState('')
-  const { language } = useRegion()
+  const [searchParams] = useSearchParams()
+  const languageFilter = searchParams.get('language') || 'english'
 
   const formatCardNumber = (card: CardListItem): string | null => {
     if (!card.card_number) return null
@@ -39,8 +40,8 @@ export function PokemonSetPage(): JSX.Element {
     isLoading: isLoadingExpansions,
     error: expansionsError
   } = useQuery<ExpansionSummary[]>({
-    queryKey: ['expansions', language],
-    queryFn: () => fetchExpansions(language)
+    queryKey: ['expansions', languageFilter],
+    queryFn: () => fetchExpansions(languageFilter)
   })
 
   const {
@@ -48,8 +49,8 @@ export function PokemonSetPage(): JSX.Element {
     isLoading: isLoadingCards,
     error: cardsError
   } = useQuery<CardListItem[]>({
-    queryKey: ['cards', setCode, language],
-    queryFn: () => fetchCardsForSet(setCode, language),
+    queryKey: ['cards', setCode, languageFilter],
+    queryFn: () => fetchCardsForSet(setCode, languageFilter),
     enabled: Boolean(setCode)
   })
 

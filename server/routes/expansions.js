@@ -8,6 +8,8 @@ const SUPPORTED_LANGUAGES = new Set(['english', 'japanese'])
 
 function normalizeLanguage(value) {
   const normalized = String(value ?? '').trim().toLowerCase()
+  if (!normalized) return 'english'
+  if (normalized === 'all') return null
   return SUPPORTED_LANGUAGES.has(normalized) ? normalized : 'english'
 }
 
