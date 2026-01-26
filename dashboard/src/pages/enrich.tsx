@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
+import { useRegion } from '../contexts/region-context'
 import {
   fetchAuctionCardLinks,
   fetchLinkingStats,
@@ -126,6 +127,7 @@ export function EnrichPage(): JSX.Element {
   const [selectedAuction, setSelectedAuction] = useState<UnlinkedAuction | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const { language } = useRegion()
   const [manualLinkPending, setManualLinkPending] = useState(false)
   const [manualLinkError, setManualLinkError] = useState<string | null>(null)
   const [manualLinkSuccess, setManualLinkSuccess] = useState<string | null>(null)
@@ -280,8 +282,8 @@ export function EnrichPage(): JSX.Element {
     isLoading: cardSearchLoading,
     isError: cardSearchError
   } = useQuery<CardSearchResult[]>({
-    queryKey: ['card-search', searchQuery],
-    queryFn: () => searchCards(searchQuery, 50, 'database'),
+    queryKey: ['card-search', searchQuery, language],
+    queryFn: () => searchCards(searchQuery, 50, 'database', language),
     enabled: searchOpen && Boolean(searchQuery)
   })
   const counts = useMemo(() => {

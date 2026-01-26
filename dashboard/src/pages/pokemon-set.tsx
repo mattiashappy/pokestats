@@ -9,6 +9,7 @@ import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import DataTable from '../components/ui/data-table'
 import { Input } from '../components/ui/input'
+import { useRegion } from '../contexts/region-context'
 import { fetchCardsForSet, fetchExpansions } from '../lib/api'
 import { getCardSetIdentifier, getExpansionIdentifier } from '../lib/sets'
 import type { CardListItem, ExpansionSummary } from '../types'
@@ -16,6 +17,7 @@ import type { CardListItem, ExpansionSummary } from '../types'
 export function PokemonSetPage(): JSX.Element {
   const { setCode = '' } = useParams()
   const [searchTerm, setSearchTerm] = useState('')
+  const { language } = useRegion()
 
   const formatCardNumber = (card: CardListItem): string | null => {
     if (!card.card_number) return null
@@ -37,8 +39,8 @@ export function PokemonSetPage(): JSX.Element {
     isLoading: isLoadingExpansions,
     error: expansionsError
   } = useQuery<ExpansionSummary[]>({
-    queryKey: ['expansions'],
-    queryFn: fetchExpansions
+    queryKey: ['expansions', language],
+    queryFn: () => fetchExpansions(language)
   })
 
   const {
@@ -46,8 +48,8 @@ export function PokemonSetPage(): JSX.Element {
     isLoading: isLoadingCards,
     error: cardsError
   } = useQuery<CardListItem[]>({
-    queryKey: ['cards', setCode],
-    queryFn: () => fetchCardsForSet(setCode),
+    queryKey: ['cards', setCode, language],
+    queryFn: () => fetchCardsForSet(setCode, language),
     enabled: Boolean(setCode)
   })
 

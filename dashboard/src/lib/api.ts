@@ -52,8 +52,9 @@ export async function fetchCardAuctions(cardId: number | string): Promise<Auctio
   return rows.map(mapAuctionRecord)
 }
 
-export async function fetchExpansions(): Promise<ExpansionSummary[]> {
-  const response = await fetch('/api/expansions')
+export async function fetchExpansions(language?: string): Promise<ExpansionSummary[]> {
+  const params = language ? new URLSearchParams({ language }) : null
+  const response = await fetch(params ? `/api/expansions?${params.toString()}` : '/api/expansions')
   if (!response.ok) throw new Error('Failed to fetch expansions')
   return response.json()
 }
@@ -64,11 +65,14 @@ export async function fetchEras(): Promise<EraSummary[]> {
   return response.json()
 }
 
-export async function fetchEraExpansions(eraCode: string): Promise<ExpansionSummary[]> {
+export async function fetchEraExpansions(eraCode: string, language?: string): Promise<ExpansionSummary[]> {
   const code = (eraCode || '').trim()
   if (!code) return []
 
-  const response = await fetch(`/api/eras/${encodeURIComponent(code)}/expansions`)
+  const params = language ? new URLSearchParams({ language }) : null
+  const response = await fetch(
+    params ? `/api/eras/${encodeURIComponent(code)}/expansions?${params.toString()}` : `/api/eras/${encodeURIComponent(code)}/expansions`
+  )
   if (!response.ok) throw new Error('Failed to fetch era expansions')
   return response.json()
 }
@@ -77,11 +81,16 @@ export async function fetchEraExpansions(eraCode: string): Promise<ExpansionSumm
  * Fetch cards for a set using set identifier (local set_code or PT pt_set_id).
  * Backend must support: GET /api/expansions/:setCode/cards
  */
-export async function fetchCardsForSet(setCode: string): Promise<CardListItem[]> {
+export async function fetchCardsForSet(setCode: string, language?: string): Promise<CardListItem[]> {
   const code = (setCode || '').trim()
   if (!code) return []
 
-  const response = await fetch(`/api/expansions/${encodeURIComponent(code)}/cards`)
+  const params = language ? new URLSearchParams({ language }) : null
+  const response = await fetch(
+    params
+      ? `/api/expansions/${encodeURIComponent(code)}/cards?${params.toString()}`
+      : `/api/expansions/${encodeURIComponent(code)}/cards`
+  )
   if (!response.ok) throw new Error('Failed to fetch cards')
   return response.json()
 }
@@ -90,6 +99,7 @@ type CardQueryOptions = {
   search?: string
   limit?: number
   offset?: number
+  language?: string
 }
 
 export async function fetchCards(options: CardQueryOptions = {}): Promise<CardListItem[]> {
@@ -97,6 +107,7 @@ export async function fetchCards(options: CardQueryOptions = {}): Promise<CardLi
   if (options.search) params.set('search', options.search)
   if (Number.isFinite(options.limit)) params.set('limit', String(options.limit))
   if (Number.isFinite(options.offset)) params.set('offset', String(options.offset))
+  if (options.language) params.set('language', options.language)
 
   const query = params.toString()
   const response = await fetch(query ? `/api/cards?${query}` : '/api/cards')
@@ -104,9 +115,11 @@ export async function fetchCards(options: CardQueryOptions = {}): Promise<CardLi
   return response.json()
 }
 
-export async function fetchCardsPreview(limit = 4): Promise<CardListItem[]> {
+export async function fetchCardsPreview(limit = 4, language?: string): Promise<CardListItem[]> {
   const safeLimit = Math.min(Math.max(Number(limit) || 1, 1), 12)
-  const response = await fetch(`/api/cards?limit=${safeLimit}`)
+  const params = new URLSearchParams({ limit: String(safeLimit) })
+  if (language) params.set('language', language)
+  const response = await fetch(`/api/cards?${params.toString()}`)
   if (!response.ok) throw new Error('Failed to fetch cards preview')
   return response.json()
 }
@@ -282,13 +295,15 @@ export type LinkingStats = {
 export async function searchCards(
   query: string,
   limit = 50,
-  source: 'price-tracker' | 'database' = 'price-tracker'
+  source: 'price-tracker' | 'database' = 'price-tracker',
+  language?: string
 ): Promise<CardSearchResult[]> {
   const q = (query || '').trim()
   if (!q) return []
 
   const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200)
   const params = new URLSearchParams({ q, limit: String(safeLimit), source })
+  if (language) params.set('language', language)
   const response = await fetch(`/api/cards/search?${params.toString()}`)
   if (!response.ok) throw new Error('Failed to search cards')
   return response.json()
@@ -425,8 +440,9 @@ export async function fetchLinkingStats(): Promise<LinkingStats> {
  * Legacy compatibility: some UI pages may still call fetchSets().
  * Prefer fetchExpansions(), but keep this alias so nothing breaks.
  */
-export async function fetchSets(): Promise<ExpansionSummary[]> {
-  const res = await fetch('/api/expansions')
+export async function fetchSets(language?: string): Promise<ExpansionSummary[]> {
+  const params = language ? new URLSearchParams({ language }) : null
+  const res = await fetch(params ? `/api/expansions?${params.toString()}` : '/api/expansions')
   if (!res.ok) throw new Error('Failed to load sets')
   return res.json()
 }
