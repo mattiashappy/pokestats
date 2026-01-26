@@ -39,8 +39,15 @@ export async function fetchAuctions(): Promise<AuctionRecord[]> {
   return rows.map(mapAuctionRecord)
 }
 
-export async function fetchCardDetails(cardId: number | string): Promise<CardResponse> {
-  const response = await fetch(`/api/cards/${cardId}`)
+type CardDetailsOptions = {
+  includeHistory?: boolean
+}
+
+export async function fetchCardDetails(cardId: number | string, options: CardDetailsOptions = {}): Promise<CardResponse> {
+  const params = new URLSearchParams()
+  if (options.includeHistory) params.set('includeHistory', 'true')
+  const query = params.toString()
+  const response = await fetch(query ? `/api/cards/${cardId}?${query}` : `/api/cards/${cardId}`)
   if (!response.ok) throw new Error('Failed to fetch card')
   return response.json()
 }

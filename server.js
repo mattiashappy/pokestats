@@ -281,6 +281,14 @@ function mapPriceTrackerCard(card, { expansion = null, setCodeOverride = null } 
     card?.imageCdnUrl200 ??
     card?.imageCdnUrl ??
     null
+  const energyType = Array.isArray(card?.energyType)
+    ? card.energyType
+    : card?.energyType
+      ? [card.energyType]
+      : null
+  const parsedHp = Number(card?.hp)
+  const flavorText = card?.flavorText ?? card?.flavor_text ?? null
+  const priceHistory = card?.prices?.history ?? card?.priceHistory ?? card?.history ?? null
 
   return applyCardOverrides({
     id: Number.isFinite(parsedId) ? parsedId : 0,
@@ -294,6 +302,13 @@ function mapPriceTrackerCard(card, { expansion = null, setCodeOverride = null } 
     image_url: imageUrl,
     language: card?.language ?? 'English',
     product_details: buildPriceTrackerProductDetails(card),
+    pokemon_type: card?.pokemonType ?? card?.pokemon_type ?? null,
+    energy_type: energyType,
+    stage: card?.stage ?? null,
+    hp: Number.isFinite(parsedHp) ? parsedHp : null,
+    flavor_text: flavorText,
+    prices_data: card?.prices ?? null,
+    price_history: priceHistory,
     expansion_id: expansion?.id ?? null,
     created_at: null
   })
@@ -972,6 +987,13 @@ async function fetchCardFromDatabase(cardId) {
       c.image_url,
       ${languageSelect},
       NULL::text AS product_details,
+      NULL::text AS pokemon_type,
+      NULL::text[] AS energy_type,
+      NULL::text AS stage,
+      NULL::int AS hp,
+      NULL::text AS flavor_text,
+      NULL::jsonb AS prices_data,
+      NULL::jsonb AS price_history,
       c.created_at,
       c.expansion_id
     FROM public.cards c
@@ -1508,15 +1530,19 @@ async function fetchCardFromPtImport(cardId) {
       ${languageSelect},
       c.rarity,
       c.card_type,
+      c.pokemon_type,
+      c.energy_type,
       c.hp,
       c.stage,
       c.artist,
+      c.flavor_text,
       c.tcgplayer_url,
       c.price_market,
       c.price_listings,
       c.price_primary_condition,
       c.price_primary_printing,
       c.price_last_updated,
+      c.prices_data,
       c.updated_at AS created_at,
       NULL::int AS expansion_id
     FROM public.pt_cards c
@@ -1541,6 +1567,12 @@ async function fetchCardFromPtImport(cardId) {
     image_url: row.image_url ?? null,
     language: row.language ?? null,
     product_details: buildPtCardDetails(row),
+    pokemon_type: row.pokemon_type ?? null,
+    energy_type: row.energy_type ?? null,
+    stage: row.stage ?? null,
+    hp: row.hp ?? null,
+    flavor_text: row.flavor_text ?? null,
+    prices_data: row.prices_data ?? null,
     expansion_id: null,
     created_at: row.created_at ?? null,
     tcgplayer_product_id: row.tcgplayer_product_id ?? null
@@ -1591,16 +1623,16 @@ async function fetchCardsListFromPriceTracker({
   )
 }
 
-async function fetchCardFromPriceTracker(cardId) {
+async function fetchCardFromPriceTracker(cardId, { includeHistory = false } = {}) {
   const params = {
     language: 'english',
     tcgPlayerId: cardId,
     limit: 1,
     offset: 0,
-    includeHistory: 'false',
+    includeHistory: includeHistory ? 'true' : 'false',
     includeEbay: 'false',
     includeBoth: 'false',
-    days: 30
+    days: includeHistory ? 365 : 30
   }
   const payload = await fetchPriceTracker('/cards', params)
   const cards = normalizePriceTrackerCards(payload)
@@ -2022,6 +2054,7 @@ app.get('/api/cards/:id', async (req, res) => {
     const cardIdParam = String(req.params.id ?? '').trim()
     if (!cardIdParam) return res.status(400).json({ error: 'Invalid card id' })
     const cardId = Number(cardIdParam)
+    const includeHistory = String(req.query.includeHistory ?? '').toLowerCase() === 'true'
 
     let card = null
 
@@ -2033,11 +2066,24 @@ app.get('/api/cards/:id', async (req, res) => {
       card = await fetchCardFromPtImport(cardIdParam)
     }
 
-    if (!card && PRICE_TRACKER_API_KEY && Number.isFinite(cardId)) {
+    let historyCard = null
+    if (PRICE_TRACKER_API_KEY && Number.isFinite(cardId)) {
       try {
-        card = await fetchCardFromPriceTracker(cardId)
+        if (!card) {
+          card = await fetchCardFromPriceTracker(cardId, { includeHistory })
+        } else if (includeHistory) {
+          historyCard = await fetchCardFromPriceTracker(cardId, { includeHistory })
+        }
       } catch (error) {
         console.error('Failed to fetch card from Price Tracker', error)
+      }
+    }
+
+    if (card && historyCard) {
+      card = {
+        ...card,
+        price_history: historyCard.price_history ?? card.price_history ?? null,
+        prices_data: card.prices_data ?? historyCard.prices_data ?? null
       }
     }
 

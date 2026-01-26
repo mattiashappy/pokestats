@@ -28,6 +28,13 @@ export type CardResponse = {
   image_url: string | null
   language: string | null
   product_details: string | null
+  pokemon_type: string | null
+  energy_type: string[] | null
+  stage: string | null
+  hp: number | null
+  flavor_text: string | null
+  prices_data: CardPricesData | null
+  price_history?: CardPriceHistoryPoint[] | null
   expansion_id: number | null
   created_at: string | null
 }
@@ -77,3 +84,34 @@ export type CardPreview = {
   card_number: string | null
   image_url: string | null
 }
+
+export type CardPricesData = {
+  market?: number | null
+  low?: number | null
+  mid?: number | null
+  high?: number | null
+  listings?: number | null
+  sellers?: number | null
+  variants?: Record<string, CardPriceVariant | null> | null
+  history?: CardPriceHistoryPoint[] | null
+  price_history?: CardPriceHistoryPoint[] | null
+  market_history?: CardPriceHistoryPoint[] | null
+} & Record<string, unknown>
+
+export type CardPriceVariant = {
+  market?: number | null
+  low?: number | null
+  mid?: number | null
+  high?: number | null
+} & Record<string, unknown>
+
+export type CardPriceHistoryPoint = {
+  date?: string
+  timestamp?: string | number
+  time?: string | number
+  created_at?: string
+  market?: number | null
+  price?: number | null
+  value?: number | null
+  variants?: Record<string, CardPriceVariant | number | null> | null
+} & Record<string, unknown>
