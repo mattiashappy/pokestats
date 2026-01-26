@@ -215,10 +215,29 @@ function normalizeCardNumber(cardNumber) {
   return normalizeText(cardNumber)
 }
 
+function getCardNumberOnly(cardNumber) {
+  if (!cardNumber) return null
+  const match = String(cardNumber).match(/\d+/)
+  if (!match) return null
+  return String(Number.parseInt(match[0], 10))
+}
+
 function filterMatchesBySetName(matches, setHint) {
   if (!setHint) return matches
-  const hint = setHint.toLowerCase()
-  return matches.filter((match) => String(match.set_name || '').toLowerCase().includes(hint))
+  const normalize = (value) => String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .split(/\s+/)
+    .filter((word) => word.length > 2)
+  const hintWords = normalize(setHint)
+  if (!hintWords.length) return matches
+
+  const candidates = matches.filter((match) => {
+    const matchWords = normalize(match.set_name)
+    return hintWords.some((word) => matchWords.includes(word))
+  })
+
+  return candidates.length > 0 ? candidates : matches
 }
 
 function filterMatchesByName(matches, name) {
@@ -275,18 +294,29 @@ async function matchPtCard(client, { cardNumber, setHint, name }) {
         FROM public.pt_cards
         WHERE name ILIKE $1
         ORDER BY set_name
-        LIMIT 20
+        LIMIT 50
       `,
       [nameParam]
     )
 
-    if (rows.length === 1) {
-      return { card: rows[0], method: 'vision-name-fuzzy' }
+    if (rows.length === 0) return null
+
+    const candidates = filterMatchesBySetName(rows, setHint)
+    if (candidates.length === 1) {
+      return { card: candidates[0], method: 'vision-name+set-fuzzy' }
     }
 
-    const setMatches = filterMatchesBySetName(rows, setHint)
-    if (setMatches.length === 1) {
-      return { card: setMatches[0], method: 'vision-name+set' }
+    if (candidates.length > 0) {
+      if (cardNumber) {
+        const numberOnly = getCardNumberOnly(cardNumber)
+        const exact = candidates.find(
+          (card) => getCardNumberOnly(card.card_number) === numberOnly
+        )
+        if (exact) {
+          return { card: exact, method: 'vision-name+set+number' }
+        }
+      }
+      return null
     }
   }
 
