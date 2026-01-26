@@ -1,8 +1,13 @@
 const { Pool } = require('pg');
-// OBS: Tog bort 'node-fetch' eftersom Node v20 har inbyggd fetch
+// Inbyggd fetch används (Node v20+)
 
-const API_BASE_URL = 'https://www.pokemonpricetracker.com/api/v2';
-const API_KEY = process.env.POKEMON_PRICE_TRACKER_API_KEY;
+// Hämta inställningar från dina befintliga Heroku-variabler
+const API_BASE_URL = process.env.PT_API_BASE_URL || 'https://www.pokemonpricetracker.com/api/v2';
+const API_TOKEN = process.env.PT_API_TOKEN;
+const KEY_PREFIX = process.env.PT_API_KEY_PREFIX || 'Bearer';
+
+// Bygg auth-headern: "Bearer XXXXXX"
+const AUTH_HEADER = `${KEY_PREFIX} ${API_TOKEN}`.trim();
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -16,17 +21,28 @@ async function fetchSetsByLanguage(language) {
 
   console.log(`\n--- 📦 Fetching ${language.toUpperCase()} sets ---`);
 
+  // Säkerhetskoll: Stoppa om ingen token finns
+  if (!API_TOKEN) {
+    console.error("❌ Error: PT_API_TOKEN saknas i miljövariablerna.");
+    return [];
+  }
+
   while (hasMore) {
     const url = `${API_BASE_URL}/sets?limit=100&offset=${offset}&language=${language}`;
     
     try {
       const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${API_KEY}` }
+        headers: { 
+          'Authorization': AUTH_HEADER,
+          'Accept': 'application/json'
+        }
       });
 
       if (!response.ok) {
         console.warn(`⚠️ Skipped ${language} (Status ${response.status}): Plan restriction or invalid key.`);
-        return [];
+        // Om första sidan misslyckas, avbryt loopen för detta språk
+        if (offset === 0) return [];
+        break;
       }
 
       const json = await response.json();
@@ -39,6 +55,10 @@ async function fetchSetsByLanguage(language) {
 
       hasMore = json.metadata?.hasMore || false;
       offset += 100;
+      
+      // Säkerhetsspärr mot oändliga loopar
+      if (offset > 5000) hasMore = false;
+
     } catch (error) {
       console.error(`❌ Error fetching ${language}:`, error.message);
       hasMore = false;
@@ -49,8 +69,11 @@ async function fetchSetsByLanguage(language) {
 }
 
 async function upsertSets(client, sets, language) {
+  if (sets.length === 0) return;
+  
+  console.log(`   💾 Saving ${sets.length} ${language} sets to database...`);
+  
   for (const set of sets) {
-    // VIKTIGT: Vi använder set.id (från API) som pt_set_id i databasen för att matcha din schema
     await client.query(
       `
       INSERT INTO public.pt_sets 
@@ -81,15 +104,11 @@ async function run() {
   try {
     // 1. Hämta Engelska
     const englishSets = await fetchSetsByLanguage('english');
-    if (englishSets.length > 0) {
-        await upsertSets(client, englishSets, 'english');
-    }
+    await upsertSets(client, englishSets, 'english');
     
-    // 2. Hämta Japanska (Kräver betald nyckel)
+    // 2. Hämta Japanska
     const japaneseSets = await fetchSetsByLanguage('japanese');
-    if (japaneseSets.length > 0) {
-        await upsertSets(client, japaneseSets, 'japanese');
-    }
+    await upsertSets(client, japaneseSets, 'japanese');
 
     console.log(`\n✅ Sync Complete.`);
     console.log(`Total English Sets Found: ${englishSets.length}`);
