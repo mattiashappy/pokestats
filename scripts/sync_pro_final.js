@@ -4,7 +4,7 @@ const { Pool } = require('pg')
 const PRICE_TRACKER_BASE_URL = process.env.PT_API_BASE_URL || 'https://www.pokemonpricetracker.com/api/v2'
 const PRICE_TRACKER_TOKEN = process.env.PT_API_TOKEN || process.env.PT_API_KEY
 const DATABASE_URL = process.env.DATABASE_URL
-const SLEEP_BETWEEN_SETS = 2000; // 2 seconds between sets to be safe
+const SLEEP_BETWEEN_SETS = 6000; // 2 seconds between sets to be safe
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)) }
 
