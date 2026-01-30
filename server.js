@@ -1431,11 +1431,11 @@ async function fetchCardsListFromPtImport({
   if (language && (ptCardsLanguageAvailable || ptSetsLanguageAvailable)) {
     params.push(language)
     if (ptCardsLanguageAvailable && ptSetsLanguageAvailable) {
-      clauses.push(`COALESCE(c.language, s.language) = $${params.length}`)
+      clauses.push(`LOWER(COALESCE(c.language, s.language)) = LOWER($${params.length})`)
     } else if (ptCardsLanguageAvailable) {
-      clauses.push(`c.language = $${params.length}`)
+      clauses.push(`LOWER(c.language) = LOWER($${params.length})`)
     } else if (ptSetsLanguageAvailable) {
-      clauses.push(`s.language = $${params.length}`)
+      clauses.push(`LOWER(s.language) = LOWER($${params.length})`)
     }
   }
 
@@ -1687,10 +1687,10 @@ async function fetchCardSearchFromPtImport(query, limit = 50, language = null) {
   const languageFilter =
     language && (ptCardsLanguageAvailable || ptSetsLanguageAvailable)
       ? ptCardsLanguageAvailable && ptSetsLanguageAvailable
-        ? `AND COALESCE(c.language, s.language) = $${params.push(language)}`
+        ? `AND LOWER(COALESCE(c.language, s.language)) = LOWER($${params.push(language)})`
         : ptCardsLanguageAvailable
-          ? `AND c.language = $${params.push(language)}`
-          : `AND s.language = $${params.push(language)}`
+          ? `AND LOWER(c.language) = LOWER($${params.push(language)})`
+          : `AND LOWER(s.language) = LOWER($${params.push(language)})`
       : ''
 
   const { rows } = await pool.query(
@@ -1744,10 +1744,10 @@ async function fetchCardSearchFromDatabase(query, limit = 50, language = null) {
   const languageFilter =
     language && (cardsLanguageAvailable || expansionsLanguageAvailable)
       ? cardsLanguageAvailable && expansionsLanguageAvailable
-        ? `AND COALESCE(c.language, e.language) = $${params.push(language)}`
+        ? `AND LOWER(COALESCE(c.language, e.language)) = LOWER($${params.push(language)})`
         : cardsLanguageAvailable
-          ? `AND c.language = $${params.push(language)}`
-          : `AND e.language = $${params.push(language)}`
+          ? `AND LOWER(c.language) = LOWER($${params.push(language)})`
+          : `AND LOWER(e.language) = LOWER($${params.push(language)})`
       : ''
 
   const { rows } = await pool.query(
