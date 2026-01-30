@@ -19,7 +19,7 @@ export function PokemonSetPage(): JSX.Element {
   const { setCode = '' } = useParams()
   const [searchTerm, setSearchTerm] = useState('')
   const [searchParams] = useSearchParams()
-  const languageFilter = searchParams.get('language') || 'english'
+  const languageFilter = searchParams.get('language') || 'all'
 
   const formatCardNumber = (card: CardListItem): string | null => {
     if (!card.card_number) return null
@@ -166,7 +166,7 @@ export function PokemonSetPage(): JSX.Element {
                         </div>
                       </td>
                       <td className="px-4 py-4 text-slate-700">
-                        {[card.set_name, setIdentifier].filter(Boolean).join(' · ') || 'Set pending'}
+                        {[card.set_name].filter(Boolean).join(' · ') || 'Set pending'}
                       </td>
                       <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
                         {getBestPrice(card)}

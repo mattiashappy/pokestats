@@ -19,7 +19,7 @@ export function DashboardPage(): JSX.Element {
 
   const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  const [languageFilter, setLanguageFilter] = useState('english')
+  const [languageFilter, setLanguageFilter] = useState('all')
   const PAGE_SIZE = 10
 
   const formatCardNumber = (card: CardListItem): string | null => {
@@ -216,13 +216,12 @@ export function DashboardPage(): JSX.Element {
                       <td className="px-4 py-4">
                         <div className="font-semibold text-slate-900">{card.name ?? 'Unknown card'}</div>
                         <div className="text-xs text-slate-600">
-                          {[card.set_name, card.era, cardNumber, setIdentifier]
-                            .filter(Boolean)
-                            .join(' · ') || 'Card details pending'}
+                          {[card.set_name, card.era, cardNumber].filter(Boolean).join(' · ') ||
+                            'Card details pending'}
                         </div>
                       </td>
                       <td className="px-4 py-4 text-slate-700">
-                        {[card.set_name, setIdentifier].filter(Boolean).join(' · ') || 'Set pending'}
+                        {[card.set_name].filter(Boolean).join(' · ') || 'Set pending'}
                       </td>
                       <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
                         {getBestPrice(card)}
