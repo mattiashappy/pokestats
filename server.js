@@ -66,8 +66,7 @@ const SUPPORTED_LANGUAGES = new Set(['english', 'japanese'])
 
 function normalizeLanguage(value) {
   const normalized = String(value ?? '').trim().toLowerCase()
-  if (!normalized) return 'english'
-  if (normalized === 'all') return null
+  if (!normalized || normalized === 'all') return null
   return SUPPORTED_LANGUAGES.has(normalized) ? normalized : 'english'
 }
 
@@ -984,7 +983,7 @@ async function fetchCardFromDatabase(cardId) {
       e.set_total AS set_total,
       c.collector_number_raw AS card_number,
       NULL::numeric AS price_market,
-      NULL::jsonb AS prices_data,
+      c.prices_data,
       c.image_url,
       ${languageSelect},
       NULL::text AS product_details,
@@ -1346,11 +1345,11 @@ async function fetchCardsListFromDatabase({ setCode = null, expansionId = null, 
   if (language && (cardsLanguageAvailable || expansionsLanguageAvailable)) {
     params.push(language)
     if (cardsLanguageAvailable && expansionsLanguageAvailable) {
-      clauses.push(`COALESCE(c.language, e.language) = $${params.length}`)
+      clauses.push(`LOWER(COALESCE(c.language, e.language)) = LOWER($${params.length})`)
     } else if (cardsLanguageAvailable) {
-      clauses.push(`c.language = $${params.length}`)
+      clauses.push(`LOWER(c.language) = LOWER($${params.length})`)
     } else if (expansionsLanguageAvailable) {
-      clauses.push(`e.language = $${params.length}`)
+      clauses.push(`LOWER(e.language) = LOWER($${params.length})`)
     }
   }
 
@@ -1366,6 +1365,7 @@ async function fetchCardsListFromDatabase({ setCode = null, expansionId = null, 
       e.set_total AS set_total,
       c.collector_number_raw AS card_number,
       NULL::numeric AS price_market,
+      c.prices_data,
       c.image_url,
       ${languageSelect},
       NULL::text AS product_details,
