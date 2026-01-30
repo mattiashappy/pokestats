@@ -6,6 +6,7 @@ import DataTable from '../components/ui/data-table'
 import { useRegion } from '../contexts/region-context'
 import { fetchCardDetails, fetchCards } from '../lib/api'
 import { getCardSetIdentifier } from '../lib/sets'
+import { getBestPrice, getBestPriceValue } from '../utils/priceHelper'
 import type { CardListItem, CardResponse } from '../types'
 
 export function DashboardPage(): JSX.Element {
@@ -27,13 +28,6 @@ export function DashboardPage(): JSX.Element {
       return `${card.card_number}/${card.set_total}`
     }
     return card.card_number
-  }
-
-  const formatMarketPrice = (value: number | null): string => {
-    if (value === null || value === undefined) return '—'
-    const parsed = Number(value)
-    if (!Number.isFinite(parsed)) return '—'
-    return `$${parsed.toFixed(2)}`
   }
 
   const {
@@ -68,8 +62,8 @@ export function DashboardPage(): JSX.Element {
     })
 
     return [...matches].sort((a, b) => {
-      const aPrice = Number.isFinite(Number(a.price_market)) ? Number(a.price_market) : null
-      const bPrice = Number.isFinite(Number(b.price_market)) ? Number(b.price_market) : null
+      const aPrice = getBestPriceValue(a)
+      const bPrice = getBestPriceValue(b)
 
       if (aPrice === null && bPrice === null) return 0
       if (aPrice === null) return 1
@@ -222,14 +216,16 @@ export function DashboardPage(): JSX.Element {
                       <td className="px-4 py-4">
                         <div className="font-semibold text-slate-900">{card.name ?? 'Unknown card'}</div>
                         <div className="text-xs text-slate-600">
-                          {[card.set_name, card.era, cardNumber].filter(Boolean).join(' · ') || 'Card details pending'}
+                          {[card.set_name, card.era, cardNumber, setIdentifier]
+                            .filter(Boolean)
+                            .join(' · ') || 'Card details pending'}
                         </div>
                       </td>
                       <td className="px-4 py-4 text-slate-700">
-                        {[card.set_name, card.set_code].filter(Boolean).join(' · ') || 'Set pending'}
+                        {[card.set_name, setIdentifier].filter(Boolean).join(' · ') || 'Set pending'}
                       </td>
                       <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
-                        {formatMarketPrice(card.price_market)}
+                        {getBestPrice(card)}
                       </td>
                       <td className="px-4 py-4 text-right">
                         <Link
