@@ -984,6 +984,7 @@ async function fetchCardFromDatabase(cardId) {
       e.set_total AS set_total,
       c.collector_number_raw AS card_number,
       NULL::numeric AS price_market,
+      NULL::jsonb AS prices_data,
       c.image_url,
       ${languageSelect},
       NULL::text AS product_details,
@@ -992,7 +993,6 @@ async function fetchCardFromDatabase(cardId) {
       NULL::text AS stage,
       NULL::int AS hp,
       NULL::text AS flavor_text,
-      NULL::jsonb AS prices_data,
       NULL::jsonb AS price_history,
       c.created_at,
       c.expansion_id
@@ -1431,11 +1431,11 @@ async function fetchCardsListFromPtImport({
   if (language && (ptCardsLanguageAvailable || ptSetsLanguageAvailable)) {
     params.push(language)
     if (ptCardsLanguageAvailable && ptSetsLanguageAvailable) {
-      clauses.push(`COALESCE(c.language, s.language) = $${params.length}`)
+      clauses.push(`LOWER(COALESCE(c.language, s.language)) = LOWER($${params.length})`)
     } else if (ptCardsLanguageAvailable) {
-      clauses.push(`c.language = $${params.length}`)
+      clauses.push(`LOWER(c.language) = LOWER($${params.length})`)
     } else if (ptSetsLanguageAvailable) {
-      clauses.push(`s.language = $${params.length}`)
+      clauses.push(`LOWER(s.language) = LOWER($${params.length})`)
     }
   }
 
@@ -1471,6 +1471,7 @@ async function fetchCardsListFromPtImport({
       ) AS set_total,
       c.card_number AS card_number,
       c.price_market,
+      c.prices_data,
       COALESCE(c.image_cdn_url800, c.image_cdn_url400, c.image_cdn_url200, c.image_cdn_url) AS image_url,
       c.tcgplayer_product_id,
       ${languageSelect},
@@ -1686,10 +1687,10 @@ async function fetchCardSearchFromPtImport(query, limit = 50, language = null) {
   const languageFilter =
     language && (ptCardsLanguageAvailable || ptSetsLanguageAvailable)
       ? ptCardsLanguageAvailable && ptSetsLanguageAvailable
-        ? `AND COALESCE(c.language, s.language) = $${params.push(language)}`
+        ? `AND LOWER(COALESCE(c.language, s.language)) = LOWER($${params.push(language)})`
         : ptCardsLanguageAvailable
-          ? `AND c.language = $${params.push(language)}`
-          : `AND s.language = $${params.push(language)}`
+          ? `AND LOWER(c.language) = LOWER($${params.push(language)})`
+          : `AND LOWER(s.language) = LOWER($${params.push(language)})`
       : ''
 
   const { rows } = await pool.query(
@@ -1743,10 +1744,10 @@ async function fetchCardSearchFromDatabase(query, limit = 50, language = null) {
   const languageFilter =
     language && (cardsLanguageAvailable || expansionsLanguageAvailable)
       ? cardsLanguageAvailable && expansionsLanguageAvailable
-        ? `AND COALESCE(c.language, e.language) = $${params.push(language)}`
+        ? `AND LOWER(COALESCE(c.language, e.language)) = LOWER($${params.push(language)})`
         : cardsLanguageAvailable
-          ? `AND c.language = $${params.push(language)}`
-          : `AND e.language = $${params.push(language)}`
+          ? `AND LOWER(c.language) = LOWER($${params.push(language)})`
+          : `AND LOWER(e.language) = LOWER($${params.push(language)})`
       : ''
 
   const { rows } = await pool.query(
