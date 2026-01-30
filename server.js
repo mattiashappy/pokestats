@@ -1806,7 +1806,8 @@ app.get('/api/expansions/:setCode/cards', async (req, res) => {
   try {
     const setCode = String(req.params.setCode || '').trim()
     if (!setCode) return res.status(400).json({ error: 'Invalid set code' })
-    const language = normalizeLanguage(req.query.language)
+    const rawLang = req.query.language
+    const language = rawLang && rawLang !== 'all' ? normalizeLanguage(rawLang) : null
 
     const ptReady = await ensurePriceTrackerImportTablesAvailable()
     console.log('[expansions cards]', { setCode, ptReady })
@@ -1985,7 +1986,8 @@ app.get('/api/expansions/id/:id/cards', async (req, res) => {
   try {
     const expansionId = Number(req.params.id)
     if (!Number.isFinite(expansionId)) return res.status(400).json({ error: 'Invalid expansion id' })
-    const language = normalizeLanguage(req.query.language)
+    const rawLang = req.query.language
+    const language = rawLang && rawLang !== 'all' ? normalizeLanguage(rawLang) : null
 
     if (PRICE_TRACKER_API_KEY) {
       try {
