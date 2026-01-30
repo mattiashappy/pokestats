@@ -74,11 +74,7 @@ export function CardPage(): JSX.Element {
     if (!card) return null
     const prices = card.prices_data ?? {}
     return {
-      market: prices.market ?? card.price_market ?? null,
-      low: prices.low ?? null,
-      mid: prices.mid ?? null,
-      high: prices.high ?? null,
-      listings: prices.listings ?? null
+      market: prices.market ?? card.price_market ?? null
     }
   }, [card])
 
@@ -230,28 +226,23 @@ export function CardPage(): JSX.Element {
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">TCGplayer (USD)</p>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Market</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Market Price</p>
                         <p className="text-lg font-black text-slate-900">{formatUsd(marketDetails?.market ?? null)}</p>
                       </div>
-                      <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Low</p>
-                        <p className="text-lg font-black text-slate-900">{formatUsd(marketDetails?.low ?? null)}</p>
-                      </div>
-                      <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Mid</p>
-                        <p className="text-lg font-black text-slate-900">{formatUsd(marketDetails?.mid ?? null)}</p>
-                      </div>
-                      <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">High</p>
-                        <p className="text-lg font-black text-slate-900">{formatUsd(marketDetails?.high ?? null)}</p>
-                      </div>
                     </div>
-                    <div className="rounded-2xl border-2 border-slate-900 bg-white px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-700 shadow-[2px_2px_0px_#0f172a]">
-                      Active listings:{' '}
-                      <span className="text-base font-black text-slate-900">
-                        {marketDetails?.listings != null ? marketDetails.listings.toLocaleString('en-US') : '—'}
-                      </span>
-                    </div>
+                    {variants.length ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {variants.map((variant) => (
+                          <div
+                            key={variant.name}
+                            className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]"
+                          >
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{variant.name}</p>
+                            <p className="text-lg font-black text-slate-900">{formatUsd(variant.market)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="space-y-4">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tradera (SEK)</p>
