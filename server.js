@@ -984,6 +984,7 @@ async function fetchCardFromDatabase(cardId) {
       e.set_total AS set_total,
       c.collector_number_raw AS card_number,
       NULL::numeric AS price_market,
+      NULL::jsonb AS prices_data,
       c.image_url,
       ${languageSelect},
       NULL::text AS product_details,
@@ -992,7 +993,6 @@ async function fetchCardFromDatabase(cardId) {
       NULL::text AS stage,
       NULL::int AS hp,
       NULL::text AS flavor_text,
-      NULL::jsonb AS prices_data,
       NULL::jsonb AS price_history,
       c.created_at,
       c.expansion_id
@@ -1471,6 +1471,7 @@ async function fetchCardsListFromPtImport({
       ) AS set_total,
       c.card_number AS card_number,
       c.price_market,
+      c.prices_data,
       COALESCE(c.image_cdn_url800, c.image_cdn_url400, c.image_cdn_url200, c.image_cdn_url) AS image_url,
       c.tcgplayer_product_id,
       ${languageSelect},

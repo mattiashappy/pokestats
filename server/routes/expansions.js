@@ -116,7 +116,7 @@ function createExpansionService({
           LEFT JOIN pt_counts ON pt_counts.pt_set_id = s.pt_set_id
           LEFT JOIN pt_market_totals ON pt_market_totals.pt_set_id = s.pt_set_id
           ${ptLanguageClause}
-          ORDER BY s.release_date NULLS LAST, s.name NULLS LAST, s.pt_set_id NULLS LAST
+          ORDER BY s.release_date DESC NULLS LAST, s.name NULLS LAST, s.pt_set_id NULLS LAST
         `,
           ptParams
         )
