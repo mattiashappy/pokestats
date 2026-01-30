@@ -1,101 +1,23 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
-import { format, isValid, parseISO, subMonths } from 'date-fns'
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis
-} from 'recharts'
 
 import { Button } from '../components/ui/button'
 import { Card as UiCard, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
-import { fetchCardDetails } from '../lib/api'
+import { fetchCardAuctions, fetchCardDetails } from '../lib/api'
 import { getCardSetIdentifier } from '../lib/sets'
-import type { CardPriceHistoryPoint, CardPriceVariant, CardResponse } from '../types'
-
-type NormalizedHistoryPoint = {
-  date: Date
-  label: string
-  market: number | null
-  variants: Record<string, number | null>
-}
-
-const rangeOptions = [
-  { key: '1M', months: 1 },
-  { key: '3M', months: 3 },
-  { key: '6M', months: 6 },
-  { key: '1Y', months: 12 },
-  { key: 'All', months: null }
-] as const
+import type { AuctionRecord, CardPriceVariant, CardResponse } from '../types'
 
 function formatUsd(value: number | null | undefined): string {
   if (!Number.isFinite(Number(value))) return '—'
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value))
 }
 
-function getHistoryEntries(card: CardResponse | null | undefined): CardPriceHistoryPoint[] {
-  if (!card) return []
-  const history =
-    card.price_history ??
-    card.prices_data?.history ??
-    card.prices_data?.price_history ??
-    card.prices_data?.market_history ??
-    null
-  if (Array.isArray(history)) return history
-  if (history && typeof history === 'object' && Array.isArray((history as { data?: unknown }).data)) {
-    return (history as { data: CardPriceHistoryPoint[] }).data
-  }
-  return []
-}
-
-function normalizeHistoryData(card: CardResponse | null | undefined): NormalizedHistoryPoint[] {
-  const raw = getHistoryEntries(card)
-  const points = raw
-    .map((entry) => {
-      const rawDate = entry.date ?? entry.timestamp ?? entry.time ?? entry.created_at
-      const date =
-        rawDate instanceof Date
-          ? rawDate
-          : typeof rawDate === 'number'
-            ? new Date(rawDate)
-            : typeof rawDate === 'string'
-              ? parseISO(rawDate)
-              : null
-      if (!date || !isValid(date)) return null
-      const market = Number.isFinite(Number(entry.market ?? entry.price ?? entry.value))
-        ? Number(entry.market ?? entry.price ?? entry.value)
-        : null
-      const variants: Record<string, number | null> = {}
-      if (entry.variants && typeof entry.variants === 'object') {
-        Object.entries(entry.variants).forEach(([variantName, variantValue]) => {
-          if (variantValue && typeof variantValue === 'object') {
-            const variantMarket = Number((variantValue as CardPriceVariant).market)
-            variants[variantName] = Number.isFinite(variantMarket) ? variantMarket : null
-          } else if (Number.isFinite(Number(variantValue))) {
-            variants[variantName] = Number(variantValue)
-          } else {
-            variants[variantName] = null
-          }
-        })
-      }
-      return {
-        date,
-        label: format(date, 'MMM d, yyyy'),
-        market,
-        variants
-      }
-    })
-    .filter((point): point is NormalizedHistoryPoint => Boolean(point))
-    .sort((a, b) => a.date.getTime() - b.date.getTime())
-
-  return points
+function formatSek(value: number | null | undefined): string {
+  if (!Number.isFinite(Number(value))) return '—'
+  return new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK' }).format(Number(value))
 }
 
 export function CardPage(): JSX.Element {
@@ -108,6 +30,12 @@ export function CardPage(): JSX.Element {
   } = useQuery({
     queryKey: ['card', id],
     queryFn: () => fetchCardDetails(id ?? '', { includeHistory: true }),
+    enabled: Boolean(id)
+  })
+
+  const { data: auctions } = useQuery<AuctionRecord[]>({
+    queryKey: ['card-auctions', id],
+    queryFn: () => fetchCardAuctions(id ?? ''),
     enabled: Boolean(id)
   })
 
@@ -165,40 +93,27 @@ export function CardPage(): JSX.Element {
     }))
   }, [card?.prices_data?.variants])
 
-  const [selectedRange, setSelectedRange] = useState<(typeof rangeOptions)[number]['key']>('All')
-  const [selectedVariant, setSelectedVariant] = useState<string>('Market')
-
-  const normalizedHistory = useMemo(() => normalizeHistoryData(card), [card])
-
-  const variantOptions = useMemo(() => {
-    const names = new Set<string>()
-    normalizedHistory.forEach((point) => {
-      Object.keys(point.variants).forEach((name) => names.add(name))
-    })
-    return ['Market', ...Array.from(names)]
-  }, [normalizedHistory])
-
-  useEffect(() => {
-    if (!variantOptions.includes(selectedVariant)) {
-      setSelectedVariant('Market')
+  const traderaStats = useMemo(() => {
+    const prices = (auctions ?? [])
+      .map((auction) => auction.price)
+      .filter((price): price is number => Number.isFinite(Number(price)))
+      .map((price) => Number(price))
+    if (!prices.length) {
+      return {
+        average: null,
+        low: null,
+        high: null,
+        count: 0
+      }
     }
-  }, [selectedVariant, variantOptions])
-
-  const filteredHistory = useMemo(() => {
-    const range = rangeOptions.find((option) => option.key === selectedRange)
-    if (!range || !range.months) return normalizedHistory
-    const cutoff = subMonths(new Date(), range.months)
-    return normalizedHistory.filter((point) => point.date >= cutoff)
-  }, [normalizedHistory, selectedRange])
-
-  const chartData = useMemo(() => {
-    return filteredHistory.map((point) => ({
-      date: point.label,
-      value: selectedVariant === 'Market' ? point.market : point.variants[selectedVariant] ?? null
-    }))
-  }, [filteredHistory, selectedVariant])
-
-  const selectedVariantLabel = variantOptions.includes(selectedVariant) ? selectedVariant : 'Market'
+    const total = prices.reduce((acc, price) => acc + price, 0)
+    return {
+      average: total / prices.length,
+      low: Math.min(...prices),
+      high: Math.max(...prices),
+      count: prices.length
+    }
+  }, [auctions])
 
   const isLoading = isLoadingCard
   const error = cardError
@@ -304,121 +219,63 @@ export function CardPage(): JSX.Element {
               </UiCard>
 
               <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
-                <CardHeader className="border-b-4 border-slate-900 bg-slate-900">
-                  <CardTitle className="text-lg font-black uppercase text-white">Flavor text</CardTitle>
-                  <CardDescription className="text-xs font-semibold uppercase tracking-wide text-amber-200">
-                    Pokédex entry and card lore.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-5 text-sm font-medium text-slate-700">
-                  {card.flavor_text ? (
-                    <p className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-4 py-3 leading-relaxed shadow-[2px_2px_0px_#0f172a]">
-                      {card.flavor_text}
-                    </p>
-                  ) : (
-                    <p className="text-slate-500">No flavor text available.</p>
-                  )}
-                </CardContent>
-              </UiCard>
-
-              <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
                 <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
                   <CardTitle className="text-lg font-black uppercase text-white">Market details</CardTitle>
                   <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
                     Latest market pricing and supply.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4 p-5 text-sm font-medium text-slate-700">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Market</p>
-                      <p className="text-lg font-black text-slate-900">{formatUsd(marketDetails?.market ?? null)}</p>
+                <CardContent className="space-y-6 p-5 text-sm font-medium text-slate-700">
+                  <div className="space-y-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">TCGplayer (USD)</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Market</p>
+                        <p className="text-lg font-black text-slate-900">{formatUsd(marketDetails?.market ?? null)}</p>
+                      </div>
+                      <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Low</p>
+                        <p className="text-lg font-black text-slate-900">{formatUsd(marketDetails?.low ?? null)}</p>
+                      </div>
+                      <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Mid</p>
+                        <p className="text-lg font-black text-slate-900">{formatUsd(marketDetails?.mid ?? null)}</p>
+                      </div>
+                      <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">High</p>
+                        <p className="text-lg font-black text-slate-900">{formatUsd(marketDetails?.high ?? null)}</p>
+                      </div>
                     </div>
-                    <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Low</p>
-                      <p className="text-lg font-black text-slate-900">{formatUsd(marketDetails?.low ?? null)}</p>
-                    </div>
-                    <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Mid</p>
-                      <p className="text-lg font-black text-slate-900">{formatUsd(marketDetails?.mid ?? null)}</p>
-                    </div>
-                    <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">High</p>
-                      <p className="text-lg font-black text-slate-900">{formatUsd(marketDetails?.high ?? null)}</p>
+                    <div className="rounded-2xl border-2 border-slate-900 bg-white px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-700 shadow-[2px_2px_0px_#0f172a]">
+                      Active listings:{' '}
+                      <span className="text-base font-black text-slate-900">
+                        {marketDetails?.listings != null ? marketDetails.listings.toLocaleString('en-US') : '—'}
+                      </span>
                     </div>
                   </div>
-                  <div className="rounded-2xl border-2 border-slate-900 bg-white px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-700 shadow-[2px_2px_0px_#0f172a]">
-                    Active listings:{' '}
-                    <span className="text-base font-black text-slate-900">
-                      {marketDetails?.listings != null ? marketDetails.listings.toLocaleString('en-US') : '—'}
-                    </span>
-                  </div>
-                </CardContent>
-              </UiCard>
-
-              <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
-                <CardHeader className="border-b-4 border-slate-900 bg-slate-900">
-                  <CardTitle className="text-lg font-black uppercase text-white">Price history</CardTitle>
-                  <CardDescription className="text-xs font-semibold uppercase tracking-wide text-amber-200">
-                    Market price trends over time.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4 p-5 text-sm font-medium text-slate-700">
-                  <div className="flex flex-wrap gap-2">
-                    {rangeOptions.map((option) => (
-                      <Button
-                        key={option.key}
-                        size="sm"
-                        variant={selectedRange === option.key ? 'default' : 'outline'}
-                        onClick={() => setSelectedRange(option.key)}
-                      >
-                        {option.key}
-                      </Button>
-                    ))}
-                  </div>
-                  {variantOptions.length > 1 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {variantOptions.map((option) => (
-                        <Button
-                          key={option}
-                          size="sm"
-                          variant={selectedVariantLabel === option ? 'default' : 'outline'}
-                          onClick={() => setSelectedVariant(option)}
-                        >
-                          {option}
-                        </Button>
-                      ))}
+                  <div className="space-y-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tradera (SEK)</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Market</p>
+                        <p className="text-lg font-black text-slate-900">{formatSek(traderaStats.average)}</p>
+                      </div>
+                      <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Low</p>
+                        <p className="text-lg font-black text-slate-900">{formatSek(traderaStats.low)}</p>
+                      </div>
+                      <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">High</p>
+                        <p className="text-lg font-black text-slate-900">{formatSek(traderaStats.high)}</p>
+                      </div>
+                      <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-700 shadow-[2px_2px_0px_#0f172a]">
+                        Sales:{' '}
+                        <span className="text-base font-black text-slate-900">
+                          {traderaStats.count.toLocaleString('en-US')}
+                        </span>
+                      </div>
                     </div>
-                  ) : null}
-                  {chartData.length ? (
-                    <div className="h-64 rounded-2xl border-2 border-slate-900 bg-amber-50 p-3 shadow-[2px_2px_0px_#0f172a]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#0f172a" opacity={0.1} />
-                          <XAxis dataKey="date" tick={{ fontSize: 10 }} tickMargin={8} />
-                          <YAxis
-                            tick={{ fontSize: 10 }}
-                            tickFormatter={(value) => formatUsd(value as number | null)}
-                            width={60}
-                          />
-                          <Tooltip
-                            formatter={(value) => formatUsd(value as number | null)}
-                            labelClassName="text-xs font-semibold text-slate-700"
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="value"
-                            stroke="#0f172a"
-                            strokeWidth={2}
-                            dot={false}
-                            connectNulls
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : (
-                    <p className="text-slate-500">No price history available yet.</p>
-                  )}
+                  </div>
                 </CardContent>
               </UiCard>
 
