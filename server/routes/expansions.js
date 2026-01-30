@@ -8,8 +8,7 @@ const SUPPORTED_LANGUAGES = new Set(['english', 'japanese'])
 
 function normalizeLanguage(value) {
   const normalized = String(value ?? '').trim().toLowerCase()
-  if (!normalized) return 'english'
-  if (normalized === 'all') return null
+  if (!normalized || normalized === 'all') return null
   return SUPPORTED_LANGUAGES.has(normalized) ? normalized : 'english'
 }
 
@@ -80,7 +79,7 @@ function createExpansionService({
       if (priceTrackerReady) {
         const ptParams = []
         const ptLanguageClause =
-          ptSetsLanguageAvailable && language ? `WHERE s.language = $${ptParams.push(language)}` : ''
+          ptSetsLanguageAvailable && language ? `WHERE LOWER(s.language) = LOWER($${ptParams.push(language)})` : ''
 
         const { rows } = await pool.query(
           `
@@ -140,12 +139,12 @@ function createExpansionService({
       const fallbackParams = []
       const expansionLanguageClause =
         expansionsLanguageAvailable && language
-          ? `WHERE e.language = $${expansionParams.push(language)}`
+          ? `WHERE LOWER(e.language) = LOWER($${expansionParams.push(language)})`
           : ptSetsLanguageAvailable && language
-            ? `WHERE s.language = $${expansionParams.push(language)}`
+            ? `WHERE LOWER(s.language) = LOWER($${expansionParams.push(language)})`
             : ''
       const fallbackLanguageClause =
-        expansionsLanguageAvailable && language ? `WHERE e.language = $${fallbackParams.push(language)}` : ''
+        expansionsLanguageAvailable && language ? `WHERE LOWER(e.language) = LOWER($${fallbackParams.push(language)})` : ''
 
       const query = priceTrackerReady
         ? `
