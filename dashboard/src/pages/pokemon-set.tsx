@@ -166,7 +166,7 @@ export function PokemonSetPage(): JSX.Element {
                         </div>
                       </td>
                       <td className="px-4 py-4 text-slate-700">
-                        {[card.set_name, card.set_code].filter(Boolean).join(' · ') || 'Set pending'}
+                        {[card.set_name, setIdentifier].filter(Boolean).join(' · ') || 'Set pending'}
                       </td>
                       <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
                         {getBestPrice(card)}
