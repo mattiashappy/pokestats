@@ -12,6 +12,7 @@ import { Input } from '../components/ui/input'
 import { useRegion } from '../contexts/region-context'
 import { fetchCardsForSet, fetchExpansions } from '../lib/api'
 import { getCardSetIdentifier, getExpansionIdentifier } from '../lib/sets'
+import { getBestPrice } from '../utils/priceHelper'
 import type { CardListItem, ExpansionSummary } from '../types'
 
 export function PokemonSetPage(): JSX.Element {
@@ -26,13 +27,6 @@ export function PokemonSetPage(): JSX.Element {
       return `${card.card_number}/${card.set_total}`
     }
     return card.card_number
-  }
-
-  const formatMarketPrice = (value: number | null): string => {
-    if (value === null || value === undefined) return '—'
-    const parsed = Number(value)
-    if (!Number.isFinite(parsed)) return '—'
-    return `$${parsed.toFixed(2)}`
   }
 
   const {
@@ -175,7 +169,7 @@ export function PokemonSetPage(): JSX.Element {
                         {[card.set_name, card.set_code].filter(Boolean).join(' · ') || 'Set pending'}
                       </td>
                       <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
-                        {formatMarketPrice(card.price_market)}
+                        {getBestPrice(card)}
                       </td>
                       <td className="px-4 py-4 text-right">
                         <Link
