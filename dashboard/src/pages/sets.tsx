@@ -4,7 +4,6 @@ import { Layers, Loader2 } from 'lucide-react'
 
 import { Button } from '../components/ui/button'
 import { SetCard } from '../components/pokemon/set-card'
-import { useRegion } from '../contexts/region-context'
 import { fetchExpansions } from '../lib/api'
 import { getExpansionIdentifier } from '../lib/sets'
 import type { ExpansionSummary } from '../types'
@@ -19,7 +18,7 @@ const LANGUAGE_OPTIONS = [
 export function SetsPage(): JSX.Element {
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
-  const [languageFilter, setLanguageFilter] = useState('english')
+  const [languageFilter, setLanguageFilter] = useState('all')
 
   const {
     data: expansions,

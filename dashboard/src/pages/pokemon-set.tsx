@@ -12,13 +12,19 @@ import { Input } from '../components/ui/input'
 import { useRegion } from '../contexts/region-context'
 import { fetchCardsForSet, fetchExpansions } from '../lib/api'
 import { getCardSetIdentifier, getExpansionIdentifier } from '../lib/sets'
+import { getBestPrice } from '../utils/priceHelper'
 import type { CardListItem, ExpansionSummary } from '../types'
 
 export function PokemonSetPage(): JSX.Element {
   const { setCode = '' } = useParams()
   const [searchTerm, setSearchTerm] = useState('')
-  const [searchParams] = useSearchParams()
-  const languageFilter = searchParams.get('language') || 'english'
+  const [searchParams, setSearchParams] = useSearchParams()
+  const languageFilter = searchParams.get('language') || 'all'
+  const languageOptions = [
+    { label: 'All', value: 'all' },
+    { label: 'English', value: 'english' },
+    { label: 'Japanese', value: 'japanese' }
+  ]
 
   const formatCardNumber = (card: CardListItem): string | null => {
     if (!card.card_number) return null
@@ -26,13 +32,6 @@ export function PokemonSetPage(): JSX.Element {
       return `${card.card_number}/${card.set_total}`
     }
     return card.card_number
-  }
-
-  const formatMarketPrice = (value: number | null): string => {
-    if (value === null || value === undefined) return '—'
-    const parsed = Number(value)
-    if (!Number.isFinite(parsed)) return '—'
-    return `$${parsed.toFixed(2)}`
   }
 
   const {
@@ -128,14 +127,39 @@ export function PokemonSetPage(): JSX.Element {
                 {headerCode}
               </Badge>
             </div>
-            <div className="relative w-full md:w-72">
-              <Input
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search within this set"
-                className="pr-10"
-              />
-              <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <div className="flex w-full flex-col gap-2 md:w-auto">
+              <div className="relative w-full md:w-72">
+                <Input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search within this set"
+                  className="pr-10"
+                />
+                <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
+              <label className="flex items-center gap-2 rounded-full border-2 border-slate-900 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 shadow-[3px_3px_0px_#0f172a]">
+                <span>Language</span>
+                <select
+                  className="bg-transparent text-sm font-semibold text-slate-900 outline-none"
+                  value={languageFilter}
+                  onChange={(event) => {
+                    const next = event.target.value
+                    const nextParams = new URLSearchParams(searchParams)
+                    if (next === 'all') {
+                      nextParams.delete('language')
+                    } else {
+                      nextParams.set('language', next)
+                    }
+                    setSearchParams(nextParams)
+                  }}
+                >
+                  {languageOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
           </div>
         </CardHeader>
@@ -172,10 +196,10 @@ export function PokemonSetPage(): JSX.Element {
                         </div>
                       </td>
                       <td className="px-4 py-4 text-slate-700">
-                        {[card.set_name, card.set_code].filter(Boolean).join(' · ') || 'Set pending'}
+                        {[card.set_name].filter(Boolean).join(' · ') || 'Set pending'}
                       </td>
                       <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
-                        {formatMarketPrice(card.price_market)}
+                        {getBestPrice(card)}
                       </td>
                       <td className="px-4 py-4 text-right">
                         <Link
