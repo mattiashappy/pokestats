@@ -60,7 +60,7 @@ export async function fetchCardAuctions(cardId: number | string): Promise<Auctio
 }
 
 export async function fetchExpansions(language?: string): Promise<ExpansionSummary[]> {
-  const params = language ? new URLSearchParams({ language }) : null
+  const params = language && language !== 'all' ? new URLSearchParams({ language }) : null
   const response = await fetch(params ? `/api/expansions?${params.toString()}` : '/api/expansions')
   if (!response.ok) throw new Error('Failed to fetch expansions')
   return response.json()
@@ -76,7 +76,7 @@ export async function fetchEraExpansions(eraCode: string, language?: string): Pr
   const code = (eraCode || '').trim()
   if (!code) return []
 
-  const params = language ? new URLSearchParams({ language }) : null
+  const params = language && language !== 'all' ? new URLSearchParams({ language }) : null
   const response = await fetch(
     params ? `/api/eras/${encodeURIComponent(code)}/expansions?${params.toString()}` : `/api/eras/${encodeURIComponent(code)}/expansions`
   )
@@ -92,7 +92,7 @@ export async function fetchCardsForSet(setCode: string, language?: string): Prom
   const code = (setCode || '').trim()
   if (!code) return []
 
-  const params = language ? new URLSearchParams({ language }) : null
+  const params = language && language !== 'all' ? new URLSearchParams({ language }) : null
   const response = await fetch(
     params
       ? `/api/expansions/${encodeURIComponent(code)}/cards?${params.toString()}`
@@ -114,7 +114,7 @@ export async function fetchCards(options: CardQueryOptions = {}): Promise<CardLi
   if (options.search) params.set('search', options.search)
   if (Number.isFinite(options.limit)) params.set('limit', String(options.limit))
   if (Number.isFinite(options.offset)) params.set('offset', String(options.offset))
-  if (options.language) params.set('language', options.language)
+  if (options.language && options.language !== 'all') params.set('language', options.language)
 
   const query = params.toString()
   const response = await fetch(query ? `/api/cards?${query}` : '/api/cards')
@@ -125,7 +125,7 @@ export async function fetchCards(options: CardQueryOptions = {}): Promise<CardLi
 export async function fetchCardsPreview(limit = 4, language?: string): Promise<CardListItem[]> {
   const safeLimit = Math.min(Math.max(Number(limit) || 1, 1), 12)
   const params = new URLSearchParams({ limit: String(safeLimit) })
-  if (language) params.set('language', language)
+  if (language && language !== 'all') params.set('language', language)
   const response = await fetch(`/api/cards?${params.toString()}`)
   if (!response.ok) throw new Error('Failed to fetch cards preview')
   return response.json()
