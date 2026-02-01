@@ -1,7 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
-import { registeredUsers } from '../data/users'
-
 export type SubscriptionStatus = 'active' | 'inactive' | 'trialing'
 
 export type AuthUser = {
@@ -19,30 +17,38 @@ export type AuthContextValue = {
   login: (email: string, password: string) => Promise<void>
   signup: (name: string, email: string, password: string) => Promise<void>
   logout: () => void
-  updateSubscription: (status: SubscriptionStatus) => void
-  startTrial: (cardLast4: string) => void
+  updateSubscription: (status: SubscriptionStatus) => Promise<void>
+  startTrial: (cardLast4: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
-const STORAGE_KEY = 'pokestats-auth-user'
-const ADMIN_EMAIL = import.meta.env.ADMIN_EMAIL?.trim().toLowerCase() ?? ''
-const ADMIN_PASS = import.meta.env.ADMIN_PASS ?? ''
-const MEMBER_PASS = import.meta.env.MEMBER_PASS ?? ''
-const SELF_SIGNUP_ENABLED = import.meta.env.SELF_SIGNUP_ENABLED === 'true'
-
-export const isAdminLogin = (email: string, password: string): boolean => {
-  if (!ADMIN_EMAIL || !ADMIN_PASS) return false
-  return email.trim().toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASS
+const API_HEADERS = {
+  'Content-Type': 'application/json'
 }
 
-const matchesAdminEmail = (email: string): boolean => {
-  if (!ADMIN_EMAIL) return false
-  return email.trim().toLowerCase() === ADMIN_EMAIL
+const parseError = async (response: Response): Promise<string> => {
+  try {
+    const payload = await response.json()
+    return payload?.error ? String(payload.error) : response.statusText
+  } catch (error) {
+    return response.statusText
+  }
 }
 
-const findRegisteredUser = (email: string): (typeof registeredUsers)[number] | null => {
-  const normalized = email.trim().toLowerCase()
-  return registeredUsers.find((user) => user.email.trim().toLowerCase() === normalized) ?? null
+const requestAuth = async <T,>(url: string, options?: RequestInit): Promise<T> => {
+  const response = await fetch(url, {
+    credentials: 'include',
+    headers: {
+      ...API_HEADERS,
+      ...(options?.headers ?? {})
+    },
+    ...options
+  })
+  if (!response.ok) {
+    const message = await parseError(response)
+    throw new Error(message || 'Authentication failed')
+  }
+  return response.json() as Promise<T>
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }): JSX.Element {
@@ -50,111 +56,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }): JSX.E
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
+    let isMounted = true
+
+    const loadSession = async (): Promise<void> => {
       try {
-        const parsed: AuthUser = JSON.parse(stored)
-        const parsedWithRole: AuthUser = { ...parsed, role: parsed.role ?? 'member' }
-
-        if (parsed.subscriptionStatus === 'trialing' && parsed.trialEndsAt) {
-          const trialEnd = new Date(parsed.trialEndsAt)
-          const now = new Date()
-          if (now >= trialEnd) {
-            setUser({ ...parsedWithRole, subscriptionStatus: 'active', trialEndsAt: undefined })
-            return
-          }
+        const payload = await requestAuth<{ user: AuthUser | null }>('/api/auth/session')
+        if (isMounted) {
+          setUser(payload.user)
         }
-
-        setUser(parsedWithRole)
       } catch (error) {
-        console.error('Failed to parse auth state', error)
-        localStorage.removeItem(STORAGE_KEY)
+        console.error('Failed to load session', error)
+        if (isMounted) {
+          setUser(null)
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     }
-    setLoading(false)
+
+    void loadSession()
+
+    return () => {
+      isMounted = false
+    }
   }, [])
 
-  const persistUser = (nextUser: AuthUser | null): void => {
-    setUser(nextUser)
-    if (nextUser) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser))
-    } else {
-      localStorage.removeItem(STORAGE_KEY)
-    }
-  }
-
   const login = async (email: string, password: string): Promise<void> => {
-    const baseName = email.split('@')[0]
-    const name = baseName ? `${baseName.charAt(0).toUpperCase()}${baseName.slice(1)}` : 'Trainer'
-    if (matchesAdminEmail(email) && ADMIN_PASS && password !== ADMIN_PASS) {
-      throw new Error('Invalid admin credentials')
-    }
-    const isAdmin = isAdminLogin(email, password)
-    if (!isAdmin) {
-      if (!MEMBER_PASS) {
-        throw new Error('Member login is disabled until MEMBER_PASS is configured')
-      }
-      if (password !== MEMBER_PASS) {
-        throw new Error('Invalid member credentials')
-      }
-    }
-    const registeredUser = isAdmin ? null : findRegisteredUser(email)
-    if (!isAdmin && !registeredUser) {
-      throw new Error('Account not found. Contact an administrator to request access.')
-    }
-    const role = isAdmin ? 'admin' : 'member'
-    const nextUser: AuthUser = {
-      name: registeredUser?.name ?? name,
-      email,
-      subscriptionStatus: role === 'admin' ? 'active' : (registeredUser?.subscriptionStatus ?? 'inactive'),
-      trialEndsAt: registeredUser?.trialEndsAt,
-      role
-    }
-    persistUser(nextUser)
+    const payload = await requestAuth<{ user: AuthUser }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    })
+    setUser(payload.user)
   }
 
   const signup = async (name: string, email: string, _password: string): Promise<void> => {
-    if (!SELF_SIGNUP_ENABLED) {
-      throw new Error('Self-service signup is disabled. Contact an administrator to request access.')
-    }
-    const role = 'member'
-    const nextUser: AuthUser = {
-      name: name.trim() || 'New Trainer',
-      email,
-      subscriptionStatus: role === 'admin' ? 'active' : 'inactive',
-      role
-    }
-    persistUser(nextUser)
+    const payload = await requestAuth<{ user: AuthUser }>('/api/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify({ name, email })
+    })
+    setUser(payload.user)
   }
 
   const logout = (): void => {
-    persistUser(null)
+    void requestAuth('/api/auth/logout', { method: 'POST' }).finally(() => {
+      setUser(null)
+    })
   }
 
-  const updateSubscription = (status: SubscriptionStatus): void => {
-    if (!user) return
-    if (user.role === 'admin') return
-
-    const nextUser: AuthUser = {
-      ...user,
-      subscriptionStatus: status,
-      trialEndsAt: status === 'trialing' ? user.trialEndsAt : undefined
-    }
-    persistUser(nextUser)
-  }
-
-  const startTrial = (cardLast4: string): void => {
+  const updateSubscription = async (status: SubscriptionStatus): Promise<void> => {
     if (!user || user.role === 'admin') return
+    const payload = await requestAuth<{ user: AuthUser }>('/api/auth/subscription', {
+      method: 'POST',
+      body: JSON.stringify({ status })
+    })
+    setUser(payload.user)
+  }
 
-    const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
-    const nextUser: AuthUser = {
-      ...user,
-      subscriptionStatus: 'trialing',
-      trialEndsAt,
-      cardLast4
-    }
-
-    persistUser(nextUser)
+  const startTrial = async (cardLast4: string): Promise<void> => {
+    if (!user || user.role === 'admin') return
+    const payload = await requestAuth<{ user: AuthUser }>('/api/auth/trial', {
+      method: 'POST',
+      body: JSON.stringify({ cardLast4 })
+    })
+    setUser(payload.user)
   }
 
   const value = useMemo(

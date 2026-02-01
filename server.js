@@ -18,6 +18,8 @@ const app = express()
 const PORT = process.env.PORT || 8000
 const distPath = path.join(__dirname, 'dashboard', 'dist')
 
+app.set('trust proxy', 1)
+
 let ensureDashboardBuildResult = null
 function ensureDashboardBuild() {
   if (ensureDashboardBuildResult !== null) return ensureDashboardBuildResult
@@ -59,10 +61,256 @@ app.use(express.json())
 
 const DATABASE_URL = process.env.DATABASE_URL
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
+const SESSION_COOKIE = 'pokestats_session'
+const SESSION_TTL_HOURS = Number(process.env.SESSION_TTL_HOURS ?? 12)
+const SESSION_TTL_MS = Math.max(1, Number.isFinite(SESSION_TTL_HOURS) ? SESSION_TTL_HOURS : 12) * 60 * 60 * 1000
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase() ?? ''
+const ADMIN_PASS = process.env.ADMIN_PASS ?? ''
+const MEMBER_PASS = process.env.MEMBER_PASS ?? ''
+const SELF_SIGNUP_ENABLED = process.env.SELF_SIGNUP_ENABLED === 'true'
 const PYTHON_BIN = process.env.PYTHON_BIN || 'python'
 const PRICE_TRACKER_API_KEY = process.env.PRICE_TRACKER_API
 const PRICE_TRACKER_BASE_URL = 'https://www.pokemonpricetracker.com/api/v2'
 const SUPPORTED_LANGUAGES = new Set(['english', 'japanese'])
+
+const sessions = new Map()
+const registeredUsers = [
+  {
+    name: 'Misty Williams',
+    email: 'misty@cerulean.io',
+    subscriptionStatus: 'active',
+    trialEndsAt: null
+  },
+  {
+    name: 'Brock Sanders',
+    email: 'brock@pewterlabs.com',
+    subscriptionStatus: 'active',
+    trialEndsAt: null
+  },
+  {
+    name: 'Erika Tanaka',
+    email: 'erika@celadon.green',
+    subscriptionStatus: 'trialing',
+    trialEndsAt: '2024-08-27T08:00:00.000Z'
+  },
+  {
+    name: 'Lt. Surge',
+    email: 'surge@vermilion.energy',
+    subscriptionStatus: 'inactive',
+    trialEndsAt: null
+  },
+  {
+    name: 'Sabrina Park',
+    email: 'sabrina@saffron.ai',
+    subscriptionStatus: 'trialing',
+    trialEndsAt: '2024-08-24T08:00:00.000Z'
+  }
+]
+
+const normalizeEmail = (email) => String(email ?? '').trim().toLowerCase()
+
+const findRegisteredUser = (email) =>
+  registeredUsers.find((user) => normalizeEmail(user.email) === normalizeEmail(email)) ?? null
+
+const buildMemberUser = (email) => {
+  const registered = findRegisteredUser(email)
+  if (!registered) return null
+  return {
+    name: registered.name,
+    email: registered.email,
+    subscriptionStatus: registered.subscriptionStatus ?? 'inactive',
+    trialEndsAt: registered.trialEndsAt ?? undefined,
+    role: 'member'
+  }
+}
+
+const buildAdminUser = (email) => ({
+  name: 'PokéStats Admin',
+  email,
+  subscriptionStatus: 'active',
+  role: 'admin'
+})
+
+const parseCookies = (cookieHeader = '') =>
+  cookieHeader.split(';').reduce((acc, part) => {
+    const trimmed = part.trim()
+    if (!trimmed) return acc
+    const [key, ...rest] = trimmed.split('=')
+    if (!key) return acc
+    acc[key] = decodeURIComponent(rest.join('='))
+    return acc
+  }, {})
+
+const buildCookie = (name, value, options = {}) => {
+  const attributes = [`${name}=${value}`]
+  if (options.maxAge !== undefined) attributes.push(`Max-Age=${options.maxAge}`)
+  attributes.push(`Path=${options.path ?? '/'}`)
+  if (options.httpOnly ?? true) attributes.push('HttpOnly')
+  if (options.sameSite) attributes.push(`SameSite=${options.sameSite}`)
+  if (options.secure) attributes.push('Secure')
+  return attributes.join('; ')
+}
+
+const setSessionCookie = (res, sessionId) => {
+  const cookie = buildCookie(SESSION_COOKIE, sessionId, {
+    maxAge: Math.floor(SESSION_TTL_MS / 1000),
+    httpOnly: true,
+    sameSite: 'Lax',
+    secure: IS_PRODUCTION
+  })
+  res.setHeader('Set-Cookie', cookie)
+}
+
+const clearSessionCookie = (res) => {
+  const cookie = buildCookie(SESSION_COOKIE, '', {
+    maxAge: 0,
+    httpOnly: true,
+    sameSite: 'Lax',
+    secure: IS_PRODUCTION
+  })
+  res.setHeader('Set-Cookie', cookie)
+}
+
+const createSession = (user) => {
+  const sessionId = crypto.randomBytes(32).toString('hex')
+  const now = Date.now()
+  sessions.set(sessionId, {
+    user,
+    createdAt: now,
+    lastSeenAt: now,
+    expiresAt: now + SESSION_TTL_MS
+  })
+  return sessionId
+}
+
+const getSession = (req) => {
+  const cookies = parseCookies(req.headers.cookie ?? '')
+  const sessionId = cookies[SESSION_COOKIE]
+  if (!sessionId) return null
+  const session = sessions.get(sessionId)
+  if (!session) return null
+  if (Date.now() > session.expiresAt) {
+    sessions.delete(sessionId)
+    return null
+  }
+  session.lastSeenAt = Date.now()
+  return { sessionId, session }
+}
+
+const respondUnauthorized = (res) => res.status(401).json({ error: 'Unauthorized' })
+
+app.get('/api/auth/session', (req, res) => {
+  const entry = getSession(req)
+  if (!entry) return res.json({ user: null })
+  const user = entry.session.user
+  if (user.subscriptionStatus === 'trialing' && user.trialEndsAt) {
+    const trialEndsAt = new Date(user.trialEndsAt)
+    if (!Number.isNaN(trialEndsAt.getTime()) && Date.now() >= trialEndsAt.getTime()) {
+      entry.session.user = { ...user, subscriptionStatus: 'active', trialEndsAt: undefined }
+    }
+  }
+  return res.json({ user: entry.session.user })
+})
+
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body ?? {}
+  const normalizedEmail = normalizeEmail(email)
+  if (!normalizedEmail) {
+    return res.status(400).json({ error: 'Email is required' })
+  }
+
+  const isAdmin = ADMIN_EMAIL && ADMIN_PASS && normalizedEmail === ADMIN_EMAIL && password === ADMIN_PASS
+  if (ADMIN_EMAIL && normalizedEmail === ADMIN_EMAIL && ADMIN_PASS && !isAdmin) {
+    return res.status(401).json({ error: 'Invalid admin credentials' })
+  }
+
+  let user = null
+  if (isAdmin) {
+    user = buildAdminUser(normalizedEmail)
+  } else {
+    if (!MEMBER_PASS) {
+      return res.status(403).json({ error: 'Member login is disabled until MEMBER_PASS is configured' })
+    }
+    if (password !== MEMBER_PASS) {
+      return res.status(401).json({ error: 'Invalid member credentials' })
+    }
+    user = buildMemberUser(normalizedEmail)
+    if (!user) {
+      return res.status(403).json({ error: 'Account not found. Contact an administrator to request access.' })
+    }
+  }
+
+  const sessionId = createSession(user)
+  setSessionCookie(res, sessionId)
+  return res.json({ user })
+})
+
+app.post('/api/auth/signup', (req, res) => {
+  if (!SELF_SIGNUP_ENABLED) {
+    return res.status(403).json({ error: 'Self-service signup is disabled. Contact an administrator to request access.' })
+  }
+  const { name, email } = req.body ?? {}
+  const normalizedEmail = normalizeEmail(email)
+  if (!normalizedEmail) {
+    return res.status(400).json({ error: 'Email is required' })
+  }
+  const displayName = String(name ?? '').trim() || 'New Trainer'
+  const user = {
+    name: displayName,
+    email: normalizedEmail,
+    subscriptionStatus: 'inactive',
+    role: 'member'
+  }
+  const sessionId = createSession(user)
+  setSessionCookie(res, sessionId)
+  return res.json({ user })
+})
+
+app.post('/api/auth/logout', (req, res) => {
+  const entry = getSession(req)
+  if (entry) {
+    sessions.delete(entry.sessionId)
+  }
+  clearSessionCookie(res)
+  return res.json({ ok: true })
+})
+
+app.post('/api/auth/subscription', (req, res) => {
+  const entry = getSession(req)
+  if (!entry) return respondUnauthorized(res)
+  const { status } = req.body ?? {}
+  if (!['active', 'inactive', 'trialing'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid subscription status' })
+  }
+  if (entry.session.user.role === 'admin') {
+    return res.status(403).json({ error: 'Admins do not update subscription status' })
+  }
+  const trialEndsAt =
+    status === 'trialing' ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() : undefined
+  entry.session.user = {
+    ...entry.session.user,
+    subscriptionStatus: status,
+    trialEndsAt
+  }
+  return res.json({ user: entry.session.user })
+})
+
+app.post('/api/auth/trial', (req, res) => {
+  const entry = getSession(req)
+  if (!entry) return respondUnauthorized(res)
+  if (entry.session.user.role === 'admin') {
+    return res.status(403).json({ error: 'Admins cannot start trials' })
+  }
+  const { cardLast4 } = req.body ?? {}
+  const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+  entry.session.user = {
+    ...entry.session.user,
+    subscriptionStatus: 'trialing',
+    trialEndsAt,
+    cardLast4: cardLast4 ? String(cardLast4) : undefined
+  }
+  return res.json({ user: entry.session.user })
+})
 
 function normalizeLanguage(value) {
   const normalized = String(value ?? '').trim().toLowerCase()

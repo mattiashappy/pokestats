@@ -154,7 +154,7 @@ export function BillingPage(): JSX.Element {
       return
     }
 
-    startTrial(last4)
+    void startTrial(last4)
     setStatusMessage('Trial started. Access stays open for 14 days before the $7/mo charge kicks in.')
   }
 
@@ -196,7 +196,9 @@ export function BillingPage(): JSX.Element {
             </Button>
             <Button
               size="sm"
-              onClick={() => updateSubscription(user?.subscriptionStatus === 'active' ? 'inactive' : 'active')}
+              onClick={() => {
+                void updateSubscription(user?.subscriptionStatus === 'active' ? 'inactive' : 'active')
+              }}
             >
               {user?.subscriptionStatus === 'active' ? 'Pause billing' : 'Activate now ($7/mo)'}
             </Button>
@@ -264,7 +266,12 @@ export function BillingPage(): JSX.Element {
 
           <div className="flex flex-wrap gap-2">
             <Button onClick={handleStartTrial}>Start 14-day trial</Button>
-            <Button variant="outline" onClick={() => updateSubscription('inactive')}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                void updateSubscription('inactive')
+              }}
+            >
               Pause billing
             </Button>
           </div>
