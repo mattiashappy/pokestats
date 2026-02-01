@@ -4,7 +4,7 @@ const { Pool } = require('pg')
 const PRICE_TRACKER_BASE_URL = process.env.PT_API_BASE_URL || 'https://www.pokemonpricetracker.com/api/v2'
 const PRICE_TRACKER_TOKEN = process.env.PT_API_TOKEN || process.env.PT_API_KEY
 const DATABASE_URL = process.env.DATABASE_URL
-const SLEEP_BETWEEN_SETS = 10000; // ÖKAT TILL 10 SEKUNDER (Säkerhet först!)
+const SLEEP_BETWEEN_SETS = 10000; // 10 sekunder (Safe mode!)
 
 const args = process.argv.slice(2).reduce((acc, arg) => {
     const [key, value] = arg.split('=');
@@ -53,7 +53,7 @@ async function run() {
   const client = await pool.connect()
   
   try {
-    console.log(`🚀 Starting CHUNKED SYNC (Ultra Safe Mode)`)
+    console.log(`🚀 Starting CHUNKED SYNC (Repair Mode)`)
     console.log(`🎯 Batch Goal: Index ${BATCH_START} to ${BATCH_START + BATCH_SIZE}`)
     
     // 1. Hämta sets
@@ -92,7 +92,6 @@ async function run() {
         const currentGlobalIndex = BATCH_START + processed;
         
         // --- SMART CHECK ---
-        // Vi hoppar över om vi har uppdaterat setet de senaste 48 timmarna
         const setRes = await client.query('SELECT updated_at FROM pt_sets WHERE pt_set_id = $1', [set.id]);
         const dbRes = await client.query('SELECT COUNT(*) as c FROM pt_cards WHERE pt_set_id = $1', [set.id]);
         const dbCount = parseInt(dbRes.rows[0].c);
@@ -100,30 +99,33 @@ async function run() {
         const lastSetUpdate = setRes.rows[0]?.updated_at ? new Date(setRes.rows[0].updated_at) : new Date(0);
         const hoursSinceUpdate = (new Date() - lastSetUpdate) / (1000 * 60 * 60);
 
-        // SPARA SET INFO FÖRST
+        // SPARA SET INFO
         await client.query(`
             INSERT INTO public.pt_sets (pt_set_id, tcgplayer_set_id, name, series, release_date, card_count, image_cdn_url, language, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
             ON CONFLICT (pt_set_id) DO UPDATE SET updated_at = NOW()
         `, [set.id, set.tcgPlayerId, set.name, set.series, set.releaseDate, set.cardCount, set.imageCdnUrl, set._language, set.createdAt]);
 
-        // LOGIK:
-        // 1. Har vi kort? -> SKIP
-        // 2. Har vi kollat nyligen (även om tomt)? -> SKIP
+        // LOGIK FÖR REPAIR RUN:
+        // 1. Om vi har kort (>0) -> SKIP (Vi har redan datan, onödigt att hämta igen)
+        // 2. Om vi har 0 kort -> KÖR (Oavsett när vi kollade sist, tvinga fram ett nytt försök för japanska kort)
         if (dbCount > 0) {
             console.log(`[${currentGlobalIndex}] ⏩ Skipping ${set.name} (Has ${dbCount} cards)`);
             continue;
         }
-        if (hoursSinceUpdate < 48) {
+        
+        // ÄNDRAD FRÅN 48 TILL 0 FÖR ATT TVINGA OMKÖRNING AV TOMMA SET
+        if (hoursSinceUpdate < 0) { 
              console.log(`[${currentGlobalIndex}] ⏩ Skipping ${set.name} (Checked recently)`);
              continue;
         }
+        
         if (!set._numericId) {
             console.log(`[${currentGlobalIndex}] ⚠️ Skipping ${set.name} (No Numeric ID)`);
             continue;
         }
 
-        process.stdout.write(`[${currentGlobalIndex}] 📥 Syncing ${set.name}... `);
+        process.stdout.write(`[${currentGlobalIndex}] 📥 Syncing ${set.name} (${set._language})... `);
 
         let cards = [];
         let offset = 0;
@@ -132,13 +134,20 @@ async function run() {
         try {
             while(hasMoreCards) {
                 await sleep(SLEEP_BETWEEN_SETS); // 10 sekunders paus
-                const res = await fetchPriceTracker('/cards', { setId: set._numericId, limit: 200, offset });
+                
+                // HÄR ÄR FIXEN: Vi skickar med language!
+                const res = await fetchPriceTracker('/cards', { 
+                    setId: set._numericId, 
+                    limit: 200, 
+                    offset, 
+                    language: set._language // <--- VIKTIGT!
+                });
+                
                 const pageCards = res.data || [];
                 if(pageCards.length) cards.push(...pageCards);
                 hasMoreCards = res.metadata?.hasMore || false;
                 offset += 200;
                 if(offset > 5000) hasMoreCards = false;
-                language: lang
             }
         } catch (err) {
             console.log(`❌ Error: ${err.message}`);
