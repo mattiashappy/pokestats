@@ -138,6 +138,7 @@ async function run() {
                 hasMoreCards = res.metadata?.hasMore || false;
                 offset += 200;
                 if(offset > 5000) hasMoreCards = false;
+                language: lang
             }
         } catch (err) {
             console.log(`❌ Error: ${err.message}`);
