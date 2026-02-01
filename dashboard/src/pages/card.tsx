@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Loader2, AlertCircle } from 'lucide-react' // Added Loader/Alert icons
 import { Link, useParams } from 'react-router-dom'
 
 import { Button } from '../components/ui/button'
@@ -8,7 +8,7 @@ import { Card as UiCard, CardContent, CardDescription, CardHeader, CardTitle } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { fetchCardAuctions, fetchCardDetails } from '../lib/api'
 import { getCardSetIdentifier } from '../lib/sets'
-import type { AuctionRecord, CardPriceVariant, CardResponse } from '../types'
+import type { AuctionRecord, CardPriceVariant } from '../types'
 
 function formatUsd(value: number | null | undefined): string {
   if (!Number.isFinite(Number(value))) return '—'
@@ -39,8 +39,10 @@ export function CardPage(): JSX.Element {
     enabled: Boolean(id)
   })
 
+  // --- MEMOS ---
+
   const headerLabel = useMemo(() => {
-    if (!card) return 'Card'
+    if (!card) return '...'
     if (card.card_number) return `${card.name} - ${card.card_number}`
     return card.name
   }, [card])
@@ -94,33 +96,48 @@ export function CardPage(): JSX.Element {
       .map((auction) => auction.price)
       .filter((price): price is number => Number.isFinite(Number(price)))
       .map((price) => Number(price))
-    if (!prices.length) {
-      return {
-        average: null,
-        low: null,
-        high: null,
-        count: 0
-      }
-    }
+    
+    if (!prices.length) return { average: null }
+    
     const total = prices.reduce((acc, price) => acc + price, 0)
     return {
-      average: total / prices.length,
-      low: Math.min(...prices),
-      high: Math.max(...prices),
-      count: prices.length
+      average: total / prices.length
     }
   }, [auctions])
 
-  const isLoading = isLoadingCard
-  const error = cardError
-
+  // --- RESOLVE NAVIGATION ---
   const resolvedSetCode = setCode ?? (card ? getCardSetIdentifier(card) : null)
   const resolvedSetName = card?.set_name || resolvedSetCode
   const backLink = resolvedSetCode ? `/sets/${resolvedSetCode}` : '/sets'
   const backLabel = resolvedSetName ? `Back to ${resolvedSetName}` : 'Back to sets'
 
+  // --- EARLY RETURNS FOR STATES ---
+
+  if (isLoadingCard) {
+    return (
+      <div className="flex h-64 w-full items-center justify-center">
+        <Loader2 className="h-10 w-10 animate-spin text-slate-400" />
+      </div>
+    )
+  }
+
+  if (cardError || !card) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-10 text-center">
+        <AlertCircle className="h-10 w-10 text-red-500" />
+        <h2 className="text-xl font-bold text-slate-900">Failed to load card</h2>
+        <Button asChild variant="outline">
+           <Link to="/sets">Go back to Sets</Link>
+        </Button>
+      </div>
+    )
+  }
+
+  // --- RENDER ---
+
   return (
     <div className="space-y-8">
+      {/* HEADER SECTION */}
       <section className="rounded-3xl border-4 border-slate-900 bg-amber-200 p-6 shadow-[6px_6px_0px_#0f172a]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <Button
@@ -141,201 +158,195 @@ export function CardPage(): JSX.Element {
           {statsLabel ? (
             <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">{statsLabel}</p>
           ) : null}
-          {card ? (
-            <div className="flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-wide text-slate-900">
-              <span className="rounded-full border-2 border-slate-900 bg-white px-3 py-1 shadow-[2px_2px_0px_#0f172a]">
-                Name: {card.name || 'Unknown name'}
+          
+          <div className="flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-wide text-slate-900">
+            <span className="rounded-full border-2 border-slate-900 bg-white px-3 py-1 shadow-[2px_2px_0px_#0f172a]">
+              Name: {card.name || 'Unknown name'}
+            </span>
+            <span className="rounded-full border-2 border-slate-900 bg-white px-3 py-1 shadow-[2px_2px_0px_#0f172a]">
+              Era: {card.era || 'Unknown era'}
+            </span>
+            <span className="rounded-full border-2 border-slate-900 bg-white px-3 py-1 shadow-[2px_2px_0px_#0f172a]">
+              Set: {card.set_name || 'Unknown set'}
+            </span>
+            <span className="rounded-full border-2 border-slate-900 bg-white px-3 py-1 shadow-[2px_2px_0px_#0f172a]">
+              Language: {card.language || 'Unknown language'}
+            </span>
+            <span className="rounded-full border-2 border-slate-900 bg-white px-3 py-1 shadow-[2px_2px_0px_#0f172a]">
+              Card number: {card.card_number || 'N/A'}
+            </span>
+            {typeBadges.length ? (
+              <span className="inline-flex flex-wrap gap-2">
+                {typeBadges.map((type) => (
+                  <span
+                    key={type}
+                    className="rounded-full border-2 border-slate-900 bg-amber-50 px-3 py-1 shadow-[2px_2px_0px_#0f172a]"
+                  >
+                    Type: {type}
+                  </span>
+                ))}
               </span>
-              <span className="rounded-full border-2 border-slate-900 bg-white px-3 py-1 shadow-[2px_2px_0px_#0f172a]">
-                Era: {card.era || 'Unknown era'}
-              </span>
-              <span className="rounded-full border-2 border-slate-900 bg-white px-3 py-1 shadow-[2px_2px_0px_#0f172a]">
-                Set: {card.set_name || 'Unknown set'}
-              </span>
-              <span className="rounded-full border-2 border-slate-900 bg-white px-3 py-1 shadow-[2px_2px_0px_#0f172a]">
-                Language: {card.language || 'Unknown language'}
-              </span>
-              <span className="rounded-full border-2 border-slate-900 bg-white px-3 py-1 shadow-[2px_2px_0px_#0f172a]">
-                Card number: {card.card_number || 'N/A'}
-              </span>
-              {typeBadges.length ? (
-                <span className="inline-flex flex-wrap gap-2">
-                  {typeBadges.map((type) => (
-                    <span
-                      key={type}
-                      className="rounded-full border-2 border-slate-900 bg-amber-50 px-3 py-1 shadow-[2px_2px_0px_#0f172a]"
-                    >
-                      Type: {type}
-                    </span>
-                  ))}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
       </section>
 
-      {card && !isLoading && !error ? (
-        <div className="grid gap-6 lg:grid-cols-[320px,1fr]">
-          <div>
-            {card.image_url ? (
-              <img src={card.image_url} alt={card.name} className="h-auto w-full" />
-            ) : (
-              <div className="flex h-64 items-center justify-center bg-amber-50 text-sm font-semibold uppercase tracking-wide text-slate-600">
-                No image available
-              </div>
-            )}
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-[minmax(0,1fr),240px]">
-            <div className="space-y-6">
-              <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
-                <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
-                  <CardTitle className="text-lg font-black uppercase text-white">Product details</CardTitle>
-                  <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
-                    Reference data for this specific card.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 p-5 text-sm font-medium text-slate-700">
-                  {productDetails.length > 0 ? (
-                    <ul className="space-y-2">
-                      {productDetails.map((line, index) => (
-                        <li
-                          key={index}
-                          className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-2 leading-relaxed shadow-[2px_2px_0px_#0f172a]"
-                        >
-                          {line}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-slate-500">No product details provided.</p>
-                  )}
-                </CardContent>
-              </UiCard>
-
-              <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
-                <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
-                  <CardTitle className="text-lg font-black uppercase text-white">Market details</CardTitle>
-                  <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
-                    Latest market pricing and supply.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6 p-5 text-sm font-medium text-slate-700">
-                  <div className="space-y-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">TCGplayer (USD)</p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Market Price</p>
-                        <p className="text-lg font-black text-slate-900">{formatUsd(marketDetails?.market ?? null)}</p>
-                      </div>
-                    </div>
-                    {variants.length ? (
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {variants.map((variant) => (
-                          <div
-                            key={variant.name}
-                            className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]"
-                          >
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{variant.name}</p>
-                            <p className="text-lg font-black text-slate-900">{formatUsd(variant.market)}</p>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="space-y-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tradera (SEK)</p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Market</p>
-                        <p className="text-lg font-black text-slate-900">{formatSek(traderaStats.average)}</p>
-                      </div>
-                      <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Low</p>
-                        <p className="text-lg font-black text-slate-900">{formatSek(traderaStats.low)}</p>
-                      </div>
-                      <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">High</p>
-                        <p className="text-lg font-black text-slate-900">{formatSek(traderaStats.high)}</p>
-                      </div>
-                      <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-700 shadow-[2px_2px_0px_#0f172a]">
-                        Sales:{' '}
-                        <span className="text-base font-black text-slate-900">
-                          {traderaStats.count.toLocaleString('en-US')}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </UiCard>
-
-              {variants.length ? (
-                <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
-                  <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
-                    <CardTitle className="text-lg font-black uppercase text-white">Variants</CardTitle>
-                    <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
-                      Compare market pricing across versions.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="text-left">Version</TableHead>
-                          <TableHead className="text-right">Market</TableHead>
-                          <TableHead className="text-right">Low</TableHead>
-                          <TableHead className="text-right">Mid</TableHead>
-                          <TableHead className="text-right">High</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {variants.map((variant) => (
-                          <TableRow key={variant.name}>
-                            <TableCell className="font-semibold text-slate-900">{variant.name}</TableCell>
-                            <TableCell className="text-right">{formatUsd(variant.market)}</TableCell>
-                            <TableCell className="text-right">{formatUsd(variant.low)}</TableCell>
-                            <TableCell className="text-right">{formatUsd(variant.mid)}</TableCell>
-                            <TableCell className="text-right">{formatUsd(variant.high)}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </UiCard>
-              ) : null}
+      <div className="grid gap-6 lg:grid-cols-[320px,1fr]">
+        {/* LEFT COLUMN: IMAGE */}
+        <div>
+          {card.image_url ? (
+            <img src={card.image_url} alt={card.name} className="h-auto w-full" />
+          ) : (
+            <div className="flex h-64 items-center justify-center bg-amber-50 text-sm font-semibold uppercase tracking-wide text-slate-600">
+              No image available
             </div>
+          )}
+        </div>
 
+        {/* RIGHT COLUMN: DETAILS */}
+        <div className="grid gap-6 md:grid-cols-[minmax(0,1fr),240px]">
+          <div className="space-y-6">
+            
+            {/* PRODUCT DETAILS CARD */}
             <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
-              <CardHeader className="border-b-4 border-slate-900 bg-slate-900">
-                <CardTitle className="text-lg font-black uppercase text-white">Highlights</CardTitle>
-                <CardDescription className="text-xs font-semibold uppercase tracking-wide text-amber-200">
-                  Quick facts at a glance.
+              <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
+                <CardTitle className="text-lg font-black uppercase text-white">Product details</CardTitle>
+                <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
+                  Reference data for this specific card.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3 p-4 text-xs font-semibold uppercase text-slate-900">
-                <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                  Era
-                  <div className="text-base font-black">{card.era || 'Unknown era'}</div>
+              <CardContent className="space-y-3 p-5 text-sm font-medium text-slate-700">
+                {productDetails.length > 0 ? (
+                  <ul className="space-y-2">
+                    {productDetails.map((line, index) => (
+                      <li
+                        key={index}
+                        className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-2 leading-relaxed shadow-[2px_2px_0px_#0f172a]"
+                      >
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-slate-500">No product details provided.</p>
+                )}
+              </CardContent>
+            </UiCard>
+
+            {/* MARKET DETAILS CARD */}
+            <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
+              <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
+                <CardTitle className="text-lg font-black uppercase text-white">Market details</CardTitle>
+                <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
+                  Latest market pricing and supply.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-6 p-5 text-sm font-medium text-slate-700 md:grid-cols-2">
+                
+                {/* TCGPLAYER COLUMN */}
+                <div className="space-y-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">TCGplayer (USD)</p>
+                  <div className="grid gap-3">
+                    <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Market Price</p>
+                      <p className="text-lg font-black text-slate-900">{formatUsd(marketDetails?.market ?? null)}</p>
+                    </div>
+                  </div>
+                  {variants.length ? (
+                    <div className="grid gap-3">
+                      {variants.map((variant) => (
+                        <div
+                          key={variant.name}
+                          className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]"
+                        >
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{variant.name}</p>
+                          <p className="text-lg font-black text-slate-900">{formatUsd(variant.market)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
-                <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                  Set
-                  <div className="text-base font-black">{card.set_name || 'Unknown set'}</div>
-                </div>
-                <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                  Language
-                  <div className="text-base font-black">{card.language || 'Unknown language'}</div>
-                </div>
-                <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                  Card #
-                  <div className="text-base font-black">{card.card_number || 'N/A'}</div>
+
+                {/* TRADERA COLUMN */}
+                <div className="space-y-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tradera (SEK)</p>
+                  <div className="grid gap-3">
+                    <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Average Auction</p>
+                      <p className="text-lg font-black text-slate-900">{formatSek(traderaStats.average)}</p>
+                    </div>
+                  </div>
+                  {/* Removed the 'variants' loop here because it was hardcoded to 0 */}
                 </div>
               </CardContent>
             </UiCard>
-          </div>
-        </div>
-      ) : null}
 
+            {/* VARIANTS TABLE */}
+            {variants.length ? (
+              <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
+                <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
+                  <CardTitle className="text-lg font-black uppercase text-white">Variants</CardTitle>
+                  <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
+                    Compare market pricing across versions.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-left">Version</TableHead>
+                        <TableHead className="text-right">Market</TableHead>
+                        <TableHead className="text-right">Low</TableHead>
+                        <TableHead className="text-right">Mid</TableHead>
+                        <TableHead className="text-right">High</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {variants.map((variant) => (
+                        <TableRow key={variant.name}>
+                          <TableCell className="font-semibold text-slate-900">{variant.name}</TableCell>
+                          <TableCell className="text-right">{formatUsd(variant.market)}</TableCell>
+                          <TableCell className="text-right">{formatUsd(variant.low)}</TableCell>
+                          <TableCell className="text-right">{formatUsd(variant.mid)}</TableCell>
+                          <TableCell className="text-right">{formatUsd(variant.high)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </UiCard>
+            ) : null}
+          </div>
+
+          {/* HIGHLIGHTS SIDEBAR */}
+          <UiCard className="h-fit border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
+            <CardHeader className="border-b-4 border-slate-900 bg-slate-900">
+              <CardTitle className="text-lg font-black uppercase text-white">Highlights</CardTitle>
+              <CardDescription className="text-xs font-semibold uppercase tracking-wide text-amber-200">
+                Quick facts at a glance.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 p-4 text-xs font-semibold uppercase text-slate-900">
+              <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                Era
+                <div className="text-base font-black">{card.era || 'Unknown era'}</div>
+              </div>
+              <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                Set
+                <div className="text-base font-black">{card.set_name || 'Unknown set'}</div>
+              </div>
+              <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                Language
+                <div className="text-base font-black">{card.language || 'Unknown language'}</div>
+              </div>
+              <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                Card #
+                <div className="text-base font-black">{card.card_number || 'N/A'}</div>
+              </div>
+            </CardContent>
+          </UiCard>
+        </div>
+      </div>
     </div>
   )
 }
