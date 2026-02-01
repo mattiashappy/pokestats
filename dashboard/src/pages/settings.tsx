@@ -47,8 +47,8 @@ export function SettingsPage(): JSX.Element {
     }
   })
 
-  const onSubmit = (data: z.infer<typeof settingsSchema>): void => {
-    updateSubscription(data.subscriptionStatus)
+  const onSubmit = async (data: z.infer<typeof settingsSchema>): Promise<void> => {
+    await updateSubscription(data.subscriptionStatus)
     form.reset(data)
   }
 
@@ -84,7 +84,7 @@ export function SettingsPage(): JSX.Element {
       <Card>
         <CardHeader>
           <CardTitle>Account</CardTitle>
-          <CardDescription>Values are stored locally. Replace with a real auth provider later.</CardDescription>
+          <CardDescription>Account data is sourced from the server session.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
@@ -152,7 +152,7 @@ export function SettingsPage(): JSX.Element {
             <CheckCircle className="h-4 w-4 text-emerald-300" />
             Security reminders
           </CardTitle>
-          <CardDescription>When ready, replace this mock layer with production auth.</CardDescription>
+          <CardDescription>Server sessions are enabled; tighten policies before launch.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-slate-300">
           <div className="flex items-start gap-2">
@@ -161,7 +161,7 @@ export function SettingsPage(): JSX.Element {
           </div>
           <div className="flex items-start gap-2">
             <Info className="mt-0.5 h-4 w-4 text-sky-300" />
-            <p>Replace localStorage auth with JWT/OAuth and guard the Express routes.</p>
+            <p>Rotate session secrets regularly and enforce multifactor authentication for admin roles.</p>
           </div>
         </CardContent>
       </Card>
