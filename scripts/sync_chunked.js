@@ -53,7 +53,7 @@ async function run() {
   const client = await pool.connect()
   
   try {
-    console.log(`🚀 Starting CHUNKED SYNC (Repair Mode)`)
+    console.log(`🚀 Starting CHUNKED SYNC (Repair Mode with Duplicate Fix)`)
     console.log(`🎯 Batch Goal: Index ${BATCH_START} to ${BATCH_START + BATCH_SIZE}`)
     
     // 1. Hämta sets
@@ -99,22 +99,34 @@ async function run() {
         const lastSetUpdate = setRes.rows[0]?.updated_at ? new Date(setRes.rows[0].updated_at) : new Date(0);
         const hoursSinceUpdate = (new Date() - lastSetUpdate) / (1000 * 60 * 60);
 
-        // SPARA SET INFO
-        await client.query(`
-            INSERT INTO public.pt_sets (pt_set_id, tcgplayer_set_id, name, series, release_date, card_count, image_cdn_url, language, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-            ON CONFLICT (pt_set_id) DO UPDATE SET updated_at = NOW()
-        `, [set.id, set.tcgPlayerId, set.name, set.series, set.releaseDate, set.cardCount, set.imageCdnUrl, set._language, set.createdAt]);
+        // --- HÄR ÄR FIXEN (Try/Catch för dubbla IDn) ---
+        // Denna måste ligga FÖRE vi börjar hämta kort!
+        try {
+            await client.query(`
+                INSERT INTO public.pt_sets (pt_set_id, tcgplayer_set_id, name, series, release_date, card_count, image_cdn_url, language, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+                ON CONFLICT (pt_set_id) DO UPDATE SET updated_at = NOW()
+            `, [set.id, set.tcgPlayerId, set.name, set.series, set.releaseDate, set.cardCount, set.imageCdnUrl, set._language, set.createdAt]);
+        } catch (e) {
+            if (e.code === '23505') {
+                console.log(`   ⚠️ Duplicate TCG ID detected for "${set.name}". Retrying with NULL ID...`);
+                await client.query(`
+                    INSERT INTO public.pt_sets (pt_set_id, tcgplayer_set_id, name, series, release_date, card_count, image_cdn_url, language, created_at, updated_at)
+                    VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, NOW())
+                    ON CONFLICT (pt_set_id) DO UPDATE SET updated_at = NOW()
+                `, [set.id, set.name, set.series, set.releaseDate, set.cardCount, set.imageCdnUrl, set._language, set.createdAt]);
+            } else {
+                throw e; // Om det är något annat fel, krascha som vanligt
+            }
+        }
 
-        // LOGIK FÖR REPAIR RUN:
-        // 1. Om vi har kort (>0) -> SKIP (Vi har redan datan, onödigt att hämta igen)
-        // 2. Om vi har 0 kort -> KÖR (Oavsett när vi kollade sist, tvinga fram ett nytt försök för japanska kort)
+        // --- SKIP LOGIK ---
         if (dbCount > 0) {
             console.log(`[${currentGlobalIndex}] ⏩ Skipping ${set.name} (Has ${dbCount} cards)`);
             continue;
         }
         
-        // ÄNDRAD FRÅN 48 TILL 0 FÖR ATT TVINGA OMKÖRNING AV TOMMA SET
+        // Force update (0 hours)
         if (hoursSinceUpdate < 0) { 
              console.log(`[${currentGlobalIndex}] ⏩ Skipping ${set.name} (Checked recently)`);
              continue;
@@ -133,9 +145,8 @@ async function run() {
         
         try {
             while(hasMoreCards) {
-                await sleep(SLEEP_BETWEEN_SETS); // 10 sekunders paus
+                await sleep(SLEEP_BETWEEN_SETS);
                 
-                // HÄR ÄR FIXEN: Vi skickar med language!
                 const res = await fetchPriceTracker('/cards', { 
                     setId: set._numericId, 
                     limit: 200, 
@@ -153,6 +164,7 @@ async function run() {
             console.log(`❌ Error: ${err.message}`);
         }
 
+        // --- HÄR SPARAR VI KORTEN (Denna del saknades i ditt utkast!) ---
         if (cards.length > 0) {
             for (const card of cards) {
                 const pricesData = JSON.stringify(card.prices || {});
