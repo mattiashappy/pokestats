@@ -200,10 +200,10 @@ export function PokemonSetPage(): JSX.Element {
                         {[card.set_name].filter(Boolean).join(' · ') || 'Set pending'}
                       </td>
                       <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
-                        {getTcgMarketPrice(card)}
-                      </td>
-                      <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
-                        {getTraderaMarketPrice(card)}
+                        <div>{getTcgMarketPrice(card)}</div>
+                        <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Tradera price: <span className="text-slate-900">{getTraderaMarketPrice(card)}</span>
+                        </div>
                       </td>
                       <td className="px-4 py-4 text-right">
                         <Link

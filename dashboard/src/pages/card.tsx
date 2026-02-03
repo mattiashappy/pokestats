@@ -213,35 +213,6 @@ export function CardPage(): JSX.Element {
               </CardContent>
             </UiCard>
 
-            {/* MARKET DETAILS CARD */}
-            <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
-              <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
-                <CardTitle className="text-lg font-black uppercase text-white">Market details</CardTitle>
-                <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
-                  Latest market pricing from Tradera auctions.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-6 p-5 text-sm font-medium text-slate-700 md:grid-cols-2">
-                <div className="space-y-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">TCGplayer (USD)</p>
-                  <div className="grid gap-3">
-                    <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Market Price</p>
-                      <p className="text-lg font-black text-slate-900">{formatUsd(getTcgMarketPrice(card))}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tradera (SEK)</p>
-                  <div className="grid gap-3">
-                    <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Market Price</p>
-                      <p className="text-lg font-black text-slate-900">{formatSek(traderaStats.average)}</p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </UiCard>
           </div>
 
           {/* HIGHLIGHTS SIDEBAR */}
@@ -268,6 +239,13 @@ export function CardPage(): JSX.Element {
               <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
                 Card #
                 <div className="text-base font-black">{card.card_number || 'N/A'}</div>
+              </div>
+              <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                Market price
+                <div className="text-base font-black">{formatUsd(getTcgMarketPrice(card))}</div>
+                <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Tradera price: <span className="text-slate-900">{formatSek(traderaStats.average)}</span>
+                </div>
               </div>
             </CardContent>
           </UiCard>
