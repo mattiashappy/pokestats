@@ -1613,6 +1613,7 @@ async function fetchCardsListFromDatabase({ setCode = null, expansionId = null, 
       e.set_total AS set_total,
       c.collector_number_raw AS card_number,
       NULL::numeric AS price_market,
+      ${canJoinAuctions ? 'AVG(a.price)::numeric' : 'NULL::numeric'} AS tradera_market_price,
       c.prices_data,
       c.image_url,
       ${languageSelect},
@@ -1643,6 +1644,12 @@ async function fetchCardsListFromPtImport({
   if (!pool) return []
   const ok = await ensurePriceTrackerImportTablesAvailable()
   if (!ok) return []
+
+  const [linksReady, auctionsReady] = await Promise.all([
+    ensureTraderaAuctionLinksTableAvailable(),
+    ensureTraderaAuctionsTableAvailable()
+  ])
+  const canJoinAuctions = linksReady && auctionsReady
 
   const { ptSetsLanguageAvailable, ptCardsLanguageAvailable } = await ensurePtLanguageColumns()
   const languageSelect = ptCardsLanguageAvailable
@@ -1719,6 +1726,7 @@ async function fetchCardsListFromPtImport({
       ) AS set_total,
       c.card_number AS card_number,
       c.price_market,
+      ${canJoinAuctions ? 'stats.tradera_market_price' : 'NULL::numeric'} AS tradera_market_price,
       c.prices_data,
       COALESCE(c.image_cdn_url800, c.image_cdn_url400, c.image_cdn_url200, c.image_cdn_url) AS image_url,
       c.tcgplayer_product_id,
@@ -1726,10 +1734,23 @@ async function fetchCardsListFromPtImport({
       NULL::text AS product_details,
       c.updated_at AS created_at,
       NULL::int AS expansion_id,
-      0::int AS linked_auctions,
-      NULL::timestamptz AS last_seen
+      ${canJoinAuctions ? 'stats.linked_auctions' : '0::int'} AS linked_auctions,
+      ${canJoinAuctions ? 'stats.last_seen' : 'NULL::timestamptz'} AS last_seen
     FROM public.pt_cards c
     LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
+    ${
+      canJoinAuctions
+        ? `LEFT JOIN LATERAL (
+      SELECT
+        COUNT(*)::int AS linked_auctions,
+        AVG(a.price)::numeric AS tradera_market_price,
+        MAX(a.end_date) AS last_seen
+      FROM public.tradera_auction_pt_card_links l
+      JOIN public.tradera_auctions a ON a.item_id = l.auction_id
+      WHERE l.pt_card_id = c.pt_card_id
+    ) stats ON true`
+        : ''
+    }
     ${whereClause}
     ORDER BY
       c.price_market DESC NULLS LAST,
@@ -2349,8 +2370,8 @@ app.get('/api/cards/:id', async (req, res) => {
 
 app.get('/api/cards/:id/auctions', async (req, res) => {
   try {
-    const cardId = Number(req.params.id)
-    if (!Number.isFinite(cardId)) return res.json([])
+    const cardId = String(req.params.id ?? '').trim()
+    if (!cardId) return res.json([])
 
     const auctions = await fetchCardAuctions(cardId, { limit: 500 })
     return res.json(auctions)

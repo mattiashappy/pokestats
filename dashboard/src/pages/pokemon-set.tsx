@@ -12,7 +12,7 @@ import { Input } from '../components/ui/input'
 import { useRegion } from '../contexts/region-context'
 import { fetchCardsForSet, fetchExpansions } from '../lib/api'
 import { getCardSetIdentifier, getExpansionIdentifier } from '../lib/sets'
-import { getBestPrice } from '../utils/priceHelper'
+import { getMarketPrice, getTraderaMarketPrice } from '../utils/priceHelper'
 import type { CardListItem, ExpansionSummary } from '../types'
 
 export function PokemonSetPage(): JSX.Element {
@@ -199,7 +199,10 @@ export function PokemonSetPage(): JSX.Element {
                         {[card.set_name].filter(Boolean).join(' · ') || 'Set pending'}
                       </td>
                       <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
-                        {getBestPrice(card)}
+                        <div>{getMarketPrice(card)}</div>
+                        <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Tradera price: <span className="text-slate-900">{getTraderaMarketPrice(card)}</span>
+                        </div>
                       </td>
                       <td className="px-4 py-4 text-right">
                         <Link
