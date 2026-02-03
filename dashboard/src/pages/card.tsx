@@ -7,7 +7,7 @@ import { Button } from '../components/ui/button'
 import { Card as UiCard, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { fetchCardAuctions, fetchCardDetails } from '../lib/api'
 import { getCardSetIdentifier } from '../lib/sets'
-import { getTcgMarketPrice } from '../utils/priceHelper'
+import { getMarketPrice } from '../utils/priceHelper'
 import type { AuctionRecord } from '../types'
 
 function formatUsd(value: string): string {
@@ -242,7 +242,7 @@ export function CardPage(): JSX.Element {
               </div>
               <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
                 Market price
-                <div className="text-base font-black">{formatUsd(getTcgMarketPrice(card))}</div>
+                <div className="text-base font-black">{formatUsd(getMarketPrice(card))}</div>
                 <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   Tradera price: <span className="text-slate-900">{formatSek(traderaStats.average)}</span>
                 </div>

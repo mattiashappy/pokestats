@@ -49,6 +49,10 @@ export const getTcgMarketPrice = (card: {
   return formatUsd(value)
 }
 
+export const getMarketPriceValue = getTcgMarketPriceValue
+
+export const getMarketPrice = getTcgMarketPrice
+
 export const getTraderaMarketPriceValue = (card: {
   tradera_market_price?: TraderaPriceInput
 }): number | null => {
