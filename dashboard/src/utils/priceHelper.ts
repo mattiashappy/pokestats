@@ -35,9 +35,21 @@ export const getTcgMarketPriceValue = (card: {
   price_market?: number | null
   prices_data?: PriceDataInput
 }): number | null => {
-  const price = Number(card.tradera_market_price)
-  if (!Number.isFinite(price) || price <= 0) return null
-  return price
+  const price = Number(card.price_market)
+  if (Number.isFinite(price) && price > 0) return price
+
+  const pricesData = parsePricesData(card.prices_data)
+  if (!pricesData) return null
+
+  const market = Number(pricesData.market)
+  if (Number.isFinite(market) && market > 0) return market
+
+  const variantPrices = Object.values(pricesData.variants ?? {})
+    .map((variant) => findVariantMarketPrice(variant))
+    .filter((value): value is number => Number.isFinite(value) && value > 0)
+
+  if (!variantPrices.length) return null
+  return Math.max(...variantPrices)
 }
 
 export const getTcgMarketPrice = (card: {
