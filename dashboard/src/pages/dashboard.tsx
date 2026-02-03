@@ -6,7 +6,7 @@ import DataTable from '../components/ui/data-table'
 import { useRegion } from '../contexts/region-context'
 import { fetchCardDetails, fetchCards } from '../lib/api'
 import { getCardSetIdentifier } from '../lib/sets'
-import { getBestPrice, getBestPriceValue } from '../utils/priceHelper'
+import { getTcgMarketPrice, getTcgMarketPriceValue, getTraderaMarketPrice } from '../utils/priceHelper'
 import type { CardListItem, CardResponse } from '../types'
 
 export function DashboardPage(): JSX.Element {
@@ -62,8 +62,8 @@ export function DashboardPage(): JSX.Element {
     })
 
     return [...matches].sort((a, b) => {
-      const aPrice = getBestPriceValue(a)
-      const bPrice = getBestPriceValue(b)
+      const aPrice = getTcgMarketPriceValue(a)
+      const bPrice = getTcgMarketPriceValue(b)
 
       if (aPrice === null && bPrice === null) return 0
       if (aPrice === null) return 1
@@ -201,7 +201,8 @@ export function DashboardPage(): JSX.Element {
               <tr className="border-b-2 border-slate-900 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
                 <th className="px-4 py-3">Card</th>
                 <th className="px-4 py-3">Set</th>
-                <th className="px-4 py-3 text-right">Market price</th>
+                <th className="px-4 py-3 text-right">TCG market price</th>
+                <th className="px-4 py-3 text-right">Tradera market price</th>
                 <th className="px-4 py-3 text-right">Link</th>
               </tr>
             </thead>
@@ -224,7 +225,10 @@ export function DashboardPage(): JSX.Element {
                         {[card.set_name].filter(Boolean).join(' · ') || 'Set pending'}
                       </td>
                       <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
-                        {getBestPrice(card)}
+                        {getTcgMarketPrice(card)}
+                      </td>
+                      <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
+                        {getTraderaMarketPrice(card)}
                       </td>
                       <td className="px-4 py-4 text-right">
                         <Link
@@ -239,7 +243,7 @@ export function DashboardPage(): JSX.Element {
                 })
               ) : (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-500">
+                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-500">
                     No cards match this search.
                   </td>
                 </tr>

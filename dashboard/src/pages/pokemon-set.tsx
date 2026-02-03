@@ -12,7 +12,7 @@ import { Input } from '../components/ui/input'
 import { useRegion } from '../contexts/region-context'
 import { fetchCardsForSet, fetchExpansions } from '../lib/api'
 import { getCardSetIdentifier, getExpansionIdentifier } from '../lib/sets'
-import { getBestPrice } from '../utils/priceHelper'
+import { getTcgMarketPrice, getTraderaMarketPrice } from '../utils/priceHelper'
 import type { CardListItem, ExpansionSummary } from '../types'
 
 export function PokemonSetPage(): JSX.Element {
@@ -178,7 +178,8 @@ export function PokemonSetPage(): JSX.Element {
                 <tr className="border-b-2 border-slate-900 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
                   <th className="px-4 py-3">Card</th>
                   <th className="px-4 py-3">Set</th>
-                  <th className="px-4 py-3 text-right">Market price</th>
+                  <th className="px-4 py-3 text-right">TCG market price</th>
+                  <th className="px-4 py-3 text-right">Tradera market price</th>
                   <th className="px-4 py-3 text-right">Link</th>
                 </tr>
               </thead>
@@ -199,7 +200,10 @@ export function PokemonSetPage(): JSX.Element {
                         {[card.set_name].filter(Boolean).join(' · ') || 'Set pending'}
                       </td>
                       <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
-                        {getBestPrice(card)}
+                        {getTcgMarketPrice(card)}
+                      </td>
+                      <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
+                        {getTraderaMarketPrice(card)}
                       </td>
                       <td className="px-4 py-4 text-right">
                         <Link
