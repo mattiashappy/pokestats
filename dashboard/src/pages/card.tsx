@@ -7,7 +7,12 @@ import { Button } from '../components/ui/button'
 import { Card as UiCard, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { fetchCardAuctions, fetchCardDetails } from '../lib/api'
 import { getCardSetIdentifier } from '../lib/sets'
+import { getTcgMarketPrice } from '../utils/priceHelper'
 import type { AuctionRecord } from '../types'
+
+function formatUsd(value: string): string {
+  return value === 'N/A' ? '—' : value
+}
 
 function formatSek(value: number | null | undefined): string {
   if (!Number.isFinite(Number(value))) return '—'
@@ -216,7 +221,16 @@ export function CardPage(): JSX.Element {
                   Latest market pricing from Tradera auctions.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-6 p-5 text-sm font-medium text-slate-700">
+              <CardContent className="grid gap-6 p-5 text-sm font-medium text-slate-700 md:grid-cols-2">
+                <div className="space-y-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">TCGplayer (USD)</p>
+                  <div className="grid gap-3">
+                    <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Market Price</p>
+                      <p className="text-lg font-black text-slate-900">{formatUsd(getTcgMarketPrice(card))}</p>
+                    </div>
+                  </div>
+                </div>
                 <div className="space-y-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tradera (SEK)</p>
                   <div className="grid gap-3">
