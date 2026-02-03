@@ -201,7 +201,7 @@ export function DashboardPage(): JSX.Element {
               <tr className="border-b-2 border-slate-900 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
                 <th className="px-4 py-3">Card</th>
                 <th className="px-4 py-3">Set</th>
-                <th className="px-4 py-3 text-right">Market price</th>
+                <th className="px-4 py-3 text-right">Tradera market price</th>
                 <th className="px-4 py-3 text-right">Link</th>
               </tr>
             </thead>
