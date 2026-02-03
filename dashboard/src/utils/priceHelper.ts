@@ -1,10 +1,16 @@
 import type { CardResponse, CardPricesData, CardPriceVariant } from '../types'
 
 type PriceDataInput = CardResponse['prices_data'] | string | null | undefined
+type TraderaPriceInput = CardResponse['tradera_market_price'] | null | undefined
 
-const formatPrice = (value: number): string => {
+const formatUsd = (value: number): string => {
   if (!Number.isFinite(value)) return 'N/A'
-  return `$${value.toFixed(2)}`
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
+}
+
+const formatSek = (value: number): string => {
+  if (!Number.isFinite(value)) return 'N/A'
+  return new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK' }).format(value)
 }
 
 const parsePricesData = (pricesData: PriceDataInput): CardPricesData | null => {
@@ -25,7 +31,7 @@ const findVariantMarketPrice = (variant: CardPriceVariant | null | undefined): n
   return Number.isFinite(marketPrice) ? marketPrice : null
 }
 
-export const getBestPriceValue = (card: {
+export const getTcgMarketPriceValue = (card: {
   price_market?: number | null
   prices_data?: PriceDataInput
 }): number | null => {
@@ -54,11 +60,27 @@ export const getBestPriceValue = (card: {
   return findVariantMarketPrice(firstVariant)
 }
 
-export const getBestPrice = (card: {
+export const getTcgMarketPrice = (card: {
   price_market?: number | null
   prices_data?: PriceDataInput
 }): string => {
-  const value = getBestPriceValue(card)
+  const value = getTcgMarketPriceValue(card)
   if (value === null) return 'N/A'
-  return formatPrice(value)
+  return formatUsd(value)
+}
+
+export const getTraderaMarketPriceValue = (card: {
+  tradera_market_price?: TraderaPriceInput
+}): number | null => {
+  const price = Number(card.tradera_market_price)
+  if (!Number.isFinite(price) || price <= 0) return null
+  return price
+}
+
+export const getTraderaMarketPrice = (card: {
+  tradera_market_price?: TraderaPriceInput
+}): string => {
+  const value = getTraderaMarketPriceValue(card)
+  if (value === null) return 'N/A'
+  return formatSek(value)
 }

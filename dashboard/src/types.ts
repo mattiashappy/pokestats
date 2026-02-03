@@ -25,6 +25,7 @@ export type CardResponse = {
   set_total: number | null
   card_number: string | null
   price_market: number | null
+  tradera_market_price?: number | null
   image_url: string | null
   language: string | null
   product_details: string | null
