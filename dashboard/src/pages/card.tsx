@@ -5,14 +5,13 @@ import { Link, useParams } from 'react-router-dom'
 
 import { Button } from '../components/ui/button'
 import { Card as UiCard, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 import { fetchCardAuctions, fetchCardDetails } from '../lib/api'
 import { getCardSetIdentifier } from '../lib/sets'
-import type { AuctionRecord, CardPriceVariant } from '../types'
+import { getTcgMarketPrice } from '../utils/priceHelper'
+import type { AuctionRecord } from '../types'
 
-function formatUsd(value: number | null | undefined): string {
-  if (!Number.isFinite(Number(value))) return '—'
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value))
+function formatUsd(value: string): string {
+  return value === 'N/A' ? '—' : value
 }
 
 function formatSek(value: number | null | undefined): string {
@@ -71,25 +70,6 @@ export function CardPage(): JSX.Element {
     if (Number.isFinite(Number(card.hp))) parts.push(`${card.hp} HP`)
     return parts.length ? parts.join(' - ') : null
   }, [card])
-
-  const marketDetails = useMemo(() => {
-    if (!card) return null
-    const prices = card.prices_data ?? {}
-    return {
-      market: prices.market ?? card.price_market ?? null
-    }
-  }, [card])
-
-  const variants = useMemo(() => {
-    const entries = Object.entries(card?.prices_data?.variants ?? {}).filter(([, value]) => value)
-    return entries.map(([name, value]) => ({
-      name,
-      market: (value as CardPriceVariant | null)?.market ?? null,
-      low: (value as CardPriceVariant | null)?.low ?? null,
-      mid: (value as CardPriceVariant | null)?.mid ?? null,
-      high: (value as CardPriceVariant | null)?.high ?? null
-    }))
-  }, [card?.prices_data?.variants])
 
   const traderaStats = useMemo(() => {
     const prices = (auctions ?? [])
@@ -233,89 +213,6 @@ export function CardPage(): JSX.Element {
               </CardContent>
             </UiCard>
 
-            {/* MARKET DETAILS CARD */}
-            <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
-              <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
-                <CardTitle className="text-lg font-black uppercase text-white">Market details</CardTitle>
-                <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
-                  Latest market pricing and supply.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-6 p-5 text-sm font-medium text-slate-700 md:grid-cols-2">
-                
-                {/* TCGPLAYER COLUMN */}
-                <div className="space-y-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">TCGplayer (USD)</p>
-                  <div className="grid gap-3">
-                    <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Market Price</p>
-                      <p className="text-lg font-black text-slate-900">{formatUsd(marketDetails?.market ?? null)}</p>
-                    </div>
-                  </div>
-                  {variants.length ? (
-                    <div className="grid gap-3">
-                      {variants.map((variant) => (
-                        <div
-                          key={variant.name}
-                          className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]"
-                        >
-                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{variant.name}</p>
-                          <p className="text-lg font-black text-slate-900">{formatUsd(variant.market)}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-
-                {/* TRADERA COLUMN */}
-                <div className="space-y-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tradera (SEK)</p>
-                  <div className="grid gap-3">
-                    <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Average Auction</p>
-                      <p className="text-lg font-black text-slate-900">{formatSek(traderaStats.average)}</p>
-                    </div>
-                  </div>
-                  {/* Removed the 'variants' loop here because it was hardcoded to 0 */}
-                </div>
-              </CardContent>
-            </UiCard>
-
-            {/* VARIANTS TABLE */}
-            {variants.length ? (
-              <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
-                <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
-                  <CardTitle className="text-lg font-black uppercase text-white">Variants</CardTitle>
-                  <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
-                    Compare market pricing across versions.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-left">Version</TableHead>
-                        <TableHead className="text-right">Market</TableHead>
-                        <TableHead className="text-right">Low</TableHead>
-                        <TableHead className="text-right">Mid</TableHead>
-                        <TableHead className="text-right">High</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {variants.map((variant) => (
-                        <TableRow key={variant.name}>
-                          <TableCell className="font-semibold text-slate-900">{variant.name}</TableCell>
-                          <TableCell className="text-right">{formatUsd(variant.market)}</TableCell>
-                          <TableCell className="text-right">{formatUsd(variant.low)}</TableCell>
-                          <TableCell className="text-right">{formatUsd(variant.mid)}</TableCell>
-                          <TableCell className="text-right">{formatUsd(variant.high)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </UiCard>
-            ) : null}
           </div>
 
           {/* HIGHLIGHTS SIDEBAR */}
@@ -342,6 +239,13 @@ export function CardPage(): JSX.Element {
               <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
                 Card #
                 <div className="text-base font-black">{card.card_number || 'N/A'}</div>
+              </div>
+              <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
+                Market price
+                <div className="text-base font-black">{formatUsd(getTcgMarketPrice(card))}</div>
+                <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Tradera price: <span className="text-slate-900">{formatSek(traderaStats.average)}</span>
+                </div>
               </div>
             </CardContent>
           </UiCard>

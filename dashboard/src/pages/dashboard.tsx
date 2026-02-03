@@ -6,7 +6,7 @@ import DataTable from '../components/ui/data-table'
 import { useRegion } from '../contexts/region-context'
 import { fetchCardDetails, fetchCards } from '../lib/api'
 import { getCardSetIdentifier } from '../lib/sets'
-import { getBestPrice, getBestPriceValue } from '../utils/priceHelper'
+import { getTcgMarketPrice, getTcgMarketPriceValue, getTraderaMarketPrice } from '../utils/priceHelper'
 import type { CardListItem, CardResponse } from '../types'
 
 export function DashboardPage(): JSX.Element {
@@ -62,8 +62,8 @@ export function DashboardPage(): JSX.Element {
     })
 
     return [...matches].sort((a, b) => {
-      const aPrice = getBestPriceValue(a)
-      const bPrice = getBestPriceValue(b)
+      const aPrice = getTcgMarketPriceValue(a)
+      const bPrice = getTcgMarketPriceValue(b)
 
       if (aPrice === null && bPrice === null) return 0
       if (aPrice === null) return 1
@@ -224,7 +224,10 @@ export function DashboardPage(): JSX.Element {
                         {[card.set_name].filter(Boolean).join(' · ') || 'Set pending'}
                       </td>
                       <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
-                        {getBestPrice(card)}
+                        <div>{getTcgMarketPrice(card)}</div>
+                        <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Tradera price: <span className="text-slate-900">{getTraderaMarketPrice(card)}</span>
+                        </div>
                       </td>
                       <td className="px-4 py-4 text-right">
                         <Link
