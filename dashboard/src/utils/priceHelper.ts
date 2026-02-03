@@ -1,4 +1,4 @@
-import type { CardResponse, CardPricesData, CardPriceVariant } from '../types'
+import type { CardResponse } from '../types'
 
 type PriceDataInput = CardResponse['prices_data'] | string | null | undefined
 type TraderaPriceInput = CardResponse['tradera_market_price'] | null | undefined
@@ -35,29 +35,9 @@ export const getTcgMarketPriceValue = (card: {
   price_market?: number | null
   prices_data?: PriceDataInput
 }): number | null => {
-  if (card.price_market && card.price_market > 0) {
-    return Number(card.price_market)
-  }
-
-  const prices = parsePricesData(card.prices_data)
-  if (!prices) return null
-
-  const market = Number((prices as Record<string, unknown>).market ?? prices.market)
-  if (Number.isFinite(market) && market > 0) {
-    return market
-  }
-
-  const variants = prices.variants ?? null
-  if (!variants || typeof variants !== 'object') return null
-
-  const priority = ['Normal', 'Holofoil', 'Reverse Holofoil', '1st Edition']
-  for (const variantKey of priority) {
-    const variantPrice = findVariantMarketPrice(variants[variantKey] ?? null)
-    if (variantPrice !== null) return variantPrice
-  }
-
-  const firstVariant = Object.values(variants).find(Boolean) as CardPriceVariant | null | undefined
-  return findVariantMarketPrice(firstVariant)
+  const price = Number(card.tradera_market_price)
+  if (!Number.isFinite(price) || price <= 0) return null
+  return price
 }
 
 export const getTcgMarketPrice = (card: {
