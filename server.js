@@ -772,7 +772,6 @@ async function ensureTraderaAuctionsTableAvailable() {
 
 async function ensureTraderaAuctionLinksTableAvailable() {
   if (!pool) return false
-  if (hasCheckedTraderaAuctionLinksTable) return traderaAuctionLinksTableAvailable
 
   const { rows } = await pool.query(`
     SELECT
@@ -798,7 +797,6 @@ async function ensureTraderaAuctionLinksTableAvailable() {
   if (!tableName) {
     traderaAuctionLinksTableAvailable = false
     hasCheckedTraderaAuctionLinksTable = true
-    console.warn('No tradera auction link table exists')
     return traderaAuctionLinksTableAvailable
   }
 
@@ -831,9 +829,6 @@ async function ensureTraderaAuctionLinksTableAvailable() {
   traderaAuctionLinksTableAvailable = Boolean(traderaAuctionLinksAuctionIdColumn && traderaAuctionLinksCardIdColumn)
   hasCheckedTraderaAuctionLinksTable = true
 
-  if (!traderaAuctionLinksTableAvailable) {
-    console.warn('tradera auction link table does not have required columns')
-  }
   return traderaAuctionLinksTableAvailable
 }
 
@@ -2535,32 +2530,45 @@ app.get('/api/linking/links', async (req, res) => {
       return res.status(500).json({ error: 'Required tables unavailable' })
     }
 
-    const cardsReady = linkConfig.usesPtCards ? await ensurePriceTrackerImportTablesAvailable() : await ensureCardInfrastructure()
-    if (!cardsReady) {
-      return res.status(500).json({ error: 'Required tables unavailable' })
-    }
-
+    const cardsReady = linkConfig.usesPtCards
+      ? await ensurePriceTrackerImportTablesAvailable()
+      : await ensureCardInfrastructure()
     const methodSelect = linkConfig.hasMethod ? 'l.method' : 'NULL::text AS method'
     const confidenceSelect = linkConfig.hasConfidence ? 'l.confidence' : 'NULL::numeric AS confidence'
     const linkedAtSelect = linkConfig.linkedAtColumn
       ? `l.${linkConfig.linkedAtColumn} AS linked_at`
       : 'NULL::timestamptz AS linked_at'
 
-    const { ptCardsPriceMarketAvailable } = linkConfig.usesPtCards ? await ensurePtPriceColumns() : { ptCardsPriceMarketAvailable: false }
+    const { ptCardsPriceMarketAvailable } =
+      cardsReady && linkConfig.usesPtCards
+        ? await ensurePtPriceColumns()
+        : { ptCardsPriceMarketAvailable: false }
     const priceMarketSelect =
-      linkConfig.usesPtCards && ptCardsPriceMarketAvailable ? 'c.price_market' : 'NULL::numeric AS price_market'
-    const cardNumberSelect = linkConfig.usesPtCards ? 'c.card_number' : 'c.collector_number_raw'
-    const setNameSelect = linkConfig.usesPtCards ? 'COALESCE(s.name, c.set_name)' : 'e.set_name'
-    const setCodeSelect = linkConfig.usesPtCards ? 'c.pt_set_id' : 'e.set_code'
-    const joins = linkConfig.usesPtCards
-      ? `
-        LEFT JOIN public.pt_cards c ON c.pt_card_id = l.${linkConfig.cardIdColumn}
-        LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
-      `
-      : `
-        LEFT JOIN public.cards c ON c.id = l.${linkConfig.cardIdColumn}
-        LEFT JOIN public.expansions e ON e.id = c.expansion_id
-      `
+      cardsReady && linkConfig.usesPtCards && ptCardsPriceMarketAvailable
+        ? 'c.price_market'
+        : 'NULL::numeric AS price_market'
+    const cardNameSelect = cardsReady ? 'c.name' : 'NULL::text'
+    const cardNumberSelect = cardsReady
+      ? (linkConfig.usesPtCards ? 'c.card_number' : 'c.collector_number_raw')
+      : 'NULL::text'
+    const setNameSelect = cardsReady
+      ? (linkConfig.usesPtCards ? 'COALESCE(s.name, c.set_name)' : 'e.set_name')
+      : 'NULL::text'
+    const setCodeSelect = cardsReady
+      ? (linkConfig.usesPtCards ? 'c.pt_set_id' : 'e.set_code')
+      : 'NULL::text'
+    let joins = ''
+    if (cardsReady) {
+      joins = linkConfig.usesPtCards
+        ? `
+          LEFT JOIN public.pt_cards c ON c.pt_card_id = l.${linkConfig.cardIdColumn}
+          LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
+        `
+        : `
+          LEFT JOIN public.cards c ON c.id = l.${linkConfig.cardIdColumn}
+          LEFT JOIN public.expansions e ON e.id = c.expansion_id
+        `
+    }
 
     const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : null
     const hasLimit = typeof limit === 'number' && Number.isFinite(limit)
@@ -2581,7 +2589,7 @@ app.get('/api/linking/links', async (req, res) => {
           a.price AS auction_price,
           a.bid_count AS auction_bid_count,
           a.seller_alias AS auction_seller_alias,
-          c.name AS card_name,
+          ${cardNameSelect} AS card_name,
           ${cardNumberSelect} AS card_number,
           ${priceMarketSelect},
           AVG(a.price)::numeric OVER (PARTITION BY l.${linkConfig.cardIdColumn}) AS tradera_market_price,
