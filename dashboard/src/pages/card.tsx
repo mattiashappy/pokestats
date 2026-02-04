@@ -186,6 +186,28 @@ export function CardPage(): JSX.Element {
         {/* RIGHT COLUMN: DETAILS */}
         <div className="grid gap-6 md:grid-cols-[minmax(0,1fr),240px]">
           <div className="space-y-6">
+            <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
+              <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
+                <CardTitle className="text-lg font-black uppercase text-white">Market price</CardTitle>
+                <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
+                  Latest market pricing for this card.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-5 text-sm font-semibold uppercase text-slate-900">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Market price</div>
+                    <div className="text-2xl font-black">{formatUsd(getMarketPrice(card))}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Tradera price
+                    </div>
+                    <div className="text-lg font-black text-slate-900">{formatSek(traderaStats.average)}</div>
+                  </div>
+                </div>
+              </CardContent>
+            </UiCard>
             
             {/* PRODUCT DETAILS CARD */}
             <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
@@ -239,13 +261,6 @@ export function CardPage(): JSX.Element {
               <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
                 Card #
                 <div className="text-base font-black">{card.card_number || 'N/A'}</div>
-              </div>
-              <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                Market price
-                <div className="text-base font-black">{formatUsd(getMarketPrice(card))}</div>
-                <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Tradera price: <span className="text-slate-900">{formatSek(traderaStats.average)}</span>
-                </div>
               </div>
             </CardContent>
           </UiCard>

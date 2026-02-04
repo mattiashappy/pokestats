@@ -226,9 +226,9 @@ export function DashboardPage(): JSX.Element {
                       </td>
                       <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
                         <div>{getMarketPrice(card)}</div>
-                        <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                          Tradera price: <span className="text-slate-900">{getTraderaMarketPrice(card)}</span>
-                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
+                        <div>{getTraderaMarketPrice(card)}</div>
                       </td>
                       <td className="px-4 py-4 text-right">
                         <Link
