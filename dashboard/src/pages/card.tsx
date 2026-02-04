@@ -193,10 +193,18 @@ export function CardPage(): JSX.Element {
                   Latest market pricing for this card.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-2 p-5 text-sm font-semibold uppercase text-slate-900">
-                <div className="text-2xl font-black">{formatUsd(getMarketPrice(card))}</div>
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Tradera price: <span className="text-slate-900">{formatSek(traderaStats.average)}</span>
+              <CardContent className="p-5 text-sm font-semibold uppercase text-slate-900">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Market price</div>
+                    <div className="text-2xl font-black">{formatUsd(getMarketPrice(card))}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Tradera price
+                    </div>
+                    <div className="text-lg font-black text-slate-900">{formatSek(traderaStats.average)}</div>
+                  </div>
                 </div>
               </CardContent>
             </UiCard>
