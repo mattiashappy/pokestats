@@ -2427,6 +2427,8 @@ app.get('/api/linking/links', async (req, res) => {
           a.seller_alias AS auction_seller_alias,
           c.name AS card_name,
           c.card_number AS card_number,
+          c.price_market,
+          AVG(a.price)::numeric OVER (PARTITION BY l.pt_card_id) AS tradera_market_price,
           COALESCE(s.name, c.set_name) AS set_name,
           c.pt_set_id AS set_code
         FROM public.tradera_auction_pt_card_links l
@@ -2454,6 +2456,8 @@ app.get('/api/linking/links', async (req, res) => {
         auctionSellerAlias: row.auction_seller_alias ?? null,
         cardName: row.card_name ?? null,
         cardNumber: row.card_number ?? null,
+        priceMarket: row.price_market ?? null,
+        traderaMarketPrice: row.tradera_market_price ?? null,
         setName: row.set_name ?? null,
         setCode: row.set_code ?? null
       }))

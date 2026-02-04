@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Link2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
@@ -21,6 +22,7 @@ import {
   runVisionMatch,
   searchCards
 } from '../lib/api'
+import { getMarketPrice, getTraderaMarketPrice } from '../utils/priceHelper'
 import type {
   AiMatchSummary,
   AuctionCardLink,
@@ -133,7 +135,7 @@ export function EnrichPage(): JSX.Element {
   const [manualLinkSuccess, setManualLinkSuccess] = useState<string | null>(null)
   const [languageFilter, setLanguageFilter] = useState('all')
   const [unlinkedPage, setUnlinkedPage] = useState(1)
-  const [selectedCardId, setSelectedCardId] = useState<number | null>(null)
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
 
   const pageSize = 50
 
@@ -295,7 +297,7 @@ export function EnrichPage(): JSX.Element {
     }
   }, [links, linkingStats?.unlinked, unlinkedAuctions.length])
   const cardLinkGroups = useMemo(() => {
-    const grouped = new Map<number, { cardId: number; links: AuctionCardLink[] }>()
+    const grouped = new Map<string, { cardId: string; links: AuctionCardLink[] }>()
     links.forEach((link) => {
       if (!link.cardId) return
       const existing = grouped.get(link.cardId)
@@ -957,6 +959,8 @@ export function EnrichPage(): JSX.Element {
                   <TableRow>
                     <TableHead className="text-left">Card</TableHead>
                     <TableHead className="text-left">Set</TableHead>
+                    <TableHead className="text-right">Market price</TableHead>
+                    <TableHead className="text-right">Tradera price</TableHead>
                     <TableHead className="text-left">Linked auctions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -975,14 +979,23 @@ export function EnrichPage(): JSX.Element {
                         >
                           <TableCell className="text-left">
                             <div className="space-y-1">
-                              <p className="font-semibold text-slate-900 dark:text-slate-50">
+                              <Link
+                                to={`/cards/${group.cardId}`}
+                                className="font-semibold text-indigo-600 hover:underline"
+                              >
                                 {formatCardLabel(representative)}
-                              </p>
+                              </Link>
                               <p className="text-xs text-slate-600 dark:text-slate-400">Card #{group.cardId}</p>
                             </div>
                           </TableCell>
                           <TableCell className="text-left text-slate-600 dark:text-slate-300">
                             {formatSetLabel(representative)}
+                          </TableCell>
+                          <TableCell className="text-right text-slate-600 dark:text-slate-300">
+                            {getMarketPrice({ price_market: representative.priceMarket })}
+                          </TableCell>
+                          <TableCell className="text-right text-slate-600 dark:text-slate-300">
+                            {getTraderaMarketPrice({ tradera_market_price: representative.traderaMarketPrice })}
                           </TableCell>
                           <TableCell className="text-left text-slate-600 dark:text-slate-300">
                             {group.links.length.toLocaleString('sv-SE')}
@@ -992,7 +1005,7 @@ export function EnrichPage(): JSX.Element {
                     })
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={3} className="text-center text-sm text-slate-500">
+                      <TableCell colSpan={5} className="text-center text-sm text-slate-500">
                         {linksLoading ? 'Loading card links…' : 'No linked cards found.'}
                       </TableCell>
                     </TableRow>
