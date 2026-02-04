@@ -2522,64 +2522,62 @@ app.get('/api/linking/links', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
 
   try {
-    const [linkConfig, auctionsReady] = await Promise.all([
-      getTraderaAuctionLinksConfig(),
-      ensureTraderaAuctionsTableAvailable()
-    ])
-    if (!linkConfig || !auctionsReady) {
+    const auctionsReady = await ensureTraderaAuctionsTableAvailable()
+    const linksReady = await ensureTraderaAuctionLinksTableAvailable()
+
+    if (!auctionsReady || !linksReady || !traderaAuctionLinksTableName) {
       return res.status(500).json({ error: 'Required tables unavailable' })
     }
 
-    const cardsReady = linkConfig.usesPtCards
-      ? await ensurePriceTrackerImportTablesAvailable()
-      : await ensureCardInfrastructure()
-    const methodSelect = linkConfig.hasMethod ? 'l.method' : 'NULL::text AS method'
-    const confidenceSelect = linkConfig.hasConfidence ? 'l.confidence' : 'NULL::numeric AS confidence'
-    const linkedAtSelect = linkConfig.linkedAtColumn
-      ? `l.${linkConfig.linkedAtColumn} AS linked_at`
+    const ptReady = await ensurePriceTrackerImportTablesAvailable()
+    const localReady = await ensureCardInfrastructure()
+
+    const usesPtCards = traderaAuctionLinksCardIdColumn === 'pt_card_id'
+    const cardsReady = usesPtCards ? ptReady : localReady
+
+    const methodSelect = traderaAuctionLinksHasMethod ? 'l.method' : 'NULL::text AS method'
+    const confidenceSelect = traderaAuctionLinksHasConfidence ? 'l.confidence' : 'NULL::numeric AS confidence'
+    const linkedAtSelect = traderaAuctionLinksLinkedAtColumn
+      ? `l.${traderaAuctionLinksLinkedAtColumn} AS linked_at`
       : 'NULL::timestamptz AS linked_at'
 
-    const { ptCardsPriceMarketAvailable } =
-      cardsReady && linkConfig.usesPtCards
-        ? await ensurePtPriceColumns()
-        : { ptCardsPriceMarketAvailable: false }
-    const priceMarketSelect =
-      cardsReady && linkConfig.usesPtCards && ptCardsPriceMarketAvailable
-        ? 'c.price_market'
-        : 'NULL::numeric AS price_market'
+    let priceMarketSelect = 'NULL::numeric AS price_market'
+    if (cardsReady && usesPtCards) {
+      const { ptCardsPriceMarketAvailable } = await ensurePtPriceColumns()
+      if (ptCardsPriceMarketAvailable) priceMarketSelect = 'c.price_market'
+    }
+
     const cardNameSelect = cardsReady ? 'c.name' : 'NULL::text'
     const cardNumberSelect = cardsReady
-      ? (linkConfig.usesPtCards ? 'c.card_number' : 'c.collector_number_raw')
+      ? (usesPtCards ? 'c.card_number' : 'c.collector_number_raw')
       : 'NULL::text'
     const setNameSelect = cardsReady
-      ? (linkConfig.usesPtCards ? 'COALESCE(s.name, c.set_name)' : 'e.set_name')
+      ? (usesPtCards ? 'COALESCE(s.name, c.set_name)' : 'e.set_name')
       : 'NULL::text'
     const setCodeSelect = cardsReady
-      ? (linkConfig.usesPtCards ? 'c.pt_set_id' : 'e.set_code')
+      ? (usesPtCards ? 'c.pt_set_id' : 'e.set_code')
       : 'NULL::text'
     let joins = ''
     if (cardsReady) {
-      joins = linkConfig.usesPtCards
+      joins = usesPtCards
         ? `
-          LEFT JOIN public.pt_cards c ON c.pt_card_id = l.${linkConfig.cardIdColumn}
+          LEFT JOIN public.pt_cards c ON c.pt_card_id = l.${traderaAuctionLinksCardIdColumn}
           LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
         `
         : `
-          LEFT JOIN public.cards c ON c.id = l.${linkConfig.cardIdColumn}
+          LEFT JOIN public.cards c ON c.id = l.${traderaAuctionLinksCardIdColumn}
           LEFT JOIN public.expansions e ON e.id = c.expansion_id
         `
     }
 
     const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : null
-    const hasLimit = typeof limit === 'number' && Number.isFinite(limit)
-    const safeLimit = hasLimit ? Math.min(Math.max(limit, 1), 2000) : null
-    const limitClause = safeLimit ? 'LIMIT $1' : ''
-    const params = safeLimit ? [safeLimit] : []
+    const limitClause = limit ? 'LIMIT $1' : ''
+    const params = limit ? [limit] : []
     const { rows } = await pool.query(
       `
         SELECT
-          l.${linkConfig.auctionIdColumn} AS auction_id,
-          l.${linkConfig.cardIdColumn} AS card_id,
+          l.${traderaAuctionLinksAuctionIdColumn} AS auction_id,
+          l.${traderaAuctionLinksCardIdColumn} AS card_id,
           ${methodSelect},
           ${confidenceSelect},
           ${linkedAtSelect},
@@ -2592,13 +2590,13 @@ app.get('/api/linking/links', async (req, res) => {
           ${cardNameSelect} AS card_name,
           ${cardNumberSelect} AS card_number,
           ${priceMarketSelect},
-          AVG(a.price)::numeric OVER (PARTITION BY l.${linkConfig.cardIdColumn}) AS tradera_market_price,
+          AVG(a.price)::numeric OVER (PARTITION BY l.${traderaAuctionLinksCardIdColumn}) AS tradera_market_price,
           ${setNameSelect} AS set_name,
           ${setCodeSelect} AS set_code
-        FROM public.${linkConfig.tableName} l
-        LEFT JOIN public.tradera_auctions a ON a.item_id = l.${linkConfig.auctionIdColumn}
+        FROM public.${traderaAuctionLinksTableName} l
+        LEFT JOIN public.tradera_auctions a ON a.item_id = l.${traderaAuctionLinksAuctionIdColumn}
         ${joins}
-        ORDER BY ${linkConfig.linkedAtColumn ? `l.${linkConfig.linkedAtColumn}` : 'a.end_date'} DESC NULLS LAST
+        ORDER BY ${traderaAuctionLinksLinkedAtColumn ? `l.${traderaAuctionLinksLinkedAtColumn}` : 'a.end_date'} DESC NULLS LAST
         ${limitClause}
       `,
       params
