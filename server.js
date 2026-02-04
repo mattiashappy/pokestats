@@ -589,6 +589,8 @@ let ptTablesCheckedAt = 0
 let ptLanguageColumnsCheckedAt = 0
 let ptSetsLanguageAvailable = false
 let ptCardsLanguageAvailable = false
+let ptPriceColumnsCheckedAt = 0
+let ptCardsPriceMarketAvailable = false
 let localLanguageColumnsCheckedAt = 0
 let expansionsLanguageAvailable = false
 let cardsLanguageAvailable = false
@@ -974,6 +976,31 @@ async function ensurePtLanguageColumns() {
   ptCardsLanguageAvailable = rows.some((row) => row.table_name === 'pt_cards')
 
   return { ptSetsLanguageAvailable, ptCardsLanguageAvailable }
+}
+
+async function ensurePtPriceColumns() {
+  if (!pool) return { ptCardsPriceMarketAvailable: false }
+
+  const now = Date.now()
+  if (now - ptPriceColumnsCheckedAt < PT_CACHE_TTL_MS) {
+    return { ptCardsPriceMarketAvailable }
+  }
+
+  ptPriceColumnsCheckedAt = now
+
+  const { rows } = await pool.query(
+    `
+      SELECT table_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND column_name = 'price_market'
+        AND table_name = 'pt_cards'
+    `
+  )
+
+  ptCardsPriceMarketAvailable = rows.some((row) => row.table_name === 'pt_cards')
+
+  return { ptCardsPriceMarketAvailable }
 }
 
 async function ensureLocalLanguageColumns() {
@@ -2406,6 +2433,8 @@ app.get('/api/linking/links', async (req, res) => {
       return res.status(500).json({ error: 'Required tables unavailable' })
     }
 
+    const { ptCardsPriceMarketAvailable } = await ensurePtPriceColumns()
+    const priceMarketSelect = ptCardsPriceMarketAvailable ? 'c.price_market' : 'NULL::numeric AS price_market'
     const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : null
     const hasLimit = typeof limit === 'number' && Number.isFinite(limit)
     const safeLimit = hasLimit ? Math.min(Math.max(limit, 1), 2000) : null
@@ -2427,6 +2456,8 @@ app.get('/api/linking/links', async (req, res) => {
           a.seller_alias AS auction_seller_alias,
           c.name AS card_name,
           c.card_number AS card_number,
+          ${priceMarketSelect},
+          AVG(a.price)::numeric OVER (PARTITION BY l.pt_card_id) AS tradera_market_price,
           COALESCE(s.name, c.set_name) AS set_name,
           c.pt_set_id AS set_code
         FROM public.tradera_auction_pt_card_links l
@@ -2454,6 +2485,8 @@ app.get('/api/linking/links', async (req, res) => {
         auctionSellerAlias: row.auction_seller_alias ?? null,
         cardName: row.card_name ?? null,
         cardNumber: row.card_number ?? null,
+        priceMarket: row.price_market ?? null,
+        traderaMarketPrice: row.tradera_market_price ?? null,
         setName: row.set_name ?? null,
         setCode: row.set_code ?? null
       }))
