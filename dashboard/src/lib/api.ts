@@ -261,6 +261,8 @@ export type AuctionCardLink = {
   auctionSellerAlias: string | null
   cardName: string | null
   cardNumber: string | null
+  priceMarket: number | null
+  traderaMarketPrice: number | null
   setName: string | null
   setCode: string | null
 }
