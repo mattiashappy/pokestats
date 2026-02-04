@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Link2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
@@ -21,6 +22,7 @@ import {
   runVisionMatch,
   searchCards
 } from '../lib/api'
+import { getMarketPrice, getTraderaMarketPrice } from '../utils/priceHelper'
 import type {
   AiMatchSummary,
   AuctionCardLink,
@@ -133,6 +135,7 @@ export function EnrichPage(): JSX.Element {
   const [manualLinkSuccess, setManualLinkSuccess] = useState<string | null>(null)
   const [languageFilter, setLanguageFilter] = useState('all')
   const [unlinkedPage, setUnlinkedPage] = useState(1)
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
 
   const pageSize = 50
 
@@ -293,6 +296,36 @@ export function EnrichPage(): JSX.Element {
       unlinkedCards: linkingStats?.unlinked ?? unlinkedAuctions.length
     }
   }, [links, linkingStats?.unlinked, unlinkedAuctions.length])
+  const cardLinkGroups = useMemo(() => {
+    const grouped = new Map<string, { cardId: string; links: AuctionCardLink[] }>()
+    links.forEach((link) => {
+      if (!link.cardId) return
+      const existing = grouped.get(link.cardId)
+      if (existing) {
+        existing.links.push(link)
+      } else {
+        grouped.set(link.cardId, { cardId: link.cardId, links: [link] })
+      }
+    })
+    return Array.from(grouped.values()).sort((left, right) => {
+      if (right.links.length !== left.links.length) {
+        return right.links.length - left.links.length
+      }
+      const leftLabel = formatCardLabel(left.links[0])
+      const rightLabel = formatCardLabel(right.links[0])
+      return leftLabel.localeCompare(rightLabel, 'sv-SE', { sensitivity: 'base' })
+    })
+  }, [links])
+  const selectedCardLinks = useMemo(() => {
+    if (!selectedCardId) return []
+    const group = cardLinkGroups.find((entry) => entry.cardId === selectedCardId)
+    return group?.links ?? []
+  }, [cardLinkGroups, selectedCardId])
+  const selectedCardMeta = useMemo(() => {
+    if (!selectedCardId) return null
+    const group = cardLinkGroups.find((entry) => entry.cardId === selectedCardId)
+    return group?.links[0] ?? null
+  }, [cardLinkGroups, selectedCardId])
   const visibleUnlinkedAuctions = useMemo(() => {
     const base = sortedUnlinkedAuctions
     if (languageFilter === 'all') return base
@@ -343,6 +376,16 @@ export function EnrichPage(): JSX.Element {
     }
     setSelectedSkipReason(skipReasonOptions[0])
   }, [skipReasonOptions])
+
+  useEffect(() => {
+    if (!cardLinkGroups.length) {
+      setSelectedCardId(null)
+      return
+    }
+    if (selectedCardId == null || !cardLinkGroups.some((group) => group.cardId === selectedCardId)) {
+      setSelectedCardId(cardLinkGroups[0].cardId)
+    }
+  }, [cardLinkGroups, selectedCardId])
 
   useEffect(() => {
     if (searchOpen) return
@@ -904,71 +947,142 @@ export function EnrichPage(): JSX.Element {
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-4">
-          <div className="overflow-hidden rounded-xl border border-slate-900/80">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-left">Auction</TableHead>
-                  <TableHead className="text-left">Card</TableHead>
-                  <TableHead className="text-left">Set</TableHead>
-                  <TableHead className="text-left">Method</TableHead>
-                  <TableHead className="text-left">Confidence</TableHead>
-                  <TableHead className="text-left">Linked</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {links.length ? (
-                  links.map((link) => (
-                    <TableRow key={`${link.itemId}-${link.cardId}`}>
-                      <TableCell className="text-left">
-                        <div className="space-y-1">
-                          {link.auctionUrl ? (
-                            <a
-                              href={link.auctionUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="font-semibold text-indigo-600 hover:underline"
-                            >
-                              {link.auctionTitle ?? `Auction #${link.itemId}`}
-                            </a>
-                          ) : (
-                            <p className="font-semibold text-slate-900 dark:text-slate-50">
-                              {link.auctionTitle ?? `Auction #${link.itemId}`}
-                            </p>
-                          )}
-                          <p className="text-xs text-slate-600 dark:text-slate-400">Item #{link.itemId}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-left text-slate-700 dark:text-slate-200">
-                        <div className="space-y-1">
-                          <p className="font-semibold text-slate-900 dark:text-slate-50">{formatCardLabel(link)}</p>
-                          <p className="text-xs text-slate-600 dark:text-slate-400">Card #{link.cardId}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {formatSetLabel(link)}
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {link.method ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {formatConfidence(link.confidence)}
-                      </TableCell>
-                      <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                        {link.linkedAt ? format(new Date(link.linkedAt), 'PPpp') : '—'}
+        <CardContent className="space-y-6">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Pokemon cards</h4>
+              <Badge variant="outline">{cardLinkGroups.length.toLocaleString('sv-SE')} cards</Badge>
+            </div>
+            <div className="overflow-hidden rounded-xl border border-slate-900/80">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-left">Card</TableHead>
+                    <TableHead className="text-left">Set</TableHead>
+                    <TableHead className="text-right">Market price</TableHead>
+                    <TableHead className="text-right">Tradera price</TableHead>
+                    <TableHead className="text-left">Linked auctions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cardLinkGroups.length ? (
+                    cardLinkGroups.map((group) => {
+                      const representative = group.links[0]
+                      const isSelected = group.cardId === selectedCardId
+                      return (
+                        <TableRow
+                          key={group.cardId}
+                          className={`cursor-pointer ${
+                            isSelected ? 'bg-slate-50 dark:bg-slate-900/60' : 'hover:bg-slate-50/60 dark:hover:bg-slate-900/40'
+                          }`}
+                          onClick={() => setSelectedCardId(group.cardId)}
+                        >
+                          <TableCell className="text-left">
+                            <div className="space-y-1">
+                              <Link
+                                to={`/cards/${group.cardId}`}
+                                className="font-semibold text-indigo-600 hover:underline"
+                              >
+                                {formatCardLabel(representative)}
+                              </Link>
+                              <p className="text-xs text-slate-600 dark:text-slate-400">Card #{group.cardId}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                            {formatSetLabel(representative)}
+                          </TableCell>
+                          <TableCell className="text-right text-slate-600 dark:text-slate-300">
+                            {getMarketPrice({ price_market: representative.priceMarket })}
+                          </TableCell>
+                          <TableCell className="text-right text-slate-600 dark:text-slate-300">
+                            {getTraderaMarketPrice({ tradera_market_price: representative.traderaMarketPrice })}
+                          </TableCell>
+                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                            {group.links.length.toLocaleString('sv-SE')}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-sm text-slate-500">
+                        {linksLoading ? 'Loading card links…' : 'No linked cards found.'}
                       </TableCell>
                     </TableRow>
-                  ))
-                ) : (
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="space-y-1">
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Linked auctions</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {selectedCardMeta
+                    ? `Showing auctions for ${formatCardLabel(selectedCardMeta)}.`
+                    : 'Select a card to view linked auctions.'}
+                </p>
+              </div>
+              <Badge variant="outline">
+                {selectedCardLinks.length.toLocaleString('sv-SE')} auctions
+              </Badge>
+            </div>
+            <div className="overflow-hidden rounded-xl border border-slate-900/80">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-sm text-slate-500">
-                      {linksLoading ? 'Loading auction links…' : 'No auction links found.'}
-                    </TableCell>
+                    <TableHead className="text-left">Auction</TableHead>
+                    <TableHead className="text-left">Method</TableHead>
+                    <TableHead className="text-left">Confidence</TableHead>
+                    <TableHead className="text-left">Linked</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {selectedCardLinks.length ? (
+                    selectedCardLinks.map((link) => (
+                      <TableRow key={`${link.itemId}-${link.cardId}`}>
+                        <TableCell className="text-left">
+                          <div className="space-y-1">
+                            {link.auctionUrl ? (
+                              <a
+                                href={link.auctionUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-semibold text-indigo-600 hover:underline"
+                              >
+                                {link.auctionTitle ?? `Auction #${link.itemId}`}
+                              </a>
+                            ) : (
+                              <p className="font-semibold text-slate-900 dark:text-slate-50">
+                                {link.auctionTitle ?? `Auction #${link.itemId}`}
+                              </p>
+                            )}
+                            <p className="text-xs text-slate-600 dark:text-slate-400">Item #{link.itemId}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                          {link.method ?? '—'}
+                        </TableCell>
+                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                          {formatConfidence(link.confidence)}
+                        </TableCell>
+                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
+                          {link.linkedAt ? format(new Date(link.linkedAt), 'PPpp') : '—'}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-sm text-slate-500">
+                        {linksLoading ? 'Loading auction links…' : 'No auctions linked to this card.'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </CardContent>
       </Card>
