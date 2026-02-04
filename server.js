@@ -2424,17 +2424,27 @@ app.get('/api/linking/links', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
 
   try {
-    const [linksReady, auctionsReady, cardsReady] = await Promise.all([
+    const [linksReady, auctionsReady, ptReady] = await Promise.all([
       ensureTraderaAuctionLinksTableAvailable(),
       ensureTraderaAuctionsTableAvailable(),
       ensurePriceTrackerImportTablesAvailable()
     ])
-    if (!linksReady || !auctionsReady || !cardsReady) {
+    if (!linksReady || !auctionsReady) {
       return res.status(500).json({ error: 'Required tables unavailable' })
     }
 
-    const { ptCardsPriceMarketAvailable } = await ensurePtPriceColumns()
-    const priceMarketSelect = ptCardsPriceMarketAvailable ? 'c.price_market' : 'NULL::numeric AS price_market'
+    const { ptCardsPriceMarketAvailable } = ptReady ? await ensurePtPriceColumns() : { ptCardsPriceMarketAvailable: false }
+    const priceMarketSelect = ptReady && ptCardsPriceMarketAvailable ? 'c.price_market' : 'NULL::numeric AS price_market'
+    const cardNameSelect = ptReady ? 'c.name AS card_name' : 'NULL::text AS card_name'
+    const cardNumberSelect = ptReady ? 'c.card_number AS card_number' : 'NULL::text AS card_number'
+    const setNameSelect = ptReady ? 'COALESCE(s.name, c.set_name) AS set_name' : 'NULL::text AS set_name'
+    const setCodeSelect = ptReady ? 'c.pt_set_id AS set_code' : 'NULL::text AS set_code'
+    const cardJoinClause = ptReady
+      ? `
+        LEFT JOIN public.pt_cards c ON c.pt_card_id = l.pt_card_id
+        LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
+      `
+      : ''
     const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : null
     const hasLimit = typeof limit === 'number' && Number.isFinite(limit)
     const safeLimit = hasLimit ? Math.min(Math.max(limit, 1), 2000) : null
@@ -2454,16 +2464,15 @@ app.get('/api/linking/links', async (req, res) => {
           a.price AS auction_price,
           a.bid_count AS auction_bid_count,
           a.seller_alias AS auction_seller_alias,
-          c.name AS card_name,
-          c.card_number AS card_number,
+          ${cardNameSelect},
+          ${cardNumberSelect},
           ${priceMarketSelect},
           AVG(a.price)::numeric OVER (PARTITION BY l.pt_card_id) AS tradera_market_price,
-          COALESCE(s.name, c.set_name) AS set_name,
-          c.pt_set_id AS set_code
+          ${setNameSelect},
+          ${setCodeSelect}
         FROM public.tradera_auction_pt_card_links l
         LEFT JOIN public.tradera_auctions a ON a.item_id = l.auction_id
-        LEFT JOIN public.pt_cards c ON c.pt_card_id = l.pt_card_id
-        LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
+        ${cardJoinClause}
         ORDER BY l.created_at DESC NULLS LAST
         ${limitClause}
       `,
