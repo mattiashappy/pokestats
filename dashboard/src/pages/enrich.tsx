@@ -88,6 +88,7 @@ const buildDiagnostics = (auction: UnlinkedAuction): string[] => {
 }
 
 export function EnrichPage(): JSX.Element {
+  const enrichFetchLimit = 200
   const {
     data: linkData,
     isLoading: linksLoading,
@@ -95,7 +96,7 @@ export function EnrichPage(): JSX.Element {
     refetch: refetchLinks
   } = useQuery<AuctionCardLink[]>({
     queryKey: ['linking-links'],
-    queryFn: () => fetchAuctionCardLinks()
+    queryFn: () => fetchAuctionCardLinks(enrichFetchLimit)
   })
 
   const {
@@ -105,7 +106,7 @@ export function EnrichPage(): JSX.Element {
     refetch: refetchUnlinked
   } = useQuery<UnlinkedAuction[]>({
     queryKey: ['linking-unlinked'],
-    queryFn: () => fetchUnlinkedAuctions()
+    queryFn: () => fetchUnlinkedAuctions(enrichFetchLimit)
   })
   const { data: linkingStats } = useQuery<LinkingStats>({
     queryKey: ['linking-stats'],
@@ -634,7 +635,10 @@ export function EnrichPage(): JSX.Element {
         <CardHeader className="flex flex-col gap-2 space-y-0 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <CardTitle>Unlinked auctions</CardTitle>
-            <CardDescription>Select auctions, then choose which enrichment model to run.</CardDescription>
+            <CardDescription>
+              Select auctions, then choose which enrichment model to run. Showing the latest{' '}
+              {enrichFetchLimit.toLocaleString('sv-SE')} auctions for faster loading.
+            </CardDescription>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Badge variant="outline">{counts.unlinkedCards.toLocaleString('sv-SE')} unlinked</Badge>
@@ -940,7 +944,10 @@ export function EnrichPage(): JSX.Element {
               <Link2 className="h-5 w-5 text-indigo-500" />
               Linked auctions
             </CardTitle>
-            <CardDescription>Snapshots of the enrichment table linking auctions to cards.</CardDescription>
+            <CardDescription>
+              Snapshots of the enrichment table linking auctions to cards. Showing the latest{' '}
+              {enrichFetchLimit.toLocaleString('sv-SE')} linked rows.
+            </CardDescription>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Badge variant="outline">{counts.linkedCards.toLocaleString('sv-SE')} linked</Badge>
