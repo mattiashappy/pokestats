@@ -2620,8 +2620,20 @@ app.get('/api/linking/links', async (req, res) => {
     const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : null
     const limitClause = limit ? 'LIMIT $1' : ''
     const params = limit ? [limit] : []
+    const limitedLinksCte = limit
+      ? `
+        WITH limited_links AS (
+          SELECT *
+          FROM public.${traderaAuctionLinksTableName}
+          ORDER BY ${traderaAuctionLinksLinkedAtColumn ? traderaAuctionLinksLinkedAtColumn : traderaAuctionLinksAuctionIdColumn} DESC NULLS LAST
+          ${limitClause}
+        )
+      `
+      : ''
+    const linksTable = limit ? 'limited_links' : `public.${traderaAuctionLinksTableName}`
     const { rows } = await pool.query(
       `
+        ${limitedLinksCte}
         SELECT
           COALESCE(a.${auctionColumns.itemIdColumn}, l.${traderaAuctionLinksAuctionIdColumn}) AS auction_id,
           l.${traderaAuctionLinksCardIdColumn} AS card_id,
@@ -2637,14 +2649,19 @@ app.get('/api/linking/links', async (req, res) => {
           ${cardNameSelect} AS card_name,
           ${cardNumberSelect} AS card_number,
           ${priceMarketSelect},
-          AVG(a.price)::numeric OVER (PARTITION BY l.${traderaAuctionLinksCardIdColumn}) AS tradera_market_price,
+          stats.tradera_market_price AS tradera_market_price,
           ${setNameSelect} AS set_name,
           ${setCodeSelect} AS set_code
-        FROM public.${traderaAuctionLinksTableName} l
+        FROM ${linksTable} l
         LEFT JOIN public.tradera_auctions a ON a.${auctionColumns.keyColumn} = l.${traderaAuctionLinksAuctionIdColumn}
+        LEFT JOIN LATERAL (
+          SELECT AVG(a2.price)::numeric AS tradera_market_price
+          FROM public.${traderaAuctionLinksTableName} l2
+          JOIN public.tradera_auctions a2 ON a2.${auctionColumns.keyColumn} = l2.${traderaAuctionLinksAuctionIdColumn}
+          WHERE l2.${traderaAuctionLinksCardIdColumn} = l.${traderaAuctionLinksCardIdColumn}
+        ) stats ON true
         ${joins}
         ORDER BY ${traderaAuctionLinksLinkedAtColumn ? `l.${traderaAuctionLinksLinkedAtColumn}` : 'a.end_date'} DESC NULLS LAST
-        ${limitClause}
       `,
       params
     )
