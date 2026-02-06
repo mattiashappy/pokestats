@@ -249,12 +249,6 @@ export function AuctionsPage(): JSX.Element {
             <h1 className="text-4xl font-bold text-slate-900 dark:text-slate-50">Tradera Auctions</h1>
           </div>
 
-          {lastUpdatedLabel ? (
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-900/70 dark:bg-slate-900/60 dark:text-slate-300">
-              <CalendarClock className="h-4 w-4 text-sky-600 dark:text-sky-300" />
-              <span>{lastUpdatedLabel}</span>
-            </div>
-          ) : null}
         </div>
 
         <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
