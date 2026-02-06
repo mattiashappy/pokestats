@@ -169,6 +169,13 @@ async function run() {
             for (const card of cards) {
                 const pricesData = JSON.stringify(card.prices || {});
                 const energy = card.energyType || [];
+                
+                // 🛠️ FIX: Kolla om HP är ett nummer. Om det är "?" eller text -> Sätt till NULL.
+                let cleanHp = null;
+                if (card.hp && !isNaN(parseInt(card.hp))) {
+                    cleanHp = parseInt(card.hp);
+                }
+
                 await client.query(`
                     INSERT INTO public.pt_cards (
                         pt_card_id, tcgplayer_product_id, pt_set_id, set_name, name, card_number, total_set_number, rarity, card_type, hp, stage, artist, tcgplayer_url, image_cdn_url, price_market, pokemon_type, energy_type, flavor_text, prices_data, language, updated_at
@@ -177,7 +184,28 @@ async function run() {
                         price_market = EXCLUDED.price_market, 
                         prices_data = EXCLUDED.prices_data,
                         updated_at = NOW()
-                `, [card.id, card.tcgPlayerId ? Number(card.tcgPlayerId) : null, set.id, set.name, card.name, card.cardNumber, card.totalSetNumber, card.rarity, card.cardType, card.hp, card.stage, card.artist, card.tcgPlayerUrl, card.imageCdnUrl, card.prices?.market, card.pokemonType, energy, card.flavorText, pricesData, set._language]);
+                `, [
+                    card.id, 
+                    card.tcgPlayerId ? Number(card.tcgPlayerId) : null, 
+                    set.id, 
+                    set.name, 
+                    card.name, 
+                    card.cardNumber, 
+                    card.totalSetNumber, 
+                    card.rarity, 
+                    card.cardType, 
+                    cleanHp, // <--- HÄR ANVÄNDER VI DET TVÄTTADE VÄRDET ISTÄLLET FÖR card.hp
+                    card.stage, 
+                    card.artist, 
+                    card.tcgPlayerUrl, 
+                    card.imageCdnUrl, 
+                    card.prices?.market, 
+                    card.pokemonType, 
+                    energy, 
+                    card.flavorText, 
+                    pricesData, 
+                    set._language
+                ]);
             }
             console.log(`✅ Saved ${cards.length} cards.`);
         } else {
