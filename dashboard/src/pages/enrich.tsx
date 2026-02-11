@@ -155,6 +155,8 @@ export function EnrichPage(): JSX.Element {
   const pageSize = 100
 
   const shouldShowUnlinked = languageFilter !== 'none' && selectedDiagnosticFilters.length > 0
+  const showAllUnlinked = languageFilter === 'all' && selectedDiagnosticFilters.length === diagnosticFilterOptions.length
+  const unlinkedFetchLimit = showAllUnlinked ? null : enrichFetchLimit
 
   const {
     data: unlinkedData,
@@ -162,8 +164,8 @@ export function EnrichPage(): JSX.Element {
     isError: unlinkedError,
     refetch: refetchUnlinked
   } = useQuery<UnlinkedAuction[]>({
-    queryKey: ['linking-unlinked', enrichFetchLimit],
-    queryFn: () => fetchUnlinkedAuctions(enrichFetchLimit),
+    queryKey: ['linking-unlinked', unlinkedFetchLimit],
+    queryFn: () => fetchUnlinkedAuctions(unlinkedFetchLimit),
     enabled: shouldShowUnlinked
   })
 
@@ -903,11 +905,7 @@ export function EnrichPage(): JSX.Element {
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                 <span>
-                  Showing {(pagedUnlinkedAuctions.length
-                    ? (unlinkedPage - 1) * pageSize + 1
-                    : 0).toLocaleString('sv-SE')}
-                  –
-                  {Math.min(unlinkedPage * pageSize, visibleUnlinkedAuctions.length).toLocaleString('sv-SE')} /{' '}
+                  Showing {visibleUnlinkedAuctions.length.toLocaleString('sv-SE')} /{' '}
                   {totalUnlinkedAvailable.toLocaleString('sv-SE')}
                 </span>
                 <div className="flex items-center gap-1">
