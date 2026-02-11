@@ -1526,7 +1526,30 @@ async function fetchUnlinkedAuctionSummaries({
   const auctionColumns = await resolveTraderaAuctionColumns(linkConfig)
   if (!auctionColumns) return { rows: [], total: 0 }
 
-  const { rows } = await pool.query(
+  const safeOffset = Number.isFinite(offset) ? Math.max(0, Number(offset)) : 0
+  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Number(limit), 1), 500) : 100
+
+  const params = []
+  const where = [`l.${linkConfig.auctionIdColumn} IS NULL`]
+  if (language !== 'all') {
+    params.push(language)
+    where.push(`COALESCE(a.pokemon_language, 'Unknown') = $${params.length}`)
+  }
+  const whereClause = `WHERE ${where.join(' AND ')}`
+
+  const countRes = await pool.query(
+    `
+      SELECT COUNT(*)::int AS total
+      FROM public.tradera_auctions a
+      LEFT JOIN public.${linkConfig.tableName} l ON l.${linkConfig.auctionIdColumn} = a.${auctionColumns.keyColumn}
+      ${whereClause}
+    `,
+    params
+  )
+  const total = Number(countRes.rows?.[0]?.total ?? 0)
+
+  const dataParams = [...params, safeLimit, safeOffset]
+  const dataRes = await pool.query(
     `
       SELECT
         a.${auctionColumns.itemIdColumn} AS item_id,
@@ -1542,14 +1565,16 @@ async function fetchUnlinkedAuctionSummaries({
         a.item_condition
       FROM public.tradera_auctions a
       LEFT JOIN public.${linkConfig.tableName} l ON l.${linkConfig.auctionIdColumn} = a.${auctionColumns.keyColumn}
-      WHERE l.${linkConfig.auctionIdColumn} IS NULL
+      ${whereClause}
       ORDER BY a.end_date DESC
-    `
+      LIMIT $${dataParams.length - 1}
+      OFFSET $${dataParams.length}
+    `,
+    dataParams
   )
 
   const expansions = await fetchLinkingSets()
-
-  const enrichedRows = rows.map((row) => {
+  const enrichedRows = dataRes.rows.map((row) => {
     const text = normalizeAuctionText(`${row.title ?? ''} ${row.description ?? ''}`)
     const collectorNumber = extractCardNumber(text)
     const expansion = matchExpansion(expansions, text)
@@ -1573,18 +1598,13 @@ async function fetchUnlinkedAuctionSummaries({
   })
 
   const selectedDiagnostics = Array.isArray(diagnostics) ? diagnostics : []
-  const filteredRows = enrichedRows.filter((row) => {
-    if (language !== 'all') {
-      const normalizedLanguage = normalizeUnlinkedLanguage(row.pokemon_language).toLowerCase()
-      if (normalizedLanguage !== String(language).toLowerCase()) return false
-    }
-
-    if (!selectedDiagnostics.length) return false
-
-    const diagnosticsForRow = buildUnlinkedDiagnostics(row)
-    const markers = diagnosticsForRow.length ? diagnosticsForRow : ['Ready to link']
-    return markers.some((marker) => selectedDiagnostics.includes(marker))
-  })
+  const filteredRows = selectedDiagnostics.length
+    ? enrichedRows.filter((row) => {
+        const diagnosticsForRow = buildUnlinkedDiagnostics(row)
+        const markers = diagnosticsForRow.length ? diagnosticsForRow : ['Ready to link']
+        return markers.some((marker) => selectedDiagnostics.includes(marker))
+      })
+    : enrichedRows
 
   filteredRows.sort((left, right) => {
     const leftReady = buildUnlinkedDiagnostics(left).length === 0
@@ -1598,12 +1618,7 @@ async function fetchUnlinkedAuctionSummaries({
     return Number(left.item_id) - Number(right.item_id)
   })
 
-  const total = filteredRows.length
-  const safeOffset = Number.isFinite(offset) ? Math.max(0, Number(offset)) : 0
-  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Number(limit), 1), 500) : 100
-  const pagedRows = filteredRows.slice(safeOffset, safeOffset + safeLimit)
-
-  return { rows: pagedRows, total }
+  return { rows: filteredRows, total }
 }
 
 async function runDeterministicLinker({ limit = null } = {}) {
