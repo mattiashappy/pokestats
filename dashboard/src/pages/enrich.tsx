@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Link2 } from 'lucide-react'
-import { Link } from 'react-router-dom'
 
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
@@ -17,12 +16,12 @@ import {
   fetchLinkingStats,
   fetchUnlinkedAuctions,
   linkAuctionToCard,
+  unlinkAuction,
   runAiMatch,
   runTraderaLink,
   runVisionMatch,
   searchCards
 } from '../lib/api'
-import { getMarketPrice, getTraderaMarketPrice } from '../utils/priceHelper'
 import type {
   AiMatchSummary,
   AuctionCardLink,
@@ -49,6 +48,11 @@ const formatSetLabel = (link: AuctionCardLink): string => {
 const formatConfidence = (confidence: number | null): string => {
   if (confidence == null) return '—'
   return `${(confidence * 100).toFixed(1)}%`
+}
+
+const formatLinkedAtCompact = (linkedAt: string | null): string => {
+  if (!linkedAt) return '—'
+  return format(new Date(linkedAt), 'yyyy-MM-dd HH:mm')
 }
 
 const formatDetectedExpansion = (auction: UnlinkedAuction): string => {
@@ -154,9 +158,12 @@ export function EnrichPage(): JSX.Element {
     ...diagnosticFilterOptions
   ])
   const [unlinkedPage, setUnlinkedPage] = useState(1)
-  const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
+  const [linkedPage, setLinkedPage] = useState(1)
+  const [linkedSearchTerm, setLinkedSearchTerm] = useState('')
+  const [unlinkPendingItemId, setUnlinkPendingItemId] = useState<number | null>(null)
+  const [unlinkError, setUnlinkError] = useState<string | null>(null)
 
-  const pageSize = 50
+  const pageSize = 100
 
   const handleRunLink = async (): Promise<void> => {
     setTraderaError(null)
@@ -321,36 +328,26 @@ export function EnrichPage(): JSX.Element {
       unlinkedCards: linkingStats?.unlinked ?? unlinkedAuctions.length
     }
   }, [links, linkingStats?.unlinked, unlinkedAuctions.length])
-  const cardLinkGroups = useMemo(() => {
-    const grouped = new Map<string, { cardId: string; links: AuctionCardLink[] }>()
-    links.forEach((link) => {
-      if (!link.cardId) return
-      const existing = grouped.get(link.cardId)
-      if (existing) {
-        existing.links.push(link)
-      } else {
-        grouped.set(link.cardId, { cardId: link.cardId, links: [link] })
-      }
+  const filteredLinkedAuctions = useMemo(() => {
+    const query = linkedSearchTerm.trim().toLowerCase()
+    if (!query) return links
+
+    return links.filter((link) => {
+      const haystack = [
+        String(link.itemId),
+        link.auctionTitle ?? '',
+        link.cardId ?? '',
+        link.cardName ?? '',
+        link.cardNumber ?? '',
+        link.setName ?? '',
+        link.setCode ?? ''
+      ]
+        .join(' ')
+        .toLowerCase()
+
+      return haystack.includes(query)
     })
-    return Array.from(grouped.values()).sort((left, right) => {
-      if (right.links.length !== left.links.length) {
-        return right.links.length - left.links.length
-      }
-      const leftLabel = formatCardLabel(left.links[0])
-      const rightLabel = formatCardLabel(right.links[0])
-      return leftLabel.localeCompare(rightLabel, 'sv-SE', { sensitivity: 'base' })
-    })
-  }, [links])
-  const selectedCardLinks = useMemo(() => {
-    if (!selectedCardId) return []
-    const group = cardLinkGroups.find((entry) => entry.cardId === selectedCardId)
-    return group?.links ?? []
-  }, [cardLinkGroups, selectedCardId])
-  const selectedCardMeta = useMemo(() => {
-    if (!selectedCardId) return null
-    const group = cardLinkGroups.find((entry) => entry.cardId === selectedCardId)
-    return group?.links[0] ?? null
-  }, [cardLinkGroups, selectedCardId])
+  }, [linkedSearchTerm, links])
   const visibleUnlinkedAuctions = useMemo(() => {
     const selectedDiagnostics = new Set(selectedDiagnosticFilters)
 
@@ -375,6 +372,11 @@ export function EnrichPage(): JSX.Element {
   const selectedAiSet = useMemo(() => new Set(selectedAiAuctionIds), [selectedAiAuctionIds])
   const allPageSelected = visiblePageIds.length > 0 && visiblePageIds.every((id) => selectedAiSet.has(id))
   const totalUnlinkedPages = Math.max(1, Math.ceil(visibleUnlinkedAuctions.length / pageSize))
+  const pagedLinkedAuctions = useMemo(() => {
+    const start = (linkedPage - 1) * pageSize
+    return filteredLinkedAuctions.slice(start, start + pageSize)
+  }, [filteredLinkedAuctions, linkedPage, pageSize])
+  const totalLinkedPages = Math.max(1, Math.ceil(filteredLinkedAuctions.length / pageSize))
   const skipReasonEntries = useMemo(() => {
     if (!linkSummary) return []
     const knownReasons = orderedSkipReasons.map((reason) => [reason, linkSummary.skipReasons[reason] ?? 0] as const)
@@ -409,15 +411,6 @@ export function EnrichPage(): JSX.Element {
     setSelectedSkipReason(skipReasonOptions[0])
   }, [skipReasonOptions])
 
-  useEffect(() => {
-    if (!cardLinkGroups.length) {
-      setSelectedCardId(null)
-      return
-    }
-    if (selectedCardId == null || !cardLinkGroups.some((group) => group.cardId === selectedCardId)) {
-      setSelectedCardId(cardLinkGroups[0].cardId)
-    }
-  }, [cardLinkGroups, selectedCardId])
 
   useEffect(() => {
     if (searchOpen) return
@@ -433,9 +426,18 @@ export function EnrichPage(): JSX.Element {
   }, [languageFilter, selectedDiagnosticFilters])
 
   useEffect(() => {
+    setLinkedPage(1)
+  }, [linkedSearchTerm])
+
+  useEffect(() => {
     if (unlinkedPage <= totalUnlinkedPages) return
     setUnlinkedPage(totalUnlinkedPages)
   }, [totalUnlinkedPages, unlinkedPage])
+
+  useEffect(() => {
+    if (linkedPage <= totalLinkedPages) return
+    setLinkedPage(totalLinkedPages)
+  }, [linkedPage, totalLinkedPages])
 
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
@@ -465,6 +467,19 @@ export function EnrichPage(): JSX.Element {
       setManualLinkError(`Link failed: ${String(error)}`)
     } finally {
       setManualLinkPending(false)
+    }
+  }
+
+  const handleUnlinkAuction = async (auctionId: number): Promise<void> => {
+    setUnlinkError(null)
+    setUnlinkPendingItemId(auctionId)
+    try {
+      await unlinkAuction(auctionId)
+      await Promise.all([refetchLinks(), refetchUnlinked()])
+    } catch (error) {
+      setUnlinkError(`Unlink failed: ${String(error)}`)
+    } finally {
+      setUnlinkPendingItemId(null)
     }
   }
 
@@ -1015,8 +1030,7 @@ export function EnrichPage(): JSX.Element {
               Linked auctions
             </CardTitle>
             <CardDescription>
-              Snapshots of the enrichment table linking auctions to cards. Showing the latest{' '}
-              {enrichFetchLimit.toLocaleString('sv-SE')} linked rows.
+              Compact table for reviewing links and unlinking incorrect matches.
             </CardDescription>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -1024,145 +1038,100 @@ export function EnrichPage(): JSX.Element {
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-6">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Pokemon cards</h4>
-              <Badge variant="outline">{cardLinkGroups.length.toLocaleString('sv-SE')} cards</Badge>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="linked-search" className="text-xs uppercase tracking-wide text-slate-500">
+                Search
+              </Label>
+              <Input
+                id="linked-search"
+                value={linkedSearchTerm}
+                onChange={(event) => setLinkedSearchTerm(event.target.value)}
+                placeholder="Filter by auction, card, set, item id"
+                className="h-8 w-72"
+              />
             </div>
-            <div className="overflow-hidden rounded-xl border border-slate-900/80">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-left">Card</TableHead>
-                    <TableHead className="text-left">Set</TableHead>
-                    <TableHead className="text-right">Market price</TableHead>
-                    <TableHead className="text-right">Tradera price</TableHead>
-                    <TableHead className="text-left">Linked auctions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {cardLinkGroups.length ? (
-                    cardLinkGroups.map((group) => {
-                      const representative = group.links[0]
-                      const isSelected = group.cardId === selectedCardId
-                      return (
-                        <TableRow
-                          key={group.cardId}
-                          className={`cursor-pointer ${
-                            isSelected ? 'bg-slate-50 dark:bg-slate-900/60' : 'hover:bg-slate-50/60 dark:hover:bg-slate-900/40'
-                          }`}
-                          onClick={() => setSelectedCardId(group.cardId)}
-                        >
-                          <TableCell className="text-left">
-                            <div className="space-y-1">
-                              <Link
-                                to={`/cards/${group.cardId}`}
-                                className="font-semibold text-indigo-600 hover:underline"
-                              >
-                                {formatCardLabel(representative)}
-                              </Link>
-                              <p className="text-xs text-slate-600 dark:text-slate-400">Card #{group.cardId}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                            {formatSetLabel(representative)}
-                          </TableCell>
-                          <TableCell className="text-right text-slate-600 dark:text-slate-300">
-                            {getMarketPrice({ price_market: representative.priceMarket })}
-                          </TableCell>
-                          <TableCell className="text-right text-slate-600 dark:text-slate-300">
-                            {getTraderaMarketPrice({ tradera_market_price: representative.traderaMarketPrice })}
-                          </TableCell>
-                          <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                            {group.links.length.toLocaleString('sv-SE')}
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-sm text-slate-500">
-                        {linksLoading ? 'Loading card links…' : 'No linked cards found.'}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+            <span>
+              Showing {(pagedLinkedAuctions.length ? (linkedPage - 1) * pageSize + 1 : 0).toLocaleString('sv-SE')}–
+              {Math.min(linkedPage * pageSize, filteredLinkedAuctions.length).toLocaleString('sv-SE')} of{' '}
+              {filteredLinkedAuctions.length.toLocaleString('sv-SE')}
+            </span>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="space-y-1">
-                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Linked auctions</h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {selectedCardMeta
-                    ? `Showing auctions for ${formatCardLabel(selectedCardMeta)}.`
-                    : 'Select a card to view linked auctions.'}
-                </p>
-              </div>
-              <Badge variant="outline">
-                {selectedCardLinks.length.toLocaleString('sv-SE')} auctions
-              </Badge>
+          {unlinkError ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-xs text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-100">
+              {unlinkError}
             </div>
-            <div className="overflow-hidden rounded-xl border border-slate-900/80">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-left">Auction</TableHead>
-                    <TableHead className="text-left">Method</TableHead>
-                    <TableHead className="text-left">Confidence</TableHead>
-                    <TableHead className="text-left">Linked</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {selectedCardLinks.length ? (
-                    selectedCardLinks.map((link) => (
-                      <TableRow key={`${link.itemId}-${link.cardId}`}>
-                        <TableCell className="text-left">
-                          <div className="space-y-1">
-                            {link.auctionUrl ? (
-                              <a
-                                href={link.auctionUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="font-semibold text-indigo-600 hover:underline"
-                              >
-                                {link.auctionTitle ?? `Auction #${link.itemId}`}
-                              </a>
-                            ) : (
-                              <p className="font-semibold text-slate-900 dark:text-slate-50">
-                                {link.auctionTitle ?? `Auction #${link.itemId}`}
-                              </p>
-                            )}
-                            <p className="text-xs text-slate-600 dark:text-slate-400">Item #{link.itemId}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                          {link.method ?? '—'}
-                        </TableCell>
-                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                          {formatConfidence(link.confidence)}
-                        </TableCell>
-                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                          {link.linkedAt ? format(new Date(link.linkedAt), 'PPpp') : '—'}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-sm text-slate-500">
-                        {linksLoading ? 'Loading auction links…' : 'No auctions linked to this card.'}
+          ) : null}
+
+          <div className="overflow-hidden rounded-xl border border-slate-900/80">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-left">Item</TableHead>
+                  <TableHead className="text-left">Card</TableHead>
+                  <TableHead className="text-left">Set</TableHead>
+                  <TableHead className="text-left">Method</TableHead>
+                  <TableHead className="text-left">Conf.</TableHead>
+                  <TableHead className="text-left">Linked</TableHead>
+                  <TableHead className="text-left">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pagedLinkedAuctions.length ? (
+                  pagedLinkedAuctions.map((link) => (
+                    <TableRow key={`${link.itemId}-${link.cardId}`} className="text-xs">
+                      <TableCell className="py-2 text-left">
+                        {link.auctionUrl ? (
+                          <a href={link.auctionUrl} target="_blank" rel="noreferrer" className="font-medium text-indigo-600 hover:underline">
+                            #{link.itemId}
+                          </a>
+                        ) : (
+                          <span className="font-medium">#{link.itemId}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="py-2 text-left text-slate-700 dark:text-slate-200">{formatCardLabel(link)}</TableCell>
+                      <TableCell className="py-2 text-left text-slate-600 dark:text-slate-300">{formatSetLabel(link)}</TableCell>
+                      <TableCell className="py-2 text-left text-slate-600 dark:text-slate-300">{link.method ?? '—'}</TableCell>
+                      <TableCell className="py-2 text-left text-slate-600 dark:text-slate-300">{formatConfidence(link.confidence)}</TableCell>
+                      <TableCell className="py-2 text-left text-slate-600 dark:text-slate-300">{formatLinkedAtCompact(link.linkedAt)}</TableCell>
+                      <TableCell className="py-2 text-left">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="h-7 px-2 text-xs"
+                          disabled={unlinkPendingItemId === link.itemId}
+                          onClick={() => handleUnlinkAuction(link.itemId)}
+                        >
+                          {unlinkPendingItemId === link.itemId ? 'Unlinking…' : 'Unlink'}
+                        </Button>
                       </TableCell>
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-sm text-slate-500">
+                      {linksLoading ? 'Loading linked auctions…' : 'No linked auctions found.'}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex items-center justify-end gap-1">
+            <Button type="button" variant="secondary" size="sm" disabled={linkedPage <= 1} onClick={() => setLinkedPage((prev) => Math.max(1, prev - 1))}>
+              Previous
+            </Button>
+            <Button type="button" variant="secondary" size="sm" disabled={linkedPage >= totalLinkedPages} onClick={() => setLinkedPage((prev) => Math.min(totalLinkedPages, prev + 1))}>
+              Next
+            </Button>
           </div>
         </CardContent>
       </Card>
+
 
       <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
         <DialogContent className="max-w-2xl">
