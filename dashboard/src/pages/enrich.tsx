@@ -144,7 +144,7 @@ export function EnrichPage(): JSX.Element {
   const [manualLinkPending, setManualLinkPending] = useState(false)
   const [manualLinkError, setManualLinkError] = useState<string | null>(null)
   const [manualLinkSuccess, setManualLinkSuccess] = useState<string | null>(null)
-  const [languageFilter, setLanguageFilter] = useState('none')
+  const [languageFilter, setLanguageFilter] = useState('all')
   const [selectedDiagnosticFilters, setSelectedDiagnosticFilters] = useState<DiagnosticFilterOption[]>([])
   const [unlinkedPage, setUnlinkedPage] = useState(1)
   const [linkedPage, setLinkedPage] = useState(1)
@@ -154,7 +154,7 @@ export function EnrichPage(): JSX.Element {
 
   const pageSize = 100
 
-  const shouldShowUnlinked = languageFilter !== 'none' && selectedDiagnosticFilters.length > 0
+  const shouldShowUnlinked = selectedDiagnosticFilters.length > 0
   const unlinkedFetchLimit = pageSize
 
   const {
@@ -668,7 +668,7 @@ export function EnrichPage(): JSX.Element {
           <div className="min-w-0">
             <CardTitle>Unlinked auctions</CardTitle>
             <CardDescription>
-              Choose a language and diagnostics filters to load auctions, then run enrichment on selected rows.
+              Choose diagnostics filters to load auctions, then optionally narrow by language.
             </CardDescription>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -998,7 +998,7 @@ export function EnrichPage(): JSX.Element {
                   <TableRow>
                     <TableCell colSpan={9} className="text-center text-sm text-slate-500">
                       {!shouldShowUnlinked
-                        ? 'Select a language and at least one Diagnostics filter to load auctions.'
+                        ? 'Select at least one Diagnostics filter to load auctions.'
                         : unlinkedLoading
                           ? 'Loading unlinked auctions…'
                           : unlinkedError
