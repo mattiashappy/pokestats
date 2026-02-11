@@ -6,13 +6,9 @@ import { Link, useParams } from 'react-router-dom'
 import { Button } from '../components/ui/button'
 import { Card as UiCard, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { fetchCardAuctions, fetchCardDetails } from '../lib/api'
+import { useAuth } from '../providers/auth'
 import { getCardSetIdentifier } from '../lib/sets'
-import { getMarketPrice } from '../utils/priceHelper'
 import type { AuctionRecord } from '../types'
-
-function formatUsd(value: string): string {
-  return value === 'N/A' ? '—' : value
-}
 
 function formatSek(value: number | null | undefined): string {
   if (!Number.isFinite(Number(value))) return '—'
@@ -21,6 +17,7 @@ function formatSek(value: number | null | undefined): string {
 
 export function CardPage(): JSX.Element {
   const { id, setCode } = useParams()
+  const { user } = useAuth()
 
   const {
     data: card,
@@ -84,6 +81,37 @@ export function CardPage(): JSX.Element {
       average: total / prices.length
     }
   }, [auctions])
+
+  const traderaTotalsByCondition = useMemo(() => {
+    const buckets = {
+      'Mycket gott skick': 0,
+      'Gott skick': 0,
+      'Okej skick': 0,
+      Oanvänt: 0
+    }
+
+    for (const auction of auctions ?? []) {
+      if (!Number.isFinite(Number(auction.price))) continue
+      const price = Number(auction.price)
+      const normalized = (auction.itemCondition ?? '').trim().toLowerCase()
+
+      if (normalized === 'mycket gott skick') buckets['Mycket gott skick'] += price
+      else if (normalized === 'gott skick') buckets['Gott skick'] += price
+      else if (normalized === 'okej skick') buckets['Okej skick'] += price
+      else if (normalized === 'oanvänt') buckets.Oanvänt += price
+    }
+
+    return buckets
+  }, [auctions])
+
+  const traderaTotal = useMemo(() => {
+    return (auctions ?? []).reduce((acc, auction) => {
+      if (!Number.isFinite(Number(auction.price))) return acc
+      return acc + Number(auction.price)
+    }, 0)
+  }, [auctions])
+
+  const isAdmin = user?.role === 'admin'
 
   // --- RESOLVE NAVIGATION ---
   const resolvedSetCode = setCode ?? (card ? getCardSetIdentifier(card) : null)
@@ -184,28 +212,40 @@ export function CardPage(): JSX.Element {
         </div>
 
         {/* RIGHT COLUMN: DETAILS */}
-        <div className="grid gap-6 md:grid-cols-[minmax(0,1fr),240px]">
-          <div className="space-y-6">
+        <div className="grid gap-6 md:grid-cols-2">
             <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
               <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
-                <CardTitle className="text-lg font-black uppercase text-white">Market price</CardTitle>
+                <CardTitle className="text-lg font-black uppercase text-white">Tradera</CardTitle>
                 <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
-                  Latest market pricing for this card.
+                  {isAdmin
+                    ? 'Price sums grouped by listed card condition.'
+                    : 'Combined Tradera sum for linked auctions.'}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="p-5 text-sm font-semibold uppercase text-slate-900">
-                <div className="flex flex-wrap items-end gap-3">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Market price</div>
-                    <div className="text-2xl font-black">{formatUsd(getMarketPrice(card))}</div>
+              <CardContent className="space-y-3 p-5 text-sm font-semibold uppercase text-slate-900">
+                <div className="rounded-2xl border-2 border-slate-900 bg-amber-50 px-3 py-2 shadow-[2px_2px_0px_#0f172a]">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Total Tradera sum
                   </div>
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Tradera price
-                    </div>
-                    <div className="text-lg font-black text-slate-900">{formatSek(traderaStats.average)}</div>
-                  </div>
+                  <div className="text-xl font-black">{formatSek(traderaTotal)}</div>
                 </div>
+                {isAdmin ? (
+                  <ul className="space-y-2">
+                    {Object.entries(traderaTotalsByCondition).map(([condition, total]) => (
+                      <li
+                        key={condition}
+                        className="flex items-center justify-between rounded-2xl border-2 border-slate-900 bg-white px-3 py-2 shadow-[2px_2px_0px_#0f172a]"
+                      >
+                        <span>{condition}</span>
+                        <span className="font-black">{formatSek(total)}</span>
+                      </li>
+                    ))}
+                    <li className="flex items-center justify-between rounded-2xl border-2 border-slate-900 bg-slate-900 px-3 py-2 text-white shadow-[2px_2px_0px_#0f172a]">
+                      <span>Average</span>
+                      <span className="font-black">{formatSek(traderaStats.average)}</span>
+                    </li>
+                  </ul>
+                ) : null}
               </CardContent>
             </UiCard>
             
@@ -237,35 +277,55 @@ export function CardPage(): JSX.Element {
 
           </div>
 
-          {/* HIGHLIGHTS SIDEBAR */}
-          <UiCard className="h-fit border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
-            <CardHeader className="border-b-4 border-slate-900 bg-slate-900">
-              <CardTitle className="text-lg font-black uppercase text-white">Highlights</CardTitle>
-              <CardDescription className="text-xs font-semibold uppercase tracking-wide text-amber-200">
-                Quick facts at a glance.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 p-4 text-xs font-semibold uppercase text-slate-900">
-              <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                Era
-                <div className="text-base font-black">{card.era || 'Unknown era'}</div>
-              </div>
-              <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                Set
-                <div className="text-base font-black">{card.set_name || 'Unknown set'}</div>
-              </div>
-              <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                Language
-                <div className="text-base font-black">{card.language || 'Unknown language'}</div>
-              </div>
-              <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                Card #
-                <div className="text-base font-black">{card.card_number || 'N/A'}</div>
-              </div>
-            </CardContent>
-          </UiCard>
-        </div>
       </div>
+
+      {isAdmin ? (
+        <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
+          <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
+            <CardTitle className="text-lg font-black uppercase text-white">Linked Tradera auctions</CardTitle>
+            <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
+              Detailed list available only for admins.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-5">
+            {auctions && auctions.length > 0 ? (
+              <div className="space-y-3">
+                {auctions.map((auction) => (
+                  <article
+                    key={auction.itemId}
+                    className="rounded-2xl border-2 border-slate-900 bg-amber-50 p-3 shadow-[2px_2px_0px_#0f172a]"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-black text-slate-900">{auction.title}</h3>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          Condition: {auction.itemCondition || 'Unknown'}
+                        </p>
+                      </div>
+                      <div className="text-right text-sm font-black text-slate-900">{formatSek(auction.price)}</div>
+                    </div>
+                    <div className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      Ends: {new Date(auction.endDate).toLocaleString('sv-SE')}
+                    </div>
+                    {auction.itemUrl ? (
+                      <a
+                        href={auction.itemUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-block text-xs font-black uppercase tracking-wide text-slate-900 underline"
+                      >
+                        Open auction
+                      </a>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm font-semibold text-slate-500">No linked Tradera auctions for this card yet.</p>
+            )}
+          </CardContent>
+        </UiCard>
+      ) : null}
     </div>
   )
 }
