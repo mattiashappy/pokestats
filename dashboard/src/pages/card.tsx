@@ -212,7 +212,7 @@ export function CardPage(): JSX.Element {
         </div>
 
         {/* RIGHT COLUMN: DETAILS */}
-        <div className="space-y-6">
+        <div className="grid gap-6 md:grid-cols-2">
             <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
               <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
                 <CardTitle className="text-lg font-black uppercase text-white">Tradera</CardTitle>
