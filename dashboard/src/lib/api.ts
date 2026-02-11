@@ -327,6 +327,15 @@ export async function linkAuctionToCard(auctionId: number, cardId: string): Prom
   if (!response.ok) throw new Error('Failed to link auction')
 }
 
+export async function unlinkAuction(auctionId: number): Promise<void> {
+  const response = await fetch('/api/linking/unlink', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ auctionId })
+  })
+  if (!response.ok) throw new Error('Failed to unlink auction')
+}
+
 const fetchImportRuns = async (limit = 10): Promise<ImportRun[]> => {
   const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100)
   const params = new URLSearchParams({ limit: String(safeLimit) })
