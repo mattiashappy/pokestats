@@ -155,8 +155,7 @@ export function EnrichPage(): JSX.Element {
   const pageSize = 100
 
   const shouldShowUnlinked = languageFilter !== 'none' && selectedDiagnosticFilters.length > 0
-  const showAllUnlinked = languageFilter === 'all' && selectedDiagnosticFilters.length === diagnosticFilterOptions.length
-  const unlinkedFetchLimit = showAllUnlinked ? null : enrichFetchLimit
+  const unlinkedFetchLimit = pageSize
 
   const {
     data: unlinkedData,
