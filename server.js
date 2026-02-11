@@ -1556,56 +1556,81 @@ async function fetchUnlinkedAuctionSummaries({
     dataParams
   )
 
-  const expansions = await fetchLinkingSets()
+  const selectedDiagnostics = Array.isArray(diagnostics) ? diagnostics : []
+  const needsSetMatch = selectedDiagnostics.some((marker) => marker === 'Ready to link' || marker === 'No set match')
+
+  const expansions = needsSetMatch ? await fetchLinkingSets() : []
   const expansionMatchers = expansions.flatMap((expansion) => {
     const candidates = [expansion.normalizedName, expansion.normalizedCode].filter(Boolean)
     return candidates.map((candidate) => ({
       expansion,
       score: candidate.length,
-      regex: new RegExp(`\b${escapeRegex(candidate)}\b`)
+      regex: new RegExp(`\\b${escapeRegex(candidate)}\\b`)
     }))
   })
 
-  const selectedDiagnostics = Array.isArray(diagnostics) ? diagnostics : []
+  const filteredRows = []
 
-  const enrichedRows = rows.map((row) => {
-    const text = normalizeAuctionText(`${row.title ?? ''} ${row.description ?? ''}`)
+  for (const row of rows) {
+    const title = row.title ?? null
+    const description = row.description ?? null
+    const pokemonEra = row.pokemon_era ?? null
+    const pokemonLanguage = row.pokemon_language ?? null
+    const itemCondition = row.item_condition ?? null
+    const text = normalizeAuctionText(`${title ?? ''} ${description ?? ''}`)
     const collectorNumber = extractCardNumber(text)
 
     let bestExpansion = null
-    let bestScore = 0
-    for (const matcher of expansionMatchers) {
-      if (matcher.score <= bestScore) continue
-      if (!matcher.regex.test(text)) continue
-      bestScore = matcher.score
-      bestExpansion = matcher.expansion
+    if (needsSetMatch) {
+      const shouldAttemptSetMatch = Boolean(
+        title &&
+          description &&
+          collectorNumber &&
+          pokemonEra &&
+          pokemonLanguage &&
+          itemCondition
+      )
+
+      if (shouldAttemptSetMatch) {
+        let bestScore = 0
+        for (const matcher of expansionMatchers) {
+          if (matcher.score <= bestScore) continue
+          if (!matcher.regex.test(text)) continue
+          bestScore = matcher.score
+          bestExpansion = matcher.expansion
+        }
+      }
     }
 
-    return {
+    const diagnosticsForRow = []
+    if (!title) diagnosticsForRow.push('Missing title')
+    if (!description) diagnosticsForRow.push('Missing description')
+    if (!collectorNumber) diagnosticsForRow.push('No card #')
+    if (!bestExpansion?.name && !bestExpansion?.set_code) diagnosticsForRow.push('No set match')
+    if (!pokemonEra) diagnosticsForRow.push('No era')
+    if (!pokemonLanguage) diagnosticsForRow.push('No language')
+    if (!itemCondition) diagnosticsForRow.push('No condition')
+
+    const markers = diagnosticsForRow.length ? diagnosticsForRow : ['Ready to link']
+    if (!markers.some((marker) => selectedDiagnostics.includes(marker))) continue
+
+    filteredRows.push({
       item_id: row.item_id,
-      title: row.title ?? null,
-      description: row.description ?? null,
+      title,
+      description,
       end_date: row.end_date ?? null,
       price: row.price ?? null,
       bid_count: row.bid_count ?? null,
       item_url: row.item_url ?? null,
       seller_alias: row.seller_alias ?? null,
-      pokemon_era: row.pokemon_era ?? null,
-      pokemon_language: row.pokemon_language ?? null,
-      item_condition: row.item_condition ?? null,
+      pokemon_era: pokemonEra,
+      pokemon_language: pokemonLanguage,
+      item_condition: itemCondition,
       detected_collector_number: collectorNumber ?? null,
       detected_expansion_name: bestExpansion?.name ?? null,
       detected_expansion_code: bestExpansion?.set_code ?? null
-    }
-  })
-
-  const filteredRows = selectedDiagnostics.length
-    ? enrichedRows.filter((row) => {
-        const diagnosticsForRow = buildUnlinkedDiagnostics(row)
-        const markers = diagnosticsForRow.length ? diagnosticsForRow : ['Ready to link']
-        return markers.some((marker) => selectedDiagnostics.includes(marker))
-      })
-    : []
+    })
+  }
 
   filteredRows.sort((left, right) => {
     const leftReady = buildUnlinkedDiagnostics(left).length === 0
