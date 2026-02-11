@@ -118,15 +118,6 @@ export function EnrichPage(): JSX.Element {
     queryFn: () => fetchAuctionCardLinks(enrichFetchLimit)
   })
 
-  const {
-    data: unlinkedData,
-    isLoading: unlinkedLoading,
-    isError: unlinkedError,
-    refetch: refetchUnlinked
-  } = useQuery<UnlinkedAuction[]>({
-    queryKey: ['linking-unlinked'],
-    queryFn: () => fetchUnlinkedAuctions(enrichFetchLimit)
-  })
   const { data: linkingStats } = useQuery<LinkingStats>({
     queryKey: ['linking-stats'],
     queryFn: fetchLinkingStats
@@ -153,10 +144,8 @@ export function EnrichPage(): JSX.Element {
   const [manualLinkPending, setManualLinkPending] = useState(false)
   const [manualLinkError, setManualLinkError] = useState<string | null>(null)
   const [manualLinkSuccess, setManualLinkSuccess] = useState<string | null>(null)
-  const [languageFilter, setLanguageFilter] = useState('all')
-  const [selectedDiagnosticFilters, setSelectedDiagnosticFilters] = useState<DiagnosticFilterOption[]>([
-    ...diagnosticFilterOptions
-  ])
+  const [languageFilter, setLanguageFilter] = useState('none')
+  const [selectedDiagnosticFilters, setSelectedDiagnosticFilters] = useState<DiagnosticFilterOption[]>([])
   const [unlinkedPage, setUnlinkedPage] = useState(1)
   const [linkedPage, setLinkedPage] = useState(1)
   const [linkedSearchTerm, setLinkedSearchTerm] = useState('')
@@ -164,6 +153,19 @@ export function EnrichPage(): JSX.Element {
   const [unlinkError, setUnlinkError] = useState<string | null>(null)
 
   const pageSize = 100
+
+  const shouldShowUnlinked = languageFilter !== 'none' && selectedDiagnosticFilters.length > 0
+
+  const {
+    data: unlinkedData,
+    isLoading: unlinkedLoading,
+    isError: unlinkedError,
+    refetch: refetchUnlinked
+  } = useQuery<UnlinkedAuction[]>({
+    queryKey: ['linking-unlinked', enrichFetchLimit],
+    queryFn: () => fetchUnlinkedAuctions(enrichFetchLimit),
+    enabled: shouldShowUnlinked
+  })
 
   const handleRunLink = async (): Promise<void> => {
     setTraderaError(null)
@@ -351,6 +353,8 @@ export function EnrichPage(): JSX.Element {
   const visibleUnlinkedAuctions = useMemo(() => {
     const selectedDiagnostics = new Set(selectedDiagnosticFilters)
 
+    if (!shouldShowUnlinked) return []
+
     return sortedUnlinkedAuctions.filter((auction) => {
       if (languageFilter !== 'all') {
         const normalizedFilter = languageFilter.toLowerCase()
@@ -363,7 +367,7 @@ export function EnrichPage(): JSX.Element {
 
       return auctionMarkers.some((marker) => selectedDiagnostics.has(marker as DiagnosticFilterOption))
     })
-  }, [languageFilter, selectedDiagnosticFilters, sortedUnlinkedAuctions])
+  }, [languageFilter, selectedDiagnosticFilters, shouldShowUnlinked, sortedUnlinkedAuctions])
   const pagedUnlinkedAuctions = useMemo(() => {
     const start = (unlinkedPage - 1) * pageSize
     return visibleUnlinkedAuctions.slice(start, start + pageSize)
@@ -372,6 +376,7 @@ export function EnrichPage(): JSX.Element {
   const selectedAiSet = useMemo(() => new Set(selectedAiAuctionIds), [selectedAiAuctionIds])
   const allPageSelected = visiblePageIds.length > 0 && visiblePageIds.every((id) => selectedAiSet.has(id))
   const totalUnlinkedPages = Math.max(1, Math.ceil(visibleUnlinkedAuctions.length / pageSize))
+  const totalUnlinkedAvailable = linkingStats?.unlinked ?? visibleUnlinkedAuctions.length
   const pagedLinkedAuctions = useMemo(() => {
     const start = (linkedPage - 1) * pageSize
     return filteredLinkedAuctions.slice(start, start + pageSize)
@@ -691,8 +696,7 @@ export function EnrichPage(): JSX.Element {
           <div className="min-w-0">
             <CardTitle>Unlinked auctions</CardTitle>
             <CardDescription>
-              Select auctions, then choose which enrichment model to run. Showing the latest{' '}
-              {enrichFetchLimit.toLocaleString('sv-SE')} auctions for faster loading.
+              Choose a language and diagnostics filters to load auctions, then run enrichment on selected rows.
             </CardDescription>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -838,6 +842,7 @@ export function EnrichPage(): JSX.Element {
                   value={languageFilter}
                   onChange={(event) => setLanguageFilter(event.target.value)}
                 >
+                  <option value="none">No language selected</option>
                   <option value="all">All languages</option>
                   {languageOptions.map((language) => (
                     <option key={language} value={language}>
@@ -852,13 +857,22 @@ export function EnrichPage(): JSX.Element {
                   <div className="absolute z-20 mt-2 w-56 rounded-md border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-800 dark:bg-slate-950">
                     <div className="mb-2 flex items-center justify-between text-[11px] text-slate-500">
                       <span>Show auctions with:</span>
-                      <button
-                        type="button"
-                        className="text-indigo-600 hover:underline"
-                        onClick={() => setSelectedDiagnosticFilters([...diagnosticFilterOptions])}
-                      >
-                        Select all
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline"
+                          onClick={() => setSelectedDiagnosticFilters([...diagnosticFilterOptions])}
+                        >
+                          Select all
+                        </button>
+                        <button
+                          type="button"
+                          className="text-slate-500 hover:underline"
+                          onClick={() => setSelectedDiagnosticFilters([])}
+                        >
+                          Clear
+                        </button>
+                      </div>
                     </div>
                     <div className="space-y-2">
                       {diagnosticFilterOptions.map((option) => (
@@ -881,6 +895,7 @@ export function EnrichPage(): JSX.Element {
                     className="h-4 w-4 rounded border-slate-300"
                     checked={allPageSelected}
                     onChange={toggleSelectAllPage}
+                    disabled={!shouldShowUnlinked || pagedUnlinkedAuctions.length === 0}
                     aria-label="Select all auctions on this page"
                   />
                   <span>Select page</span>
@@ -892,8 +907,8 @@ export function EnrichPage(): JSX.Element {
                     ? (unlinkedPage - 1) * pageSize + 1
                     : 0).toLocaleString('sv-SE')}
                   –
-                  {Math.min(unlinkedPage * pageSize, visibleUnlinkedAuctions.length).toLocaleString('sv-SE')} of{' '}
-                  {visibleUnlinkedAuctions.length.toLocaleString('sv-SE')}
+                  {Math.min(unlinkedPage * pageSize, visibleUnlinkedAuctions.length).toLocaleString('sv-SE')} /{' '}
+                  {totalUnlinkedAvailable.toLocaleString('sv-SE')}
                 </span>
                 <div className="flex items-center gap-1">
                   <Button
@@ -1008,11 +1023,13 @@ export function EnrichPage(): JSX.Element {
                 ) : (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center text-sm text-slate-500">
-                      {unlinkedLoading
-                        ? 'Loading unlinked auctions…'
-                        : unlinkedError
-                          ? 'Unable to load unlinked auctions.'
-                          : 'No unlinked auctions found.'}
+                      {!shouldShowUnlinked
+                        ? 'Select a language and at least one Diagnostics filter to load auctions.'
+                        : unlinkedLoading
+                          ? 'Loading unlinked auctions…'
+                          : unlinkedError
+                            ? 'Unable to load unlinked auctions.'
+                            : 'No unlinked auctions found.'}
                     </TableCell>
                   </TableRow>
                 )}
