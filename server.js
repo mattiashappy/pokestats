@@ -2371,21 +2371,82 @@ app.get('/api/eras/:code/expansions', async (req, res) => {
 
 app.get('/api/sales', async (req, res) => {
   try {
-    const parsedLimit = req.query.limit ? Number(req.query.limit) : null
-    const limit = Number.isFinite(parsedLimit) ? parsedLimit : null
-    const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0
+    if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+    const auctionsReady = await ensureTraderaAuctionsTableAvailable()
+    const auctionColumns = await resolveTraderaAuctionColumns()
+    if (!auctionsReady || !auctionColumns) return res.json({ rows: [], total: 0 })
 
-    const filters = {
-      era: req.query.era || null,
-      language: req.query.language || null,
-      minPrice: req.query.minPrice ? Number(req.query.minPrice) : null,
-      maxPrice: req.query.maxPrice ? Number(req.query.maxPrice) : null,
-      limit,
-      offset
+    const parsedLimit = req.query.limit ? Number(req.query.limit) : 100
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 500) : 100
+    const offset = Number.isFinite(Number(req.query.offset)) ? Math.max(0, Number(req.query.offset)) : 0
+
+    const era = req.query.era && req.query.era !== 'all' ? req.query.era : null
+    const language = req.query.language && req.query.language !== 'all' ? req.query.language : null
+    const minPrice = req.query.minPrice ? Number(req.query.minPrice) : null
+    const maxPrice = req.query.maxPrice ? Number(req.query.maxPrice) : null
+    const search = String(req.query.search ?? '').trim().toLowerCase()
+    const sortBy = String(req.query.sortBy ?? 'endDesc')
+
+    const where = []
+    const params = []
+    if (era) {
+      params.push(era)
+      where.push(`a.pokemon_era = $${params.length}`)
+    }
+    if (language) {
+      params.push(language)
+      where.push(`a.pokemon_language = $${params.length}`)
+    }
+    if (Number.isFinite(minPrice)) {
+      params.push(minPrice)
+      where.push(`a.price >= $${params.length}`)
+    }
+    if (Number.isFinite(maxPrice)) {
+      params.push(maxPrice)
+      where.push(`a.price <= $${params.length}`)
+    }
+    if (search) {
+      params.push(`%${search}%`)
+      where.push(`LOWER(COALESCE(a.title, '')) LIKE $${params.length}`)
     }
 
-    const auctions = await fetchAuctionsFromDatabase(filters)
-    return res.json(auctions)
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : ''
+    let orderBy = 'a.end_date DESC NULLS LAST'
+    if (sortBy === 'priceDesc') orderBy = 'a.price DESC NULLS LAST'
+    if (sortBy === 'bidsDesc') orderBy = 'a.bid_count DESC NULLS LAST'
+
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int AS total FROM public.tradera_auctions a ${whereClause}`,
+      params
+    )
+    const total = countRes.rows?.[0]?.total ?? 0
+
+    const dataParams = [...params, limit, offset]
+    const dataRes = await pool.query(
+      `
+        SELECT
+          a.${auctionColumns.itemIdColumn} AS item_id,
+          a.title,
+          a.end_date,
+          a.pokemon_era,
+          a.pokemon_language,
+          a.item_condition,
+          a.price,
+          a.bid_count,
+          a.item_url,
+          a.thumbnail_url,
+          a.seller_alias
+        FROM public.tradera_auctions a
+        ${whereClause}
+        ORDER BY ${orderBy}
+        LIMIT $${dataParams.length - 1}
+        OFFSET $${dataParams.length}
+      `,
+      dataParams
+    )
+
+    const rows = dataRes.rows.map(normalizeTraderaAuctionRow)
+    return res.json({ rows, total })
   } catch (error) {
     console.error('Failed to fetch auctions', error)
     return res.status(500).json({ error: 'Failed to load auctions' })

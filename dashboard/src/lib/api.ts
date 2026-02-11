@@ -1,6 +1,11 @@
 // src/lib/api.ts
 import type { AuctionRecord, CardListItem, CardResponse, EraSummary, ExpansionSummary } from '../types'
 
+export type PagedAuctionsResponse = {
+  rows: AuctionRecord[]
+  total: number
+}
+
 type TraderaAuctionDTO = {
   itemId?: number | string | null
   title?: string | null
@@ -33,10 +38,41 @@ function mapAuctionRecord(row: TraderaAuctionDTO): AuctionRecord {
 }
 
 export async function fetchAuctions(): Promise<AuctionRecord[]> {
-  const response = await fetch('/api/sales')
+  const response = await fetch('/api/sales?limit=5000&offset=0')
   if (!response.ok) throw new Error('Failed to fetch auctions')
-  const rows = (await response.json()) as TraderaAuctionDTO[]
+  const payload = (await response.json()) as TraderaAuctionDTO[] | { rows?: TraderaAuctionDTO[] }
+  const rows = Array.isArray(payload) ? payload : payload.rows ?? []
   return rows.map(mapAuctionRecord)
+}
+
+export async function fetchAuctionsPage(options: {
+  limit?: number
+  offset?: number
+  search?: string
+  era?: string
+  language?: string
+  minPrice?: string | number
+  maxPrice?: string | number
+  sortBy?: 'endDesc' | 'priceDesc' | 'bidsDesc'
+} = {}): Promise<PagedAuctionsResponse> {
+  const params = new URLSearchParams()
+  params.set('limit', String(options.limit ?? 50))
+  params.set('offset', String(options.offset ?? 0))
+  if (options.search) params.set('search', String(options.search))
+  if (options.era && options.era !== 'all') params.set('era', options.era)
+  if (options.language && options.language !== 'all') params.set('language', options.language)
+  if (options.minPrice !== '' && options.minPrice != null) params.set('minPrice', String(options.minPrice))
+  if (options.maxPrice !== '' && options.maxPrice != null) params.set('maxPrice', String(options.maxPrice))
+  if (options.sortBy) params.set('sortBy', options.sortBy)
+
+  const response = await fetch(`/api/sales?${params.toString()}`)
+  if (!response.ok) throw new Error('Failed to fetch auctions')
+  const payload = (await response.json()) as { rows?: TraderaAuctionDTO[]; total?: number }
+
+  return {
+    rows: (payload.rows ?? []).map(mapAuctionRecord),
+    total: Number(payload.total ?? 0)
+  }
 }
 
 type CardDetailsOptions = {
