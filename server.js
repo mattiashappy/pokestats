@@ -1559,7 +1559,44 @@ async function fetchUnlinkedAuctionSummaries({
   const selectedDiagnostics = Array.isArray(diagnostics) ? diagnostics : []
   if (!selectedDiagnostics.length) return { rows: [], total: 0 }
 
+  const allDiagnostics = [
+    'Ready to link',
+    'Missing title',
+    'Missing description',
+    'No card #',
+    'No set match',
+    'No era',
+    'No language',
+    'No condition'
+  ]
   const selectedSet = new Set(selectedDiagnostics)
+  const includesAllDiagnostics = allDiagnostics.every((diagnostic) => selectedSet.has(diagnostic))
+
+  if (includesAllDiagnostics) {
+    const safeOffset = Number.isFinite(offset) ? Math.max(0, Number(offset)) : 0
+    const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Number(limit), 1), 500) : 100
+
+    return {
+      rows: rows.slice(safeOffset, safeOffset + safeLimit).map((row) => ({
+        item_id: row.item_id,
+        title: row.title ?? null,
+        description: row.description ?? null,
+        end_date: row.end_date ?? null,
+        price: row.price ?? null,
+        bid_count: row.bid_count ?? null,
+        item_url: row.item_url ?? null,
+        seller_alias: row.seller_alias ?? null,
+        pokemon_era: row.pokemon_era ?? null,
+        pokemon_language: row.pokemon_language ?? null,
+        item_condition: row.item_condition ?? null,
+        detected_collector_number: null,
+        detected_expansion_name: null,
+        detected_expansion_code: null
+      })),
+      total: rows.length
+    }
+  }
+
   const needsCollectorNumber = selectedSet.has('Ready to link') || selectedSet.has('No card #')
   const needsSetMatch = selectedSet.has('Ready to link') || selectedSet.has('No set match')
 
@@ -2696,7 +2733,23 @@ app.get('/api/cards/:id', async (req, res) => {
       }
     }
 
-    if (!card) return res.status(404).json({ error: 'Card not found' })
+    if (!card) {
+      return res.json({
+        id: cardIdParam,
+        name: `Unknown card (${cardIdParam})`,
+        era: null,
+        set_name: null,
+        set_code: null,
+        language: null,
+        card_number: null,
+        image_url: null,
+        product_details: null,
+        price_market: null,
+        tradera_market_price: null,
+        price_history: null,
+        prices_data: null
+      })
+    }
 
     return res.json(card)
   } catch (error) {
