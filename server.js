@@ -2874,6 +2874,54 @@ app.post('/api/linking/manual', async (req, res) => {
   }
 })
 
+
+app.post('/api/linking/unlink', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  try {
+    const auctionId = Number(req.body?.auctionId)
+    if (!Number.isFinite(auctionId)) {
+      return res.status(400).json({ error: 'Invalid auction id' })
+    }
+
+    const [linkConfig, auctionsReady] = await Promise.all([
+      getTraderaAuctionLinksConfig(),
+      ensureTraderaAuctionsTableAvailable()
+    ])
+
+    if (!linkConfig || !auctionsReady) {
+      return res.status(500).json({ error: 'Required tables unavailable' })
+    }
+
+    const auctionColumns = await resolveTraderaAuctionColumns(linkConfig)
+    if (!auctionColumns) {
+      return res.status(500).json({ error: 'Required tables unavailable' })
+    }
+
+    const {
+      rows: [auction]
+    } = await pool.query(
+      `SELECT ${auctionColumns.keyColumn} AS auction_key FROM public.tradera_auctions WHERE ${auctionColumns.itemIdColumn} = $1`,
+      [auctionId]
+    )
+
+    const auctionKey = auction?.auction_key ?? auctionId
+    const result = await pool.query(
+      `DELETE FROM public.${linkConfig.tableName} WHERE ${linkConfig.auctionIdColumn} = $1`,
+      [auctionKey]
+    )
+
+    if (!result.rowCount) {
+      return res.status(404).json({ error: 'Auction link not found' })
+    }
+
+    return res.json({ ok: true })
+  } catch (error) {
+    console.error('Failed to unlink auction', error)
+    return res.status(500).json({ error: 'Failed to unlink auction' })
+  }
+})
+
 app.get('/api/linking/unlinked', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
 
