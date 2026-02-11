@@ -15,6 +15,13 @@ function formatSek(value: number | null | undefined): string {
   return new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK' }).format(Number(value))
 }
 
+function formatAuctionEndDate(value: string | null | undefined): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleString('sv-SE')
+}
+
 export function CardPage(): JSX.Element {
   const { id, setCode } = useParams()
   const { user } = useAuth()
@@ -308,7 +315,7 @@ export function CardPage(): JSX.Element {
                       <div className="text-right text-xs font-black text-slate-900">{formatSek(auction.price)}</div>
                     </div>
                     <div className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                      Ends: {new Date(auction.endDate).toLocaleString('sv-SE')}
+                      Ends: {formatAuctionEndDate(auction.endDate)}
                     </div>
                     {auction.itemUrl ? (
                       <a
