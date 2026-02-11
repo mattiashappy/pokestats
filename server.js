@@ -1493,20 +1493,39 @@ async function fetchUnlinkedAuctions(limit = null) {
   return rows
 }
 
-async function fetchUnlinkedAuctionSummaries(limit = null) {
-  if (!pool) return []
+
+function buildUnlinkedDiagnostics(auction) {
+  const diagnostics = []
+  if (!auction.title) diagnostics.push('Missing title')
+  if (!auction.description) diagnostics.push('Missing description')
+  if (!auction.detected_collector_number) diagnostics.push('No card #')
+  if (!auction.detected_expansion_name && !auction.detected_expansion_code) diagnostics.push('No set match')
+  if (!auction.pokemon_era) diagnostics.push('No era')
+  if (!auction.pokemon_language) diagnostics.push('No language')
+  if (!auction.item_condition) diagnostics.push('No condition')
+  return diagnostics
+}
+
+function normalizeUnlinkedLanguage(value) {
+  const trimmed = String(value ?? '').trim()
+  return trimmed || 'Unknown'
+}
+
+async function fetchUnlinkedAuctionSummaries({
+  limit = null,
+  offset = 0,
+  language = 'all',
+  diagnostics = []
+} = {}) {
+  if (!pool) return { rows: [], total: 0 }
   const [linkConfig, auctionsReady] = await Promise.all([
     getTraderaAuctionLinksConfig(),
     ensureTraderaAuctionsTableAvailable()
   ])
-  if (!linkConfig || !auctionsReady) return []
+  if (!linkConfig || !auctionsReady) return { rows: [], total: 0 }
   const auctionColumns = await resolveTraderaAuctionColumns(linkConfig)
-  if (!auctionColumns) return []
+  if (!auctionColumns) return { rows: [], total: 0 }
 
-  const hasLimit = typeof limit === 'number' && Number.isFinite(limit)
-  const safeLimit = hasLimit ? Math.min(Math.max(limit, 1), 2000) : null
-  const limitClause = safeLimit ? 'LIMIT $1' : ''
-  const params = safeLimit ? [safeLimit] : []
   const { rows } = await pool.query(
     `
       SELECT
@@ -1525,14 +1544,12 @@ async function fetchUnlinkedAuctionSummaries(limit = null) {
       LEFT JOIN public.${linkConfig.tableName} l ON l.${linkConfig.auctionIdColumn} = a.${auctionColumns.keyColumn}
       WHERE l.${linkConfig.auctionIdColumn} IS NULL
       ORDER BY a.end_date DESC
-      ${limitClause}
-    `,
-    params
+    `
   )
 
   const expansions = await fetchLinkingSets()
 
-  return rows.map((row) => {
+  const enrichedRows = rows.map((row) => {
     const text = normalizeAuctionText(`${row.title ?? ''} ${row.description ?? ''}`)
     const collectorNumber = extractCardNumber(text)
     const expansion = matchExpansion(expansions, text)
@@ -1554,6 +1571,39 @@ async function fetchUnlinkedAuctionSummaries(limit = null) {
       detected_expansion_code: expansion?.set_code ?? null
     }
   })
+
+  const selectedDiagnostics = Array.isArray(diagnostics) ? diagnostics : []
+  const filteredRows = enrichedRows.filter((row) => {
+    if (language !== 'all') {
+      const normalizedLanguage = normalizeUnlinkedLanguage(row.pokemon_language).toLowerCase()
+      if (normalizedLanguage !== String(language).toLowerCase()) return false
+    }
+
+    if (!selectedDiagnostics.length) return false
+
+    const diagnosticsForRow = buildUnlinkedDiagnostics(row)
+    const markers = diagnosticsForRow.length ? diagnosticsForRow : ['Ready to link']
+    return markers.some((marker) => selectedDiagnostics.includes(marker))
+  })
+
+  filteredRows.sort((left, right) => {
+    const leftReady = buildUnlinkedDiagnostics(left).length === 0
+    const rightReady = buildUnlinkedDiagnostics(right).length === 0
+    if (leftReady !== rightReady) return leftReady ? -1 : 1
+
+    const leftTitle = String(left.title ?? '').trim()
+    const rightTitle = String(right.title ?? '').trim()
+    const titleOrder = leftTitle.localeCompare(rightTitle, 'sv-SE', { sensitivity: 'base' })
+    if (titleOrder !== 0) return titleOrder
+    return Number(left.item_id) - Number(right.item_id)
+  })
+
+  const total = filteredRows.length
+  const safeOffset = Number.isFinite(offset) ? Math.max(0, Number(offset)) : 0
+  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Number(limit), 1), 500) : 100
+  const pagedRows = filteredRows.slice(safeOffset, safeOffset + safeLimit)
+
+  return { rows: pagedRows, total }
 }
 
 async function runDeterministicLinker({ limit = null } = {}) {
@@ -2926,10 +2976,18 @@ app.get('/api/linking/unlinked', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
 
   try {
-    const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : null
-    const auctions = await fetchUnlinkedAuctionSummaries(limit)
-    res.json(
-      auctions.map((row) => ({
+    const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : 100
+    const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0
+    const language = String(req.query.language ?? 'all')
+    const diagnostics = String(req.query.diagnostics ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+
+    const result = await fetchUnlinkedAuctionSummaries({ limit, offset, language, diagnostics })
+    res.json({
+      total: result.total,
+      rows: result.rows.map((row) => ({
         itemId: row.item_id,
         title: row.title ?? null,
         description: row.description ?? null,
@@ -2945,7 +3003,7 @@ app.get('/api/linking/unlinked', async (req, res) => {
         detectedExpansionName: row.detected_expansion_name ?? null,
         detectedExpansionCode: row.detected_expansion_code ?? null
       }))
-    )
+    })
   } catch (error) {
     console.error('Failed to fetch unlinked auctions', error)
     res.status(500).json({ error: 'Failed to load unlinked auctions' })

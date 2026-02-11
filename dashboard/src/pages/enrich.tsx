@@ -29,7 +29,8 @@ import type {
   LinkingStats,
   MatchLogEntry,
   TraderaLinkSummary,
-  UnlinkedAuction
+  UnlinkedAuction,
+  UnlinkedAuctionsResponse
 } from '../lib/api'
 import type { VisionMatchSummary } from '../lib/api'
 
@@ -104,7 +105,6 @@ const buildDiagnostics = (auction: UnlinkedAuction): string[] => {
   return diagnostics
 }
 
-const isReadyToLink = (auction: UnlinkedAuction): boolean => buildDiagnostics(auction).length === 0
 
 export function EnrichPage(): JSX.Element {
   const enrichFetchLimit = 200
@@ -162,9 +162,15 @@ export function EnrichPage(): JSX.Element {
     isLoading: unlinkedLoading,
     isError: unlinkedError,
     refetch: refetchUnlinked
-  } = useQuery<UnlinkedAuction[]>({
-    queryKey: ['linking-unlinked', unlinkedFetchLimit],
-    queryFn: () => fetchUnlinkedAuctions(unlinkedFetchLimit),
+  } = useQuery<UnlinkedAuctionsResponse>({
+    queryKey: ['linking-unlinked', unlinkedFetchLimit, unlinkedPage, languageFilter, selectedDiagnosticFilters],
+    queryFn: () =>
+      fetchUnlinkedAuctions({
+        limit: unlinkedFetchLimit,
+        offset: (unlinkedPage - 1) * pageSize,
+        language: languageFilter,
+        diagnostics: selectedDiagnosticFilters
+      }),
     enabled: shouldShowUnlinked
   })
 
@@ -299,22 +305,7 @@ export function EnrichPage(): JSX.Element {
   }
 
   const links = linkData ?? []
-  const unlinkedAuctions = unlinkedData ?? []
-  const sortedUnlinkedAuctions = useMemo(() => {
-    return [...unlinkedAuctions].sort((left, right) => {
-      const leftReadyToLink = isReadyToLink(left)
-      const rightReadyToLink = isReadyToLink(right)
-      if (leftReadyToLink !== rightReadyToLink) {
-        return leftReadyToLink ? -1 : 1
-      }
-
-      const leftTitle = left.title?.trim() ?? ''
-      const rightTitle = right.title?.trim() ?? ''
-      const titleOrder = leftTitle.localeCompare(rightTitle, 'sv-SE', { sensitivity: 'base' })
-      if (titleOrder !== 0) return titleOrder
-      return left.itemId - right.itemId
-    })
-  }, [unlinkedAuctions])
+  const unlinkedAuctions = unlinkedData?.rows ?? []
   const {
     data: cardSearchResults,
     isLoading: cardSearchLoading,
@@ -328,9 +319,9 @@ export function EnrichPage(): JSX.Element {
     const linkedCards = links.filter((link) => link.cardId).length
     return {
       linkedCards,
-      unlinkedCards: linkingStats?.unlinked ?? unlinkedAuctions.length
+      unlinkedCards: linkingStats?.unlinked ?? unlinkedData?.total ?? 0
     }
-  }, [links, linkingStats?.unlinked, unlinkedAuctions.length])
+  }, [links, linkingStats?.unlinked, unlinkedData?.total])
   const filteredLinkedAuctions = useMemo(() => {
     const query = linkedSearchTerm.trim().toLowerCase()
     if (!query) return links
@@ -351,33 +342,13 @@ export function EnrichPage(): JSX.Element {
       return haystack.includes(query)
     })
   }, [linkedSearchTerm, links])
-  const visibleUnlinkedAuctions = useMemo(() => {
-    const selectedDiagnostics = new Set(selectedDiagnosticFilters)
-
-    if (!shouldShowUnlinked) return []
-
-    return sortedUnlinkedAuctions.filter((auction) => {
-      if (languageFilter !== 'all') {
-        const normalizedFilter = languageFilter.toLowerCase()
-        const normalizedLanguage = normalizeLanguage(auction.pokemonLanguage).toLowerCase()
-        if (normalizedLanguage !== normalizedFilter) return false
-      }
-
-      const diagnostics = buildDiagnostics(auction)
-      const auctionMarkers = diagnostics.length ? diagnostics : ['Ready to link']
-
-      return auctionMarkers.some((marker) => selectedDiagnostics.has(marker as DiagnosticFilterOption))
-    })
-  }, [languageFilter, selectedDiagnosticFilters, shouldShowUnlinked, sortedUnlinkedAuctions])
-  const pagedUnlinkedAuctions = useMemo(() => {
-    const start = (unlinkedPage - 1) * pageSize
-    return visibleUnlinkedAuctions.slice(start, start + pageSize)
-  }, [pageSize, unlinkedPage, visibleUnlinkedAuctions])
+  const pagedUnlinkedAuctions = unlinkedAuctions
   const visiblePageIds = useMemo(() => pagedUnlinkedAuctions.map((auction) => auction.itemId), [pagedUnlinkedAuctions])
   const selectedAiSet = useMemo(() => new Set(selectedAiAuctionIds), [selectedAiAuctionIds])
   const allPageSelected = visiblePageIds.length > 0 && visiblePageIds.every((id) => selectedAiSet.has(id))
-  const totalUnlinkedPages = Math.max(1, Math.ceil(visibleUnlinkedAuctions.length / pageSize))
-  const totalUnlinkedAvailable = linkingStats?.unlinked ?? visibleUnlinkedAuctions.length
+  const totalUnlinkedVisible = shouldShowUnlinked ? unlinkedData?.total ?? 0 : 0
+  const totalUnlinkedPages = Math.max(1, Math.ceil(totalUnlinkedVisible / pageSize))
+  const totalUnlinkedAvailable = linkingStats?.unlinked ?? totalUnlinkedVisible
   const pagedLinkedAuctions = useMemo(() => {
     const start = (linkedPage - 1) * pageSize
     return filteredLinkedAuctions.slice(start, start + pageSize)
@@ -402,11 +373,11 @@ export function EnrichPage(): JSX.Element {
 
   const languageOptions = useMemo(() => {
     const values = new Set<string>()
-    sortedUnlinkedAuctions.forEach((auction) => {
+    unlinkedAuctions.forEach((auction) => {
       values.add(normalizeLanguage(auction.pokemonLanguage))
     })
     return Array.from(values).sort((left, right) => left.localeCompare(right, 'sv-SE'))
-  }, [sortedUnlinkedAuctions])
+  }, [unlinkedAuctions])
 
   useEffect(() => {
     if (!skipReasonOptions.length) return
@@ -904,15 +875,21 @@ export function EnrichPage(): JSX.Element {
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                 <span>
-                  Showing {visibleUnlinkedAuctions.length.toLocaleString('sv-SE')} /{' '}
+                  Showing {totalUnlinkedVisible.toLocaleString('sv-SE')} /{' '}
                   {totalUnlinkedAvailable.toLocaleString('sv-SE')}
                 </span>
+                {shouldShowUnlinked ? (
+                  <span>
+                    Page {unlinkedPage.toLocaleString('sv-SE')} ({((unlinkedPage - 1) * pageSize + 1).toLocaleString('sv-SE')}-
+                    {Math.min(unlinkedPage * pageSize, totalUnlinkedVisible).toLocaleString('sv-SE')})
+                  </span>
+                ) : null}
                 <div className="flex items-center gap-1">
                   <Button
                     type="button"
                     variant="secondary"
                     size="sm"
-                    disabled={unlinkedPage <= 1}
+                    disabled={unlinkedPage <= 1 || !shouldShowUnlinked}
                     onClick={() => setUnlinkedPage((prev) => Math.max(1, prev - 1))}
                   >
                     Previous
@@ -921,7 +898,7 @@ export function EnrichPage(): JSX.Element {
                     type="button"
                     variant="secondary"
                     size="sm"
-                    disabled={unlinkedPage >= totalUnlinkedPages}
+                    disabled={unlinkedPage >= totalUnlinkedPages || !shouldShowUnlinked}
                     onClick={() => setUnlinkedPage((prev) => Math.min(totalUnlinkedPages, prev + 1))}
                   >
                     Next
