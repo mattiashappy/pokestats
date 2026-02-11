@@ -8,12 +8,7 @@ import { Card as UiCard, CardContent, CardDescription, CardHeader, CardTitle } f
 import { fetchCardAuctions, fetchCardDetails } from '../lib/api'
 import { useAuth } from '../providers/auth'
 import { getCardSetIdentifier } from '../lib/sets'
-import { getMarketPrice } from '../utils/priceHelper'
 import type { AuctionRecord } from '../types'
-
-function formatUsd(value: string): string {
-  return value === 'N/A' ? '—' : value
-}
 
 function formatSek(value: number | null | undefined): string {
   if (!Number.isFinite(Number(value))) return '—'
