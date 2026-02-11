@@ -38,7 +38,7 @@ function mapAuctionRecord(row: TraderaAuctionDTO): AuctionRecord {
 }
 
 export async function fetchAuctions(): Promise<AuctionRecord[]> {
-  const response = await fetch('/api/sales?limit=5000&offset=0')
+  const response = await fetch('/api/sales?limit=100&offset=0')
   if (!response.ok) throw new Error('Failed to fetch auctions')
   const payload = (await response.json()) as TraderaAuctionDTO[] | { rows?: TraderaAuctionDTO[] }
   const rows = Array.isArray(payload) ? payload : payload.rows ?? []

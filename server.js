@@ -2384,7 +2384,7 @@ app.get('/api/sales', async (req, res) => {
     const language = req.query.language && req.query.language !== 'all' ? req.query.language : null
     const minPrice = req.query.minPrice ? Number(req.query.minPrice) : null
     const maxPrice = req.query.maxPrice ? Number(req.query.maxPrice) : null
-    const search = String(req.query.search ?? '').trim().toLowerCase()
+    const search = String(req.query.search ?? '').trim()
     const sortBy = String(req.query.sortBy ?? 'endDesc')
 
     const where = []
@@ -2407,7 +2407,7 @@ app.get('/api/sales', async (req, res) => {
     }
     if (search) {
       params.push(`%${search}%`)
-      where.push(`LOWER(COALESCE(a.title, '')) LIKE $${params.length}`)
+      where.push(`COALESCE(a.title, '') ILIKE $${params.length}`)
     }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : ''
