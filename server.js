@@ -1553,7 +1553,7 @@ async function fetchUnlinkedAuctionSummaries({
       ${whereClause}
       ORDER BY a.end_date DESC
     `,
-    params
+    dataParams
   )
 
   const selectedDiagnostics = Array.isArray(diagnostics) ? diagnostics : []
