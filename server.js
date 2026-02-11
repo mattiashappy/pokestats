@@ -1493,20 +1493,47 @@ async function fetchUnlinkedAuctions(limit = null) {
   return rows
 }
 
-async function fetchUnlinkedAuctionSummaries(limit = null) {
-  if (!pool) return []
+
+function buildUnlinkedDiagnostics(auction) {
+  const diagnostics = []
+  if (!auction.title) diagnostics.push('Missing title')
+  if (!auction.description) diagnostics.push('Missing description')
+  if (!auction.detected_collector_number) diagnostics.push('No card #')
+  if (!auction.detected_expansion_name && !auction.detected_expansion_code) diagnostics.push('No set match')
+  if (!auction.pokemon_era) diagnostics.push('No era')
+  if (!auction.pokemon_language) diagnostics.push('No language')
+  if (!auction.item_condition) diagnostics.push('No condition')
+  return diagnostics
+}
+
+function normalizeUnlinkedLanguage(value) {
+  const trimmed = String(value ?? '').trim()
+  return trimmed || 'Unknown'
+}
+
+async function fetchUnlinkedAuctionSummaries({
+  limit = null,
+  offset = 0,
+  language = 'all',
+  diagnostics = []
+} = {}) {
+  if (!pool) return { rows: [], total: 0 }
   const [linkConfig, auctionsReady] = await Promise.all([
     getTraderaAuctionLinksConfig(),
     ensureTraderaAuctionsTableAvailable()
   ])
-  if (!linkConfig || !auctionsReady) return []
+  if (!linkConfig || !auctionsReady) return { rows: [], total: 0 }
   const auctionColumns = await resolveTraderaAuctionColumns(linkConfig)
-  if (!auctionColumns) return []
+  if (!auctionColumns) return { rows: [], total: 0 }
 
-  const hasLimit = typeof limit === 'number' && Number.isFinite(limit)
-  const safeLimit = hasLimit ? Math.min(Math.max(limit, 1), 2000) : null
-  const limitClause = safeLimit ? 'LIMIT $1' : ''
-  const params = safeLimit ? [safeLimit] : []
+  const params = []
+  const where = [`l.${linkConfig.auctionIdColumn} IS NULL`]
+  if (language !== 'all') {
+    params.push(language)
+    where.push(`COALESCE(a.pokemon_language, 'Unknown') = $${params.length}`)
+  }
+  const whereClause = `WHERE ${where.join(' AND ')}`
+
   const { rows } = await pool.query(
     `
       SELECT
@@ -1523,37 +1550,158 @@ async function fetchUnlinkedAuctionSummaries(limit = null) {
         a.item_condition
       FROM public.tradera_auctions a
       LEFT JOIN public.${linkConfig.tableName} l ON l.${linkConfig.auctionIdColumn} = a.${auctionColumns.keyColumn}
-      WHERE l.${linkConfig.auctionIdColumn} IS NULL
+      ${whereClause}
       ORDER BY a.end_date DESC
-      ${limitClause}
     `,
     params
   )
 
-  const expansions = await fetchLinkingSets()
+  const selectedDiagnostics = Array.isArray(diagnostics) ? diagnostics : []
+  if (!selectedDiagnostics.length) return { rows: [], total: 0 }
 
-  return rows.map((row) => {
-    const text = normalizeAuctionText(`${row.title ?? ''} ${row.description ?? ''}`)
-    const collectorNumber = extractCardNumber(text)
-    const expansion = matchExpansion(expansions, text)
+  const allDiagnostics = [
+    'Ready to link',
+    'Missing title',
+    'Missing description',
+    'No card #',
+    'No set match',
+    'No era',
+    'No language',
+    'No condition'
+  ]
+  const selectedSet = new Set(selectedDiagnostics)
+  const includesAllDiagnostics = allDiagnostics.every((diagnostic) => selectedSet.has(diagnostic))
+
+  if (includesAllDiagnostics) {
+    const safeOffset = Number.isFinite(offset) ? Math.max(0, Number(offset)) : 0
+    const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Number(limit), 1), 500) : 100
 
     return {
+      rows: rows.slice(safeOffset, safeOffset + safeLimit).map((row) => ({
+        item_id: row.item_id,
+        title: row.title ?? null,
+        description: row.description ?? null,
+        end_date: row.end_date ?? null,
+        price: row.price ?? null,
+        bid_count: row.bid_count ?? null,
+        item_url: row.item_url ?? null,
+        seller_alias: row.seller_alias ?? null,
+        pokemon_era: row.pokemon_era ?? null,
+        pokemon_language: row.pokemon_language ?? null,
+        item_condition: row.item_condition ?? null,
+        detected_collector_number: null,
+        detected_expansion_name: null,
+        detected_expansion_code: null
+      })),
+      total: rows.length
+    }
+  }
+
+  const needsCollectorNumber = selectedSet.has('Ready to link') || selectedSet.has('No card #')
+  const needsSetMatch = selectedSet.has('Ready to link') || selectedSet.has('No set match')
+
+  const expansions = needsSetMatch ? await fetchLinkingSets() : []
+  const expansionMatchers = expansions.flatMap((expansion) => {
+    const candidates = [expansion.normalizedName, expansion.normalizedCode].filter(Boolean)
+    return candidates.flatMap((candidate) => {
+      try {
+        return [{
+          expansion,
+          score: candidate.length,
+          regex: new RegExp(`\b${escapeRegex(candidate)}\b`)
+        }]
+      } catch {
+        return []
+      }
+    })
+  })
+
+  const filteredRows = []
+
+  for (const row of rows) {
+    const title = row.title ?? null
+    const description = row.description ?? null
+    const pokemonEra = row.pokemon_era ?? null
+    const pokemonLanguage = row.pokemon_language ?? null
+    const itemCondition = row.item_condition ?? null
+
+    const hasReadyPrerequisites = Boolean(title && description && pokemonEra && pokemonLanguage && itemCondition)
+    if (selectedSet.size === 1 && selectedSet.has('Ready to link') && !hasReadyPrerequisites) {
+      continue
+    }
+
+    let text = ''
+    let collectorNumber = null
+    if (needsCollectorNumber || needsSetMatch) {
+      text = normalizeAuctionText(`${title ?? ''} ${description ?? ''}`)
+      collectorNumber = extractCardNumber(text)
+    }
+
+    let bestExpansion = null
+    if (needsSetMatch && collectorNumber && hasReadyPrerequisites) {
+      let bestScore = 0
+      for (const matcher of expansionMatchers) {
+        if (matcher.score <= bestScore) continue
+        try {
+          if (!matcher.regex.test(text)) continue
+        } catch {
+          continue
+        }
+        bestScore = matcher.score
+        bestExpansion = matcher.expansion
+      }
+    }
+
+    const diagnosticsForRow = []
+    if (!title) diagnosticsForRow.push('Missing title')
+    if (!description) diagnosticsForRow.push('Missing description')
+    if (!collectorNumber) diagnosticsForRow.push('No card #')
+    if (!bestExpansion?.name && !bestExpansion?.set_code) diagnosticsForRow.push('No set match')
+    if (!pokemonEra) diagnosticsForRow.push('No era')
+    if (!pokemonLanguage) diagnosticsForRow.push('No language')
+    if (!itemCondition) diagnosticsForRow.push('No condition')
+
+    const markers = diagnosticsForRow.length ? diagnosticsForRow : ['Ready to link']
+    if (!markers.some((marker) => selectedSet.has(marker))) continue
+
+    filteredRows.push({
       item_id: row.item_id,
-      title: row.title ?? null,
-      description: row.description ?? null,
+      title,
+      description,
       end_date: row.end_date ?? null,
       price: row.price ?? null,
       bid_count: row.bid_count ?? null,
       item_url: row.item_url ?? null,
       seller_alias: row.seller_alias ?? null,
-      pokemon_era: row.pokemon_era ?? null,
-      pokemon_language: row.pokemon_language ?? null,
-      item_condition: row.item_condition ?? null,
+      pokemon_era: pokemonEra,
+      pokemon_language: pokemonLanguage,
+      item_condition: itemCondition,
       detected_collector_number: collectorNumber ?? null,
-      detected_expansion_name: expansion?.name ?? null,
-      detected_expansion_code: expansion?.set_code ?? null
-    }
+      detected_expansion_name: bestExpansion?.name ?? null,
+      detected_expansion_code: bestExpansion?.set_code ?? null
+    })
+  }
+
+  filteredRows.sort((left, right) => {
+    const leftReady = buildUnlinkedDiagnostics(left).length === 0
+    const rightReady = buildUnlinkedDiagnostics(right).length === 0
+    if (leftReady !== rightReady) return leftReady ? -1 : 1
+
+    const leftTitle = String(left.title ?? '').trim()
+    const rightTitle = String(right.title ?? '').trim()
+    const titleOrder = leftTitle.localeCompare(rightTitle, 'sv-SE', { sensitivity: 'base' })
+    if (titleOrder !== 0) return titleOrder
+    return Number(left.item_id) - Number(right.item_id)
   })
+
+  const total = filteredRows.length
+  const safeOffset = Number.isFinite(offset) ? Math.max(0, Number(offset)) : 0
+  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Number(limit), 1), 500) : 100
+
+  return {
+    rows: filteredRows.slice(safeOffset, safeOffset + safeLimit),
+    total
+  }
 }
 
 async function runDeterministicLinker({ limit = null } = {}) {
@@ -2321,21 +2469,82 @@ app.get('/api/eras/:code/expansions', async (req, res) => {
 
 app.get('/api/sales', async (req, res) => {
   try {
-    const parsedLimit = req.query.limit ? Number(req.query.limit) : null
-    const limit = Number.isFinite(parsedLimit) ? parsedLimit : null
-    const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0
+    if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+    const auctionsReady = await ensureTraderaAuctionsTableAvailable()
+    const auctionColumns = await resolveTraderaAuctionColumns()
+    if (!auctionsReady || !auctionColumns) return res.json({ rows: [], total: 0 })
 
-    const filters = {
-      era: req.query.era || null,
-      language: req.query.language || null,
-      minPrice: req.query.minPrice ? Number(req.query.minPrice) : null,
-      maxPrice: req.query.maxPrice ? Number(req.query.maxPrice) : null,
-      limit,
-      offset
+    const parsedLimit = req.query.limit ? Number(req.query.limit) : 100
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 500) : 100
+    const offset = Number.isFinite(Number(req.query.offset)) ? Math.max(0, Number(req.query.offset)) : 0
+
+    const era = req.query.era && req.query.era !== 'all' ? req.query.era : null
+    const language = req.query.language && req.query.language !== 'all' ? req.query.language : null
+    const minPrice = req.query.minPrice ? Number(req.query.minPrice) : null
+    const maxPrice = req.query.maxPrice ? Number(req.query.maxPrice) : null
+    const search = String(req.query.search ?? '').trim()
+    const sortBy = String(req.query.sortBy ?? 'endDesc')
+
+    const where = []
+    const params = []
+    if (era) {
+      params.push(era)
+      where.push(`a.pokemon_era = $${params.length}`)
+    }
+    if (language) {
+      params.push(language)
+      where.push(`a.pokemon_language = $${params.length}`)
+    }
+    if (Number.isFinite(minPrice)) {
+      params.push(minPrice)
+      where.push(`a.price >= $${params.length}`)
+    }
+    if (Number.isFinite(maxPrice)) {
+      params.push(maxPrice)
+      where.push(`a.price <= $${params.length}`)
+    }
+    if (search) {
+      params.push(`%${search}%`)
+      where.push(`COALESCE(a.title, '') ILIKE $${params.length}`)
     }
 
-    const auctions = await fetchAuctionsFromDatabase(filters)
-    return res.json(auctions)
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : ''
+    let orderBy = 'a.end_date DESC NULLS LAST'
+    if (sortBy === 'priceDesc') orderBy = 'a.price DESC NULLS LAST'
+    if (sortBy === 'bidsDesc') orderBy = 'a.bid_count DESC NULLS LAST'
+
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int AS total FROM public.tradera_auctions a ${whereClause}`,
+      params
+    )
+    const total = countRes.rows?.[0]?.total ?? 0
+
+    const dataParams = [...params, limit, offset]
+    const dataRes = await pool.query(
+      `
+        SELECT
+          a.${auctionColumns.itemIdColumn} AS item_id,
+          a.title,
+          a.end_date,
+          a.pokemon_era,
+          a.pokemon_language,
+          a.item_condition,
+          a.price,
+          a.bid_count,
+          a.item_url,
+          a.thumbnail_url,
+          a.seller_alias
+        FROM public.tradera_auctions a
+        ${whereClause}
+        ORDER BY ${orderBy}
+        LIMIT $${dataParams.length - 1}
+        OFFSET $${dataParams.length}
+      `,
+      dataParams
+    )
+
+    const rows = dataRes.rows.map(normalizeTraderaAuctionRow)
+    return res.json({ rows, total })
   } catch (error) {
     console.error('Failed to fetch auctions', error)
     return res.status(500).json({ error: 'Failed to load auctions' })
@@ -2524,7 +2733,23 @@ app.get('/api/cards/:id', async (req, res) => {
       }
     }
 
-    if (!card) return res.status(404).json({ error: 'Card not found' })
+    if (!card) {
+      return res.json({
+        id: cardIdParam,
+        name: `Unknown card (${cardIdParam})`,
+        era: null,
+        set_name: null,
+        set_code: null,
+        language: null,
+        card_number: null,
+        image_url: null,
+        product_details: null,
+        price_market: null,
+        tradera_market_price: null,
+        price_history: null,
+        prices_data: null
+      })
+    }
 
     return res.json(card)
   } catch (error) {
@@ -2874,14 +3099,70 @@ app.post('/api/linking/manual', async (req, res) => {
   }
 })
 
+
+app.post('/api/linking/unlink', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
+
+  try {
+    const auctionId = Number(req.body?.auctionId)
+    if (!Number.isFinite(auctionId)) {
+      return res.status(400).json({ error: 'Invalid auction id' })
+    }
+
+    const [linkConfig, auctionsReady] = await Promise.all([
+      getTraderaAuctionLinksConfig(),
+      ensureTraderaAuctionsTableAvailable()
+    ])
+
+    if (!linkConfig || !auctionsReady) {
+      return res.status(500).json({ error: 'Required tables unavailable' })
+    }
+
+    const auctionColumns = await resolveTraderaAuctionColumns(linkConfig)
+    if (!auctionColumns) {
+      return res.status(500).json({ error: 'Required tables unavailable' })
+    }
+
+    const {
+      rows: [auction]
+    } = await pool.query(
+      `SELECT ${auctionColumns.keyColumn} AS auction_key FROM public.tradera_auctions WHERE ${auctionColumns.itemIdColumn} = $1`,
+      [auctionId]
+    )
+
+    const auctionKey = auction?.auction_key ?? auctionId
+    const result = await pool.query(
+      `DELETE FROM public.${linkConfig.tableName} WHERE ${linkConfig.auctionIdColumn} = $1`,
+      [auctionKey]
+    )
+
+    if (!result.rowCount) {
+      return res.status(404).json({ error: 'Auction link not found' })
+    }
+
+    return res.json({ ok: true })
+  } catch (error) {
+    console.error('Failed to unlink auction', error)
+    return res.status(500).json({ error: 'Failed to unlink auction' })
+  }
+})
+
 app.get('/api/linking/unlinked', async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'DATABASE_URL not set' })
 
   try {
-    const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : null
-    const auctions = await fetchUnlinkedAuctionSummaries(limit)
-    res.json(
-      auctions.map((row) => ({
+    const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : 100
+    const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : 0
+    const language = String(req.query.language ?? 'all')
+    const diagnostics = String(req.query.diagnostics ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+
+    const result = await fetchUnlinkedAuctionSummaries({ limit, offset, language, diagnostics })
+    res.json({
+      total: result.total,
+      rows: result.rows.map((row) => ({
         itemId: row.item_id,
         title: row.title ?? null,
         description: row.description ?? null,
@@ -2897,10 +3178,10 @@ app.get('/api/linking/unlinked', async (req, res) => {
         detectedExpansionName: row.detected_expansion_name ?? null,
         detectedExpansionCode: row.detected_expansion_code ?? null
       }))
-    )
+    })
   } catch (error) {
     console.error('Failed to fetch unlinked auctions', error)
-    res.status(500).json({ error: 'Failed to load unlinked auctions' })
+    return res.json({ total: 0, rows: [] })
   }
 })
 
