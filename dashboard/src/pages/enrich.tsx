@@ -87,6 +87,8 @@ const buildDiagnostics = (auction: UnlinkedAuction): string[] => {
   return diagnostics
 }
 
+const isReadyToLink = (auction: UnlinkedAuction): boolean => buildDiagnostics(auction).length === 0
+
 export function EnrichPage(): JSX.Element {
   const enrichFetchLimit = 200
   const {
@@ -274,6 +276,12 @@ export function EnrichPage(): JSX.Element {
   const unlinkedAuctions = unlinkedData ?? []
   const sortedUnlinkedAuctions = useMemo(() => {
     return [...unlinkedAuctions].sort((left, right) => {
+      const leftReadyToLink = isReadyToLink(left)
+      const rightReadyToLink = isReadyToLink(right)
+      if (leftReadyToLink !== rightReadyToLink) {
+        return leftReadyToLink ? -1 : 1
+      }
+
       const leftTitle = left.title?.trim() ?? ''
       const rightTitle = right.title?.trim() ?? ''
       const titleOrder = leftTitle.localeCompare(rightTitle, 'sv-SE', { sensitivity: 'base' })
