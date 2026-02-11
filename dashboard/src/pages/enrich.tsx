@@ -73,6 +73,19 @@ const orderedSkipReasons = [
   'non_tcg_topps'
 ]
 
+const diagnosticFilterOptions = [
+  'Ready to link',
+  'Missing title',
+  'Missing description',
+  'No card #',
+  'No set match',
+  'No era',
+  'No language',
+  'No condition'
+] as const
+
+type DiagnosticFilterOption = (typeof diagnosticFilterOptions)[number]
+
 const buildDiagnostics = (auction: UnlinkedAuction): string[] => {
   const diagnostics: string[] = []
 
@@ -86,6 +99,8 @@ const buildDiagnostics = (auction: UnlinkedAuction): string[] => {
 
   return diagnostics
 }
+
+const isReadyToLink = (auction: UnlinkedAuction): boolean => buildDiagnostics(auction).length === 0
 
 export function EnrichPage(): JSX.Element {
   const enrichFetchLimit = 200
@@ -135,6 +150,9 @@ export function EnrichPage(): JSX.Element {
   const [manualLinkError, setManualLinkError] = useState<string | null>(null)
   const [manualLinkSuccess, setManualLinkSuccess] = useState<string | null>(null)
   const [languageFilter, setLanguageFilter] = useState('all')
+  const [selectedDiagnosticFilters, setSelectedDiagnosticFilters] = useState<DiagnosticFilterOption[]>([
+    ...diagnosticFilterOptions
+  ])
   const [unlinkedPage, setUnlinkedPage] = useState(1)
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
 
@@ -274,6 +292,12 @@ export function EnrichPage(): JSX.Element {
   const unlinkedAuctions = unlinkedData ?? []
   const sortedUnlinkedAuctions = useMemo(() => {
     return [...unlinkedAuctions].sort((left, right) => {
+      const leftReadyToLink = isReadyToLink(left)
+      const rightReadyToLink = isReadyToLink(right)
+      if (leftReadyToLink !== rightReadyToLink) {
+        return leftReadyToLink ? -1 : 1
+      }
+
       const leftTitle = left.title?.trim() ?? ''
       const rightTitle = right.title?.trim() ?? ''
       const titleOrder = leftTitle.localeCompare(rightTitle, 'sv-SE', { sensitivity: 'base' })
@@ -328,14 +352,21 @@ export function EnrichPage(): JSX.Element {
     return group?.links[0] ?? null
   }, [cardLinkGroups, selectedCardId])
   const visibleUnlinkedAuctions = useMemo(() => {
-    const base = sortedUnlinkedAuctions
-    if (languageFilter === 'all') return base
-    const normalizedFilter = languageFilter.toLowerCase()
-    return base.filter((auction) => {
-      const normalizedLanguage = normalizeLanguage(auction.pokemonLanguage).toLowerCase()
-      return normalizedLanguage === normalizedFilter
+    const selectedDiagnostics = new Set(selectedDiagnosticFilters)
+
+    return sortedUnlinkedAuctions.filter((auction) => {
+      if (languageFilter !== 'all') {
+        const normalizedFilter = languageFilter.toLowerCase()
+        const normalizedLanguage = normalizeLanguage(auction.pokemonLanguage).toLowerCase()
+        if (normalizedLanguage !== normalizedFilter) return false
+      }
+
+      const diagnostics = buildDiagnostics(auction)
+      const auctionMarkers = diagnostics.length ? diagnostics : ['Ready to link']
+
+      return auctionMarkers.some((marker) => selectedDiagnostics.has(marker as DiagnosticFilterOption))
     })
-  }, [languageFilter, sortedUnlinkedAuctions])
+  }, [languageFilter, selectedDiagnosticFilters, sortedUnlinkedAuctions])
   const pagedUnlinkedAuctions = useMemo(() => {
     const start = (unlinkedPage - 1) * pageSize
     return visibleUnlinkedAuctions.slice(start, start + pageSize)
@@ -399,7 +430,7 @@ export function EnrichPage(): JSX.Element {
 
   useEffect(() => {
     setUnlinkedPage(1)
-  }, [languageFilter])
+  }, [languageFilter, selectedDiagnosticFilters])
 
   useEffect(() => {
     if (unlinkedPage <= totalUnlinkedPages) return
@@ -435,6 +466,15 @@ export function EnrichPage(): JSX.Element {
     } finally {
       setManualLinkPending(false)
     }
+  }
+
+  const toggleDiagnosticFilter = (option: DiagnosticFilterOption): void => {
+    setSelectedDiagnosticFilters((prev) => {
+      if (prev.includes(option)) {
+        return prev.filter((entry) => entry !== option)
+      }
+      return [...prev, option]
+    })
   }
 
   const toggleAiSelection = (auctionId: number): void => {
@@ -790,6 +830,36 @@ export function EnrichPage(): JSX.Element {
                     </option>
                   ))}
                 </select>
+                <details className="relative">
+                  <summary className="cursor-pointer list-none rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+                    Diagnostics ({selectedDiagnosticFilters.length}/{diagnosticFilterOptions.length})
+                  </summary>
+                  <div className="absolute z-20 mt-2 w-56 rounded-md border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-800 dark:bg-slate-950">
+                    <div className="mb-2 flex items-center justify-between text-[11px] text-slate-500">
+                      <span>Show auctions with:</span>
+                      <button
+                        type="button"
+                        className="text-indigo-600 hover:underline"
+                        onClick={() => setSelectedDiagnosticFilters([...diagnosticFilterOptions])}
+                      >
+                        Select all
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {diagnosticFilterOptions.map((option) => (
+                        <label key={option} className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-200">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-slate-300"
+                            checked={selectedDiagnosticFilters.includes(option)}
+                            onChange={() => toggleDiagnosticFilter(option)}
+                          />
+                          <span>{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </details>
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                   <input
                     type="checkbox"
