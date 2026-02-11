@@ -814,6 +814,7 @@ export function EnrichPage(): JSX.Element {
                   value={languageFilter}
                   onChange={(event) => setLanguageFilter(event.target.value)}
                 >
+                  <option value="none">No language selected</option>
                   <option value="all">All languages</option>
                   {languageOptions.map((language) => (
                     <option key={language} value={language}>
