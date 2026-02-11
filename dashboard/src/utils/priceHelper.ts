@@ -1,4 +1,4 @@
-import type { CardResponse } from '../types'
+import type { CardPriceVariant, CardResponse } from '../types'
 
 type PriceDataInput = CardResponse['prices_data'] | string | null | undefined
 type TraderaPriceInput = CardResponse['tradera_market_price'] | null | undefined
@@ -13,12 +13,19 @@ const formatSek = (value: number): string => {
   return new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK' }).format(value)
 }
 
-const parsePricesData = (pricesData: PriceDataInput): CardPricesData | null => {
+const parsePricesData = (pricesData: PriceDataInput): Record<string, unknown> | null => {
   if (!pricesData) return null
-  if (typeof pricesData !== 'string') return pricesData
+
+  if (typeof pricesData !== 'string') {
+    if (typeof pricesData === 'object' && pricesData !== null) {
+      return pricesData as Record<string, unknown>
+    }
+    return null
+  }
 
   try {
-    return JSON.parse(pricesData) as CardPricesData
+    const parsed = JSON.parse(pricesData) as unknown
+    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null
   } catch (error) {
     console.warn('Failed to parse prices_data JSON', error)
     return null
@@ -44,9 +51,14 @@ export const getTcgMarketPriceValue = (card: {
   const market = Number(pricesData.market)
   if (Number.isFinite(market) && market > 0) return market
 
-  const variantPrices = Object.values(pricesData.variants ?? {})
+  const variants =
+    typeof pricesData.variants === 'object' && pricesData.variants !== null
+      ? (pricesData.variants as Record<string, CardPriceVariant | null>)
+      : {}
+
+  const variantPrices = Object.values(variants)
     .map((variant) => findVariantMarketPrice(variant))
-    .filter((value): value is number => Number.isFinite(value) && value > 0)
+    .filter((value): value is number => Number.isFinite(value ?? NaN) && (value ?? 0) > 0)
 
   if (!variantPrices.length) return null
   return Math.max(...variantPrices)
