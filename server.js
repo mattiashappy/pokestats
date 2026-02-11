@@ -1557,16 +1557,26 @@ async function fetchUnlinkedAuctionSummaries({
   )
 
   const selectedDiagnostics = Array.isArray(diagnostics) ? diagnostics : []
-  const needsSetMatch = selectedDiagnostics.some((marker) => marker === 'Ready to link' || marker === 'No set match')
+  if (!selectedDiagnostics.length) return { rows: [], total: 0 }
+
+  const selectedSet = new Set(selectedDiagnostics)
+  const needsCollectorNumber = selectedSet.has('Ready to link') || selectedSet.has('No card #')
+  const needsSetMatch = selectedSet.has('Ready to link') || selectedSet.has('No set match')
 
   const expansions = needsSetMatch ? await fetchLinkingSets() : []
   const expansionMatchers = expansions.flatMap((expansion) => {
     const candidates = [expansion.normalizedName, expansion.normalizedCode].filter(Boolean)
-    return candidates.map((candidate) => ({
-      expansion,
-      score: candidate.length,
-      regex: new RegExp(`\\b${escapeRegex(candidate)}\\b`)
-    }))
+    return candidates.flatMap((candidate) => {
+      try {
+        return [{
+          expansion,
+          score: candidate.length,
+          regex: new RegExp(`\b${escapeRegex(candidate)}\b`)
+        }]
+      } catch {
+        return []
+      }
+    })
   })
 
   const filteredRows = []
@@ -1577,28 +1587,31 @@ async function fetchUnlinkedAuctionSummaries({
     const pokemonEra = row.pokemon_era ?? null
     const pokemonLanguage = row.pokemon_language ?? null
     const itemCondition = row.item_condition ?? null
-    const text = normalizeAuctionText(`${title ?? ''} ${description ?? ''}`)
-    const collectorNumber = extractCardNumber(text)
+
+    const hasReadyPrerequisites = Boolean(title && description && pokemonEra && pokemonLanguage && itemCondition)
+    if (selectedSet.size === 1 && selectedSet.has('Ready to link') && !hasReadyPrerequisites) {
+      continue
+    }
+
+    let text = ''
+    let collectorNumber = null
+    if (needsCollectorNumber || needsSetMatch) {
+      text = normalizeAuctionText(`${title ?? ''} ${description ?? ''}`)
+      collectorNumber = extractCardNumber(text)
+    }
 
     let bestExpansion = null
-    if (needsSetMatch) {
-      const shouldAttemptSetMatch = Boolean(
-        title &&
-          description &&
-          collectorNumber &&
-          pokemonEra &&
-          pokemonLanguage &&
-          itemCondition
-      )
-
-      if (shouldAttemptSetMatch) {
-        let bestScore = 0
-        for (const matcher of expansionMatchers) {
-          if (matcher.score <= bestScore) continue
+    if (needsSetMatch && collectorNumber && hasReadyPrerequisites) {
+      let bestScore = 0
+      for (const matcher of expansionMatchers) {
+        if (matcher.score <= bestScore) continue
+        try {
           if (!matcher.regex.test(text)) continue
-          bestScore = matcher.score
-          bestExpansion = matcher.expansion
+        } catch {
+          continue
         }
+        bestScore = matcher.score
+        bestExpansion = matcher.expansion
       }
     }
 
@@ -1612,7 +1625,7 @@ async function fetchUnlinkedAuctionSummaries({
     if (!itemCondition) diagnosticsForRow.push('No condition')
 
     const markers = diagnosticsForRow.length ? diagnosticsForRow : ['Ready to link']
-    if (!markers.some((marker) => selectedDiagnostics.includes(marker))) continue
+    if (!markers.some((marker) => selectedSet.has(marker))) continue
 
     filteredRows.push({
       item_id: row.item_id,
