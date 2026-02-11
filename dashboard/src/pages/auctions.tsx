@@ -11,7 +11,7 @@ import { Select } from '../components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
 
 import type { AuctionRecord } from '../types'
-import { fetchAuctions } from '../lib/api'
+import { fetchAuctionsPage } from '../lib/api'
 import { useAdminSettings } from '../providers/admin-settings'
 
 const sortOptions = [
@@ -25,11 +25,6 @@ type AttributeStat = { label: string; count: number }
 const PAGE_SIZE = 50
 
 export function AuctionsPage(): JSX.Element {
-  const { data, isLoading, error } = useQuery<AuctionRecord[]>({
-    queryKey: ['auctions'],
-    queryFn: fetchAuctions
-  })
-
   const { importSettings } = useAdminSettings()
   const { attribute } = useParams()
 
@@ -39,21 +34,43 @@ export function AuctionsPage(): JSX.Element {
   const [maxPrice, setMaxPrice] = useState('')
   const [sortBy, setSortBy] = useState<SortValue>('endDesc')
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
 
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSearchTerm(searchTerm.trim()), 300)
+    return () => window.clearTimeout(timeout)
+  }, [searchTerm])
+
+  const { data, isLoading, error } = useQuery<{ rows: AuctionRecord[]; total: number }>({
+    queryKey: ['auctions', currentPage, era, language, minPrice, maxPrice, sortBy, debouncedSearchTerm],
+    queryFn: () =>
+      fetchAuctionsPage({
+        limit: PAGE_SIZE,
+        offset: (currentPage - 1) * PAGE_SIZE,
+        era,
+        language,
+        minPrice,
+        maxPrice,
+        sortBy,
+        search: debouncedSearchTerm
+      })
+  })
+
   const activeAttribute = (attribute ?? '').toLowerCase()
-  const totalAuctions = data?.length ?? 0
+  const auctions = data?.rows ?? []
+  const totalAuctions = data?.total ?? 0
 
   const eras = useMemo(() => {
-    const unique = new Set<string>(data?.map((auction) => auction.pokemonEra || 'Unknown era') ?? [])
+    const unique = new Set<string>(auctions.map((auction) => auction.pokemonEra || 'Unknown era') ?? [])
     return ['all', ...Array.from(unique)]
-  }, [data])
+  }, [auctions])
 
   const languages = useMemo(() => {
-    const unique = new Set<string>(data?.map((auction) => auction.pokemonLanguage || 'Unknown language') ?? [])
+    const unique = new Set<string>(auctions.map((auction) => auction.pokemonLanguage || 'Unknown language') ?? [])
     return ['all', ...Array.from(unique)]
-  }, [data])
+  }, [auctions])
 
   const currencyFormatter = useMemo(
     () => new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK' }),
@@ -61,7 +78,7 @@ export function AuctionsPage(): JSX.Element {
   )
 
   const stats = useMemo(() => {
-    if (!data || data.length === 0) {
+    if (!auctions.length) {
       return {
         totalSales: 0,
         totalBids: 0,
@@ -71,7 +88,7 @@ export function AuctionsPage(): JSX.Element {
       }
     }
 
-    const aggregates = data.reduce(
+    const aggregates = auctions.reduce(
       (acc, auction) => {
         return {
           totalSales: acc.totalSales + (auction.price || 0),
@@ -85,19 +102,19 @@ export function AuctionsPage(): JSX.Element {
     return {
       totalSales: aggregates.totalSales,
       totalBids: aggregates.totalBids,
-      averagePrice: aggregates.totalSales / data.length,
-      averageBids: aggregates.totalBids / data.length,
+      averagePrice: aggregates.totalSales / auctions.length,
+      averageBids: aggregates.totalBids / auctions.length,
       highestSale: aggregates.highestSale
     }
-  }, [data])
+  }, [auctions])
 
   const buildDistribution = (
     selector: (auction: AuctionRecord) => string | null | undefined,
     fallback: string
   ): AttributeStat[] => {
-    if (!data?.length) return []
+    if (!auctions.length) return []
 
-    const counts = data.reduce((acc, auction) => {
+    const counts = auctions.reduce((acc, auction) => {
       const key = selector(auction) || fallback
       acc.set(key, (acc.get(key) ?? 0) + 1)
       return acc
@@ -108,10 +125,10 @@ export function AuctionsPage(): JSX.Element {
       .sort((a, b) => b.count - a.count)
   }
 
-  const eraDistribution = useMemo(() => buildDistribution((auction) => auction.pokemonEra, 'Unknown era'), [data])
+  const eraDistribution = useMemo(() => buildDistribution((auction) => auction.pokemonEra, 'Unknown era'), [auctions])
   const languageDistribution = useMemo(
     () => buildDistribution((auction) => auction.pokemonLanguage, 'Unknown language'),
-    [data]
+    [auctions]
   )
 
   const attributeView = useMemo(() => {
@@ -124,56 +141,20 @@ export function AuctionsPage(): JSX.Element {
     return null
   }, [activeAttribute, eraDistribution, languageDistribution])
 
-  const filteredAndSorted = useMemo(() => {
-    if (!data) return []
-
-    const query = searchTerm.trim().toLowerCase()
-
-    const filtered = data.filter((auction) => {
-      const matchesSearch = !query || auction.title.toLowerCase().includes(query)
-
-      const matchesPriceMin = minPrice ? (auction.price || 0) >= Number(minPrice) : true
-      const matchesPriceMax = maxPrice ? (auction.price || 0) <= Number(maxPrice) : true
-
-      const matchesEra = era === 'all' || (auction.pokemonEra || 'Unknown era') === era
-      const matchesLanguage = language === 'all' || (auction.pokemonLanguage || 'Unknown language') === language
-
-      return (
-        matchesSearch &&
-        matchesPriceMin &&
-        matchesPriceMax &&
-        matchesEra &&
-        matchesLanguage
-      )
-    })
-
-    return filtered.sort((a, b) => {
-      if (sortBy === 'priceDesc') return (b.price || 0) - (a.price || 0)
-      if (sortBy === 'bidsDesc') return (b.bidCount || 0) - (a.bidCount || 0)
-      return new Date(b.endDate).getTime() - new Date(a.endDate).getTime()
-    })
-  }, [data, searchTerm, maxPrice, minPrice, era, language, sortBy])
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm, maxPrice, minPrice, era, language, sortBy])
+  }, [debouncedSearchTerm, maxPrice, minPrice, era, language, sortBy])
 
-  const totalPages = useMemo(() => {
-    if (!filteredAndSorted.length) return 1
-    return Math.ceil(filteredAndSorted.length / PAGE_SIZE)
-  }, [filteredAndSorted.length])
+  const totalPages = Math.max(1, Math.ceil(totalAuctions / PAGE_SIZE))
 
   useEffect(() => {
     setCurrentPage((previous) => Math.min(previous, totalPages))
   }, [totalPages])
 
-  const paginatedAuctions = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE
-    return filteredAndSorted.slice(start, start + PAGE_SIZE)
-  }, [filteredAndSorted, currentPage])
-
-  const displayStart = filteredAndSorted.length ? (currentPage - 1) * PAGE_SIZE + 1 : 0
-  const displayEnd = Math.min(currentPage * PAGE_SIZE, filteredAndSorted.length)
+  const paginatedAuctions = auctions
+  const displayStart = totalAuctions ? (currentPage - 1) * PAGE_SIZE + 1 : 0
+  const displayEnd = Math.min(currentPage * PAGE_SIZE, totalAuctions)
 
   const lastUpdatedLabel = useMemo(() => {
     if (!importSettings?.lastImportAt) return null
@@ -259,7 +240,7 @@ export function AuctionsPage(): JSX.Element {
                 {totalAuctions.toLocaleString('sv-SE')}
               </p>
               <p className="text-xs text-slate-500">
-                {filteredAndSorted.length.toLocaleString('sv-SE')} in view after filters
+                {totalAuctions.toLocaleString('sv-SE')} matching filters
               </p>
             </CardContent>
           </Card>
@@ -455,7 +436,7 @@ export function AuctionsPage(): JSX.Element {
               <ArrowUpDown className="h-4 w-4" /> {sortOptions.find((option) => option.value === sortBy)?.label}
             </span>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600 shadow-sm dark:bg-slate-900/60 dark:text-slate-200">
-              {filteredAndSorted.length.toLocaleString('sv-SE')} auctions in view · Page {currentPage} of {totalPages}
+              {totalAuctions.toLocaleString('sv-SE')} auctions matching filters · Page {currentPage} of {totalPages}
             </span>
           </div>
 
@@ -550,7 +531,7 @@ export function AuctionsPage(): JSX.Element {
               Showing {displayStart.toLocaleString('sv-SE')}
               {displayEnd ? `–${displayEnd.toLocaleString('sv-SE')}` : ''} of
               {' '}
-              {filteredAndSorted.length.toLocaleString('sv-SE')} auctions
+              {totalAuctions.toLocaleString('sv-SE')} auctions
             </span>
 
             <div className="flex items-center gap-2">
@@ -569,7 +550,7 @@ export function AuctionsPage(): JSX.Element {
                 variant="outline"
                 size="sm"
                 onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                disabled={currentPage === totalPages || !filteredAndSorted.length}
+                disabled={currentPage === totalPages || !totalAuctions}
               >
                 Next
               </Button>
