@@ -8,12 +8,7 @@ import { Card as UiCard, CardContent, CardDescription, CardHeader, CardTitle } f
 import { fetchCardAuctions, fetchCardDetails } from '../lib/api'
 import { useAuth } from '../providers/auth'
 import { getCardSetIdentifier } from '../lib/sets'
-import { getMarketPrice } from '../utils/priceHelper'
 import type { AuctionRecord } from '../types'
-
-function formatUsd(value: string): string {
-  return value === 'N/A' ? '—' : value
-}
 
 function formatSek(value: number | null | undefined): string {
   if (!Number.isFinite(Number(value))) return '—'
@@ -217,23 +212,7 @@ export function CardPage(): JSX.Element {
         </div>
 
         {/* RIGHT COLUMN: DETAILS */}
-        <div className="grid gap-6 md:grid-cols-[minmax(0,1fr),240px]">
-          <div className="space-y-6">
-            <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
-              <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
-                <CardTitle className="text-lg font-black uppercase text-white">Market price</CardTitle>
-                <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
-                  Latest market pricing for this card.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="p-5 text-sm font-semibold uppercase text-slate-900">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Market price</div>
-                  <div className="text-2xl font-black">{formatUsd(getMarketPrice(card))}</div>
-                </div>
-              </CardContent>
-            </UiCard>
-
+        <div className="space-y-6">
             <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
               <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
                 <CardTitle className="text-lg font-black uppercase text-white">Tradera</CardTitle>
@@ -298,34 +277,6 @@ export function CardPage(): JSX.Element {
 
           </div>
 
-          {/* HIGHLIGHTS SIDEBAR */}
-          <UiCard className="h-fit border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
-            <CardHeader className="border-b-4 border-slate-900 bg-slate-900">
-              <CardTitle className="text-lg font-black uppercase text-white">Highlights</CardTitle>
-              <CardDescription className="text-xs font-semibold uppercase tracking-wide text-amber-200">
-                Quick facts at a glance.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 p-4 text-xs font-semibold uppercase text-slate-900">
-              <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                Era
-                <div className="text-base font-black">{card.era || 'Unknown era'}</div>
-              </div>
-              <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                Set
-                <div className="text-base font-black">{card.set_name || 'Unknown set'}</div>
-              </div>
-              <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                Language
-                <div className="text-base font-black">{card.language || 'Unknown language'}</div>
-              </div>
-              <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-3 shadow-[2px_2px_0px_#0f172a]">
-                Card #
-                <div className="text-base font-black">{card.card_number || 'N/A'}</div>
-              </div>
-            </CardContent>
-          </UiCard>
-        </div>
       </div>
 
       {isAdmin ? (
