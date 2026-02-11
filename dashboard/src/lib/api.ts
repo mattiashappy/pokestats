@@ -301,6 +301,11 @@ export type LinkingStats = {
   lastLinkedAt: string | null
 }
 
+export type UnlinkedAuctionsResponse = {
+  rows: UnlinkedAuction[]
+  total: number
+}
+
 export async function searchCards(
   query: string,
   limit = 50,
@@ -325,6 +330,15 @@ export async function linkAuctionToCard(auctionId: number, cardId: string): Prom
     body: JSON.stringify({ auctionId, cardId })
   })
   if (!response.ok) throw new Error('Failed to link auction')
+}
+
+export async function unlinkAuction(auctionId: number): Promise<void> {
+  const response = await fetch('/api/linking/unlink', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ auctionId })
+  })
+  if (!response.ok) throw new Error('Failed to unlink auction')
 }
 
 const fetchImportRuns = async (limit = 10): Promise<ImportRun[]> => {
@@ -431,10 +445,22 @@ export async function fetchAuctionCardLinks(limit: number | null = null): Promis
   return response.json()
 }
 
-export async function fetchUnlinkedAuctions(limit: number | null = null): Promise<UnlinkedAuction[]> {
-  const hasLimit = typeof limit === 'number' && Number.isFinite(limit)
-  const params = hasLimit ? new URLSearchParams({ limit: String(limit) }) : null
-  const response = await fetch(params ? `/api/linking/unlinked?${params.toString()}` : '/api/linking/unlinked')
+export async function fetchUnlinkedAuctions(options: {
+  limit?: number | null
+  offset?: number
+  language?: string
+  diagnostics?: string[]
+} = {}): Promise<UnlinkedAuctionsResponse> {
+  const params = new URLSearchParams()
+  if (typeof options.limit === 'number' && Number.isFinite(options.limit)) params.set('limit', String(options.limit))
+  if (typeof options.offset === 'number' && Number.isFinite(options.offset) && options.offset > 0) {
+    params.set('offset', String(options.offset))
+  }
+  if (options.language) params.set('language', options.language)
+  if (options.diagnostics?.length) params.set('diagnostics', options.diagnostics.join(','))
+
+  const query = params.toString()
+  const response = await fetch(query ? `/api/linking/unlinked?${query}` : '/api/linking/unlinked')
   if (!response.ok) throw new Error('Failed to load unlinked auctions')
   return response.json()
 }
