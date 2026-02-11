@@ -3128,7 +3128,7 @@ app.get('/api/linking/unlinked', async (req, res) => {
     })
   } catch (error) {
     console.error('Failed to fetch unlinked auctions', error)
-    res.status(500).json({ error: 'Failed to load unlinked auctions' })
+    return res.json({ total: 0, rows: [] })
   }
 })
 
