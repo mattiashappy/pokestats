@@ -213,7 +213,7 @@ export function CardPage(): JSX.Element {
 
         {/* RIGHT COLUMN: DETAILS */}
         <div className="grid gap-6 md:grid-cols-2">
-            <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
+            <UiCard className="order-2 border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
               <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
                 <CardTitle className="text-lg font-black uppercase text-white">Tradera</CardTitle>
                 <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
@@ -250,7 +250,7 @@ export function CardPage(): JSX.Element {
             </UiCard>
             
             {/* PRODUCT DETAILS CARD */}
-            <UiCard className="border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
+            <UiCard className="order-1 border-4 border-slate-900 bg-white shadow-[6px_6px_0px_#0f172a]">
               <CardHeader className="border-b-4 border-slate-900 bg-[#0F172A]">
                 <CardTitle className="text-lg font-black uppercase text-white">Product details</CardTitle>
                 <CardDescription className="text-xs font-semibold uppercase tracking-wide text-slate-200">
@@ -258,6 +258,9 @@ export function CardPage(): JSX.Element {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 p-5 text-sm font-medium text-slate-700">
+                <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-2 text-sm font-semibold uppercase tracking-wide text-slate-700 shadow-[2px_2px_0px_#0f172a]">
+                  TCGPlayer Market price: <span className="font-black text-slate-900">{formatUsd(getMarketPrice(card))}</span>
+                </div>
                 {productDetails.length > 0 ? (
                   <ul className="space-y-2">
                     {productDetails.map((line, index) => (
@@ -287,22 +290,22 @@ export function CardPage(): JSX.Element {
               Detailed list available only for admins.
             </CardDescription>
           </CardHeader>
-          <CardContent className="p-5">
+          <CardContent className="max-h-[420px] overflow-y-auto p-3">
             {auctions && auctions.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {auctions.map((auction) => (
                   <article
                     key={auction.itemId}
-                    className="rounded-2xl border-2 border-slate-900 bg-amber-50 p-3 shadow-[2px_2px_0px_#0f172a]"
+                    className="rounded-xl border-2 border-slate-900 bg-amber-50 p-2 shadow-[2px_2px_0px_#0f172a]"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
-                        <h3 className="text-sm font-black text-slate-900">{auction.title}</h3>
+                        <h3 className="text-xs font-black text-slate-900">{auction.title}</h3>
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
                           Condition: {auction.itemCondition || 'Unknown'}
                         </p>
                       </div>
-                      <div className="text-right text-sm font-black text-slate-900">{formatSek(auction.price)}</div>
+                      <div className="text-right text-xs font-black text-slate-900">{formatSek(auction.price)}</div>
                     </div>
                     <div className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
                       Ends: {new Date(auction.endDate).toLocaleString('sv-SE')}
