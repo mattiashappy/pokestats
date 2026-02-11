@@ -1,4 +1,4 @@
-import type { CardResponse } from '../types'
+import type { CardPriceVariant, CardResponse } from '../types'
 
 type PriceDataInput = CardResponse['prices_data'] | string | null | undefined
 type TraderaPriceInput = CardResponse['tradera_market_price'] | null | undefined

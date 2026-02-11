@@ -259,7 +259,7 @@ export function CardPage(): JSX.Element {
               </CardHeader>
               <CardContent className="space-y-3 p-5 text-sm font-medium text-slate-700">
                 <div className="rounded-2xl border-2 border-slate-900 bg-white px-3 py-2 text-sm font-semibold uppercase tracking-wide text-slate-700 shadow-[2px_2px_0px_#0f172a]">
-                  TCGPlayer Market price: <span className="font-black text-slate-900">{formatUsd(getMarketPrice(card))}</span>
+                  TCGPlayer Market price:{' '}<span className="font-black text-slate-900">{getMarketPrice(card)}</span>
                 </div>
                 {productDetails.length > 0 ? (
                   <ul className="space-y-2">
