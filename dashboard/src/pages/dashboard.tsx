@@ -10,7 +10,7 @@ import { getMarketPrice, getMarketPriceValue, getTraderaMarketPrice } from '../u
 import type { CardListItem, CardResponse } from '../types'
 
 export function DashboardPage(): JSX.Element {
-  const featuredCardId = '68af87b6c4f780b5153e99c5'
+  const featuredCardId = '696f67a567063f37df8231a4'
   const { language } = useRegion()
   const { data: featuredCard } = useQuery<CardResponse>({
     queryKey: ['featured-card', featuredCardId],
