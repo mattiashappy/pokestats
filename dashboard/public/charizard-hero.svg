@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700" role="img" aria-labelledby="title desc">
+  <title id="title">Charizard hero illustration</title>
+  <desc id="desc">Stylized orange dragon with flame tail inspired by Charizard.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff7ed"/>
+      <stop offset="100%" stop-color="#fde68a"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fb923c"/>
+      <stop offset="100%" stop-color="#ea580c"/>
+    </linearGradient>
+    <linearGradient id="belly" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fef3c7"/>
+      <stop offset="100%" stop-color="#fde68a"/>
+    </linearGradient>
+    <radialGradient id="flame" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="55%" stop-color="#fb923c"/>
+      <stop offset="100%" stop-color="#dc2626"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="900" height="700" fill="url(#bg)"/>
+
+  <g opacity="0.2">
+    <circle cx="120" cy="130" r="58" fill="#f97316"/>
+    <circle cx="790" cy="190" r="70" fill="#f59e0b"/>
+    <circle cx="720" cy="580" r="95" fill="#fb923c"/>
+  </g>
+
+  <g transform="translate(120 80)">
+    <path d="M290 470C180 495 85 445 70 355c-16-94 46-173 156-202 92-24 194 11 235 87 44 82 21 182-58 243-33 26-72 43-113 49z" fill="url(#body)" stroke="#7c2d12" stroke-width="10"/>
+    <ellipse cx="290" cy="350" rx="95" ry="145" fill="url(#belly)" stroke="#7c2d12" stroke-width="8"/>
+
+    <path d="M190 190l-80-55 20 95z" fill="#fb923c" stroke="#7c2d12" stroke-width="8"/>
+    <path d="M460 195l96-46-33 90z" fill="#fb923c" stroke="#7c2d12" stroke-width="8"/>
+
+    <ellipse cx="320" cy="165" rx="150" ry="110" fill="url(#body)" stroke="#7c2d12" stroke-width="10"/>
+    <ellipse cx="352" cy="185" rx="45" ry="30" fill="#fef3c7"/>
+    <circle cx="272" cy="164" r="14" fill="#111827"/>
+    <circle cx="278" cy="159" r="4" fill="#fff"/>
+    <circle cx="366" cy="162" r="14" fill="#111827"/>
+    <circle cx="372" cy="157" r="4" fill="#fff"/>
+
+    <path d="M250 214c32 20 76 20 108 0" fill="none" stroke="#7c2d12" stroke-width="9" stroke-linecap="round"/>
+
+    <path d="M112 305C48 248 8 275 24 336c13 51 63 93 126 101" fill="url(#body)" stroke="#7c2d12" stroke-width="8"/>
+    <path d="M470 323c73-43 132-23 133 35 1 57-54 118-138 131" fill="url(#body)" stroke="#7c2d12" stroke-width="8"/>
+
+    <path d="M170 500C90 575 54 620 36 665" fill="none" stroke="#7c2d12" stroke-width="20" stroke-linecap="round"/>
+    <circle cx="32" cy="668" r="45" fill="url(#flame)"/>
+  </g>
+
+  <text x="50%" y="650" text-anchor="middle" font-family="Arial, sans-serif" font-size="44" font-weight="700" fill="#7c2d12">
+    Charizard is back 🔥
+  </text>
+</svg>
