@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Link2, Loader2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
@@ -203,6 +204,11 @@ export function EnrichPage(): JSX.Element {
     }
   }
 
+  const handleUnlink = async (auctionId: number) => {
+    await unlinkAuction(auctionId)
+    await Promise.all([refetchLinks(), refetchUnlinked()])
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -321,6 +327,67 @@ export function EnrichPage(): JSX.Element {
               <Button size="sm" variant="outline" disabled={unlinkedPage === 1} onClick={() => setUnlinkedPage(p => p - 1)}>Prev</Button>
               <Button size="sm" variant="outline" disabled={unlinkedPage >= totalUnlinkedPages} onClick={() => setUnlinkedPage(p => p + 1)}>Next</Button>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Linked auctions</CardTitle>
+          <CardDescription>Compact table for reviewing links and unlinking incorrect matches.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Auction</TableHead>
+                  <TableHead>Cards</TableHead>
+                  <TableHead>Set</TableHead>
+                  <TableHead>Confidence</TableHead>
+                  <TableHead>Linked at</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {linksLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-24 text-center">
+                      <Loader2 className="mx-auto animate-spin" />
+                    </TableCell>
+                  </TableRow>
+                ) : linkData?.length ? (
+                  linkData.map((link) => (
+                    <TableRow key={link.itemId}>
+                      <TableCell className="max-w-xs truncate">{link.auctionTitle || `Item #${link.itemId}`}</TableCell>
+                      <TableCell>
+                        {link.cardId ? (
+                          <Link className="text-sky-600 hover:underline dark:text-sky-400" to={`/cards/${link.cardId}`}>
+                            {formatCardLabel(link)}
+                          </Link>
+                        ) : (
+                          formatCardLabel(link)
+                        )}
+                      </TableCell>
+                      <TableCell>{formatSetLabel(link)}</TableCell>
+                      <TableCell>{formatConfidence(link.confidence)}</TableCell>
+                      <TableCell>{formatLinkedAtCompact(link.linkedAt)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => handleUnlink(link.itemId)}>
+                          Unlink
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-slate-500">
+                      No linked auctions yet.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>
