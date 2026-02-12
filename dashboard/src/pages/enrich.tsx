@@ -1,1221 +1,311 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { format } from 'date-fns'
-import { Link2 } from 'lucide-react'
+const express = require('express')
+const compression = require('compression')
+const path = require('path')
+const { existsSync } = require('fs')
+const { spawn, spawnSync } = require('child_process')
+const { Pool } = require('pg')
+const crypto = require('crypto')
 
-import { Badge } from '../components/ui/badge'
-import { Button } from '../components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog'
-import { Input } from '../components/ui/input'
-import { Label } from '../components/ui/label'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table'
-import { useRegion } from '../contexts/region-context'
-import {
-  fetchAuctionCardLinks,
-  fetchLinkingStats,
-  fetchUnlinkedAuctions,
-  linkAuctionToCard,
-  unlinkAuction,
-  runAiMatch,
-  runTraderaLink,
-  runVisionMatch,
-  searchCards
-} from '../lib/api'
-import type {
-  AiMatchSummary,
-  AuctionCardLink,
-  CardSearchResult,
-  LinkingStats,
-  MatchLogEntry,
-  TraderaLinkSummary,
-  UnlinkedAuction,
-  UnlinkedAuctionsResponse
-} from '../lib/api'
-import type { VisionMatchSummary } from '../lib/api'
+const { createExpansionService } = require('./server/routes/expansions')
+const { registerTraderaRoutes } = require('./server/routes/tradera')
+const { registerAiRoutes } = require('./server/routes/ai')
+const { getEraDefinition, normalizeEraCode, resolveEraCode } = require('./server/era')
+const { parseAuctionTitle } = require('./scripts/tradera_parser')
 
-const formatCardLabel = (link: AuctionCardLink): string => {
-  const parts = [link.cardName, link.cardNumber].filter(Boolean)
-  if (parts.length) return parts.join(' • ')
-  return link.cardId ? `Card #${link.cardId}` : '—'
+const app = express()
+const PORT = process.env.PORT || 8000
+const distPath = path.join(__dirname, 'dashboard', 'dist')
+
+app.set('trust proxy', 1)
+
+// --- Database & Environment Setup ---
+const DATABASE_URL = process.env.DATABASE_URL
+const pool = DATABASE_URL
+  ? new Pool({
+      connectionString: DATABASE_URL,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined
+    })
+  : null
+
+const PYTHON_BIN = process.env.PYTHON_BIN || 'python'
+const PRICE_TRACKER_API_KEY = process.env.PRICE_TRACKER_API
+const PRICE_TRACKER_BASE_URL = 'https://www.pokemonpricetracker.com/api/v2'
+
+// --- Middleware ---
+app.use(compression())
+app.use(express.json())
+
+// --- Table State Helpers ---
+let traderaAuctionsTableAvailable = false
+let traderaAuctionLinksTableAvailable = false
+let traderaAuctionLinksTableName = null
+let traderaAuctionLinksAuctionIdColumn = null
+let traderaAuctionLinksCardIdColumn = null
+let traderaAuctionLinksLinkedAtColumn = null
+let traderaAuctionLinksHasMethod = false
+let traderaAuctionLinksHasConfidence = false
+
+// --- Utility Functions ---
+function normalizeTraderaAuctionRow(row) {
+  return {
+    itemId: row.item_id,
+    title: row.title ?? null,
+    endDate: row.end_date,
+    price: row.price ?? null,
+    bidCount: row.bid_count ?? null,
+    sellerAlias: row.seller_alias ?? null,
+    itemUrl: row.item_url ?? null,
+    thumbnailUrl: row.thumbnail_url ?? null,
+    pokemonEra: row.pokemon_era ?? null,
+    pokemonLanguage: row.pokemon_language ?? null,
+    itemCondition: row.item_condition ?? null
+  }
 }
 
-const formatSetLabel = (link: AuctionCardLink): string => {
-  const parts = [link.setName, link.setCode].filter(Boolean)
-  if (parts.length) return parts.join(' • ')
-  return '—'
+function normalizeAuctionText(text) {
+  return String(text || '').toLowerCase().replace(/[^a-z0-9/]+/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-const formatConfidence = (confidence: number | null): string => {
-  if (confidence == null) return '—'
-  return `${(confidence * 100).toFixed(1)}%`
+function extractCardNumber(text) {
+  const match = text.match(/\b([A-Za-z]{1,3})?\s*(\d{1,4})\s*\/\s*(\d{1,4})\b/)
+  if (match) return `${match[1] ? match[1].toUpperCase() : ''}${match[2]}/${match[3]}`
+  const hashMatch = text.match(/(?:#|no\.?\s*)(\d{1,4})\b/i)
+  return hashMatch ? hashMatch[1] : null
 }
 
-const formatLinkedAtCompact = (linkedAt: string | null): string => {
-  if (!linkedAt) return '—'
-  return format(new Date(linkedAt), 'yyyy-MM-dd HH:mm')
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-const formatDetectedExpansion = (auction: UnlinkedAuction): string => {
-  const parts = [auction.detectedExpansionName, auction.detectedExpansionCode].filter(Boolean)
-  if (parts.length) return parts.join(' • ')
-  return '—'
+// --- Table & Column Resolution ---
+async function ensureTraderaAuctionsTableAvailable() {
+  if (!pool) return false
+  const { rows } = await pool.query("SELECT to_regclass('public.tradera_auctions') AS tradera_auctions")
+  traderaAuctionsTableAvailable = Boolean(rows?.[0]?.tradera_auctions)
+  return traderaAuctionsTableAvailable
 }
 
-const normalizeLanguage = (language?: string | null): string => {
-  const trimmed = language?.trim()
-  if (!trimmed) return 'Unknown'
-  return trimmed
+async function ensureTraderaAuctionLinksTableAvailable() {
+  if (!pool) return false
+  const { rows } = await pool.query(`
+    SELECT
+      to_regclass('public.tradera_auction_pt_card_links') AS pt_links,
+      to_regclass('public.tradera_auction_card_links') AS legacy_links
+  `)
+  const tableName = rows[0].pt_links ? 'tradera_auction_pt_card_links' : (rows[0].legacy_links ? 'tradera_auction_card_links' : null)
+  if (!tableName) return false
+
+  const { rows: columns } = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name = $1`, [tableName])
+  const colSet = new Set(columns.map(c => c.column_name))
+  
+  traderaAuctionLinksTableName = tableName
+  traderaAuctionLinksAuctionIdColumn = colSet.has('auction_id') ? 'auction_id' : (colSet.has('item_id') ? 'item_id' : null)
+  traderaAuctionLinksCardIdColumn = colSet.has('pt_card_id') ? 'pt_card_id' : 'card_id'
+  traderaAuctionLinksLinkedAtColumn = colSet.has('created_at') ? 'created_at' : (colSet.has('linked_at') ? 'linked_at' : null)
+  traderaAuctionLinksHasMethod = colSet.has('method')
+  traderaAuctionLinksHasConfidence = colSet.has('confidence')
+
+  traderaAuctionLinksTableAvailable = !!(traderaAuctionLinksAuctionIdColumn && traderaAuctionLinksCardIdColumn)
+  return traderaAuctionLinksTableAvailable
 }
 
-const orderedSkipReasons = [
-  'card_not_unique',
-  'bundle_or_bulk',
-  'missing_collector_key',
-  'missing_set_hint',
-  'set_total_mismatch',
-  'special_product_line',
-  'non_tcg_topps'
-]
-
-const diagnosticFilterOptions = [
-  'Ready to link',
-  'Missing title',
-  'Missing description',
-  'No card #',
-  'No set match',
-  'No era',
-  'No language',
-  'No condition'
-] as const
-
-type DiagnosticFilterOption = (typeof diagnosticFilterOptions)[number]
-
-const buildDiagnostics = (auction: UnlinkedAuction): string[] => {
-  const diagnostics: string[] = []
-
-  if (!auction.title) diagnostics.push('Missing title')
-  if (!auction.description) diagnostics.push('Missing description')
-  if (!auction.detectedCollectorNumber) diagnostics.push('No card #')
-  if (!auction.detectedExpansionName && !auction.detectedExpansionCode) diagnostics.push('No set match')
-  if (!auction.pokemonEra) diagnostics.push('No era')
-  if (!auction.pokemonLanguage) diagnostics.push('No language')
-  if (!auction.itemCondition) diagnostics.push('No condition')
-
-  return diagnostics
+async function getTraderaAuctionLinksConfig() {
+  const ok = await ensureTraderaAuctionLinksTableAvailable()
+  return ok ? {
+    tableName: traderaAuctionLinksTableName,
+    auctionIdColumn: traderaAuctionLinksAuctionIdColumn,
+    cardIdColumn: traderaAuctionLinksCardIdColumn,
+    linkedAtColumn: traderaAuctionLinksLinkedAtColumn,
+    hasMethod: traderaAuctionLinksHasMethod,
+    hasConfidence: traderaAuctionLinksHasConfidence,
+    usesPtCards: traderaAuctionLinksCardIdColumn === 'pt_card_id'
+  } : null
 }
 
+async function resolveTraderaAuctionColumns(linkConfig = null) {
+  if (!pool) return null
+  const { rows } = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name = 'tradera_auctions'`)
+  const columnNames = new Set(rows.map(r => r.column_name))
+  const keyColumn = (linkConfig?.auctionIdColumn && columnNames.has(linkConfig.auctionIdColumn)) ? linkConfig.auctionIdColumn : (columnNames.has('item_id') ? 'item_id' : 'id')
+  return { keyColumn, itemIdColumn: columnNames.has('item_id') ? 'item_id' : keyColumn }
+}
 
-export function EnrichPage(): JSX.Element {
-  const enrichFetchLimit = 200
-  const {
-    data: linkData,
-    isLoading: linksLoading,
-    isError: linksError,
-    refetch: refetchLinks
-  } = useQuery<AuctionCardLink[]>({
-    queryKey: ['linking-links'],
-    queryFn: () => fetchAuctionCardLinks(enrichFetchLimit)
-  })
+// --- CORE FIX: Fetch Unlinked Auctions Logic ---
+async function fetchUnlinkedAuctionSummaries({ limit = 100, offset = 0, language = 'all', diagnostics = [] } = {}) {
+  if (!pool) return { rows: [], total: 0 }
+  
+  const [linkConfig, auctionsReady] = await Promise.all([getTraderaAuctionLinksConfig(), ensureTraderaAuctionsTableAvailable()])
+  if (!linkConfig || !auctionsReady) return { rows: [], total: 0 }
+  const auctionColumns = await resolveTraderaAuctionColumns(linkConfig)
 
-  const { data: linkingStats } = useQuery<LinkingStats>({
-    queryKey: ['linking-stats'],
-    queryFn: fetchLinkingStats
-  })
-
-  const [linkSummary, setLinkSummary] = useState<TraderaLinkSummary | null>(null)
-  const [linkPending, setLinkPending] = useState(false)
-  const [traderaError, setTraderaError] = useState<string | null>(null)
-  const [aiSummary, setAiSummary] = useState<AiMatchSummary | null>(null)
-  const [aiPending, setAiPending] = useState(false)
-  const [aiError, setAiError] = useState<string | null>(null)
-  const [visionSummary, setVisionSummary] = useState<VisionMatchSummary | null>(null)
-  const [visionPending, setVisionPending] = useState(false)
-  const [visionError, setVisionError] = useState<string | null>(null)
-  const [enrichProgress, setEnrichProgress] = useState<{ completed: number; total: number } | null>(null)
-  const [selectedAiAuctionIds, setSelectedAiAuctionIds] = useState<number[]>([])
-  const [enrichLogs, setEnrichLogs] = useState<MatchLogEntry[]>([])
-  const [selectedSkipReason, setSelectedSkipReason] = useState('set_total_mismatch')
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [selectedAuction, setSelectedAuction] = useState<UnlinkedAuction | null>(null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
-  const { language } = useRegion()
-  const [manualLinkPending, setManualLinkPending] = useState(false)
-  const [manualLinkError, setManualLinkError] = useState<string | null>(null)
-  const [manualLinkSuccess, setManualLinkSuccess] = useState<string | null>(null)
-  const [languageFilter, setLanguageFilter] = useState('all')
-  const [selectedDiagnosticFilters, setSelectedDiagnosticFilters] = useState<DiagnosticFilterOption[]>([])
-  const [unlinkedPage, setUnlinkedPage] = useState(1)
-  const [linkedPage, setLinkedPage] = useState(1)
-  const [linkedSearchTerm, setLinkedSearchTerm] = useState('')
-  const [unlinkPendingItemId, setUnlinkPendingItemId] = useState<number | null>(null)
-  const [unlinkError, setUnlinkError] = useState<string | null>(null)
-
-  const pageSize = 100
-
-  const shouldShowUnlinked = true
-  const unlinkedFetchLimit = pageSize
-
-  const {
-    data: unlinkedData,
-    isLoading: unlinkedLoading,
-    isError: unlinkedError,
-    refetch: refetchUnlinked
-  } = useQuery<UnlinkedAuctionsResponse>({
-    queryKey: ['linking-unlinked', unlinkedFetchLimit, unlinkedPage, languageFilter, selectedDiagnosticFilters],
-    queryFn: () =>
-      fetchUnlinkedAuctions({
-        limit: unlinkedFetchLimit,
-        offset: (unlinkedPage - 1) * pageSize,
-        language: languageFilter,
-        diagnostics: selectedDiagnosticFilters
-      }),
-    enabled: true
-  })
-
-  const handleRunLink = async (): Promise<void> => {
-    setTraderaError(null)
-    setLinkPending(true)
-    try {
-      const result = await runTraderaLink()
-      setLinkSummary(result)
-      await Promise.all([refetchLinks(), refetchUnlinked()])
-    } catch (e) {
-      setTraderaError(`Linking failed: ${String(e)}`)
-    } finally {
-      setLinkPending(false)
-    }
+  const params = []
+  const where = [`l.${linkConfig.auctionIdColumn} IS NULL`]
+  if (language !== 'all' && language !== 'none') {
+    params.push(language)
+    where.push(`COALESCE(a.pokemon_language, 'Unknown') = $${params.length}`)
   }
 
-  const runAiMatchForIds = async (auctionIds: number[]): Promise<void> => {
-    if (!auctionIds.length) return
-    setAiError(null)
-    setAiPending(true)
-    setAiSummary(null)
-    setVisionSummary(null)
-    setVisionError(null)
-    setEnrichLogs([])
-    setEnrichProgress({ completed: 0, total: auctionIds.length })
-    try {
-      const batchSize = 10
-      const batches = []
-      for (let i = 0; i < auctionIds.length; i += batchSize) {
-        batches.push(auctionIds.slice(i, i + batchSize))
-      }
+  // First, get raw unlinked data from DB
+  const { rows } = await pool.query(`
+    SELECT
+      a.${auctionColumns.itemIdColumn} AS item_id,
+      a.title, a.description, a.end_date, a.price, a.bid_count,
+      a.item_url, a.seller_alias, a.pokemon_era, a.pokemon_language, a.item_condition
+    FROM public.tradera_auctions a
+    LEFT JOIN public.${linkConfig.tableName} l ON l.${linkConfig.auctionIdColumn} = a.${auctionColumns.keyColumn}
+    WHERE ${where.join(' AND ')}
+    ORDER BY a.end_date DESC
+  `, params)
 
-      const combined: AiMatchSummary = {
-        scanned: 0,
-        matched: 0,
-        skipped: 0,
-        skipReasons: {},
-        matchedExamples: [],
-        logs: []
-      }
+  const selectedSet = new Set(Array.isArray(diagnostics) ? diagnostics : [])
 
-      for (const batch of batches) {
-        const result = await runAiMatch(batch)
-        combined.scanned += result.scanned
-        combined.matched += result.matched
-        combined.skipped += result.skipped
-        for (const [reason, count] of Object.entries(result.skipReasons)) {
-          combined.skipReasons[reason] = (combined.skipReasons[reason] || 0) + count
-        }
-        combined.matchedExamples.push(...result.matchedExamples)
-        combined.logs.push(...(result.logs ?? []))
-        setEnrichProgress((prev) =>
-          prev ? { ...prev, completed: Math.min(prev.total, prev.completed + batch.length) } : prev
-        )
-      }
-
-      setAiSummary(combined)
-      setEnrichLogs(combined.logs)
-      await Promise.all([refetchLinks(), refetchUnlinked()])
-    } catch (error) {
-      setAiError(`AI matching failed: ${String(error)}`)
-    } finally {
-      setAiPending(false)
-      setEnrichProgress(null)
-    }
-  }
-
-  const handleRunAiMatch = async (): Promise<void> => {
-    if (!selectedAiAuctionIds.length) return
-    await runAiMatchForIds(selectedAiAuctionIds)
-    setSelectedAiAuctionIds([])
-  }
-
-  const runVisionMatchForIds = async (auctionIds: number[]): Promise<void> => {
-    if (!auctionIds.length) return
-    setVisionError(null)
-    setVisionPending(true)
-    setVisionSummary(null)
-    setAiSummary(null)
-    setAiError(null)
-    setEnrichLogs([])
-    setEnrichProgress({ completed: 0, total: auctionIds.length })
-    try {
-      const batchSize = 5
-      const batches = []
-      for (let i = 0; i < auctionIds.length; i += batchSize) {
-        batches.push(auctionIds.slice(i, i + batchSize))
-      }
-
-      const combined: VisionMatchSummary = {
-        scanned: 0,
-        matched: 0,
-        linked: 0,
-        skipped: 0,
-        skipReasons: {},
-        matchedExamples: [],
-        logs: []
-      }
-
-      for (const batch of batches) {
-        const result = await runVisionMatch(batch)
-        combined.scanned += result.scanned
-        combined.matched += result.matched
-        combined.linked += result.linked
-        combined.skipped += result.skipped
-        for (const [reason, count] of Object.entries(result.skipReasons)) {
-          combined.skipReasons[reason] = (combined.skipReasons[reason] || 0) + count
-        }
-        combined.matchedExamples.push(...result.matchedExamples)
-        combined.logs.push(...(result.logs ?? []))
-        setEnrichProgress((prev) =>
-          prev ? { ...prev, completed: Math.min(prev.total, prev.completed + batch.length) } : prev
-        )
-      }
-
-      setVisionSummary(combined)
-      setEnrichLogs(combined.logs)
-      await Promise.all([refetchLinks(), refetchUnlinked()])
-    } catch (error) {
-      setVisionError(`Vision matching failed: ${String(error)}`)
-    } finally {
-      setVisionPending(false)
-      setEnrichProgress(null)
-    }
-  }
-
-  const handleRunVisionMatch = async (): Promise<void> => {
-    if (!selectedAiAuctionIds.length) return
-    await runVisionMatchForIds(selectedAiAuctionIds)
-    setSelectedAiAuctionIds([])
-  }
-
-  const links = linkData ?? []
-  const unlinkedAuctions = unlinkedData?.rows ?? []
-  const {
-    data: cardSearchResults,
-    isLoading: cardSearchLoading,
-    isError: cardSearchError
-  } = useQuery<CardSearchResult[]>({
-    queryKey: ['card-search', searchQuery, language],
-    queryFn: () => searchCards(searchQuery, 50, 'database', language),
-    enabled: searchOpen && Boolean(searchQuery)
-  })
-  const counts = useMemo(() => {
-    const linkedCards = links.filter((link) => link.cardId).length
+  // IF NO FILTERS: Return default slice immediately to fix the "No cards found" issue
+  if (selectedSet.size === 0) {
+    const safeOffset = Number(offset) || 0
+    const safeLimit = Number(limit) || 100
     return {
-      linkedCards,
-      unlinkedCards: linkingStats?.unlinked ?? unlinkedData?.total ?? 0
-    }
-  }, [links, linkingStats?.unlinked, unlinkedData?.total])
-  const filteredLinkedAuctions = useMemo(() => {
-    const query = linkedSearchTerm.trim().toLowerCase()
-    if (!query) return links
-
-    return links.filter((link) => {
-      const haystack = [
-        String(link.itemId),
-        link.auctionTitle ?? '',
-        link.cardId ?? '',
-        link.cardName ?? '',
-        link.cardNumber ?? '',
-        link.setName ?? '',
-        link.setCode ?? ''
-      ]
-        .join(' ')
-        .toLowerCase()
-
-      return haystack.includes(query)
-    })
-  }, [linkedSearchTerm, links])
-  const pagedUnlinkedAuctions = unlinkedAuctions
-  const visiblePageIds = useMemo(() => pagedUnlinkedAuctions.map((auction) => auction.itemId), [pagedUnlinkedAuctions])
-  const selectedAiSet = useMemo(() => new Set(selectedAiAuctionIds), [selectedAiAuctionIds])
-  const allPageSelected = visiblePageIds.length > 0 && visiblePageIds.every((id) => selectedAiSet.has(id))
-  const totalUnlinkedVisible = unlinkedData?.total ?? 0
-  const totalUnlinkedPages = Math.max(1, Math.ceil(totalUnlinkedVisible / pageSize))
-  const totalUnlinkedAvailable = linkingStats?.unlinked ?? totalUnlinkedVisible
-  const pagedLinkedAuctions = useMemo(() => {
-    const start = (linkedPage - 1) * pageSize
-    return filteredLinkedAuctions.slice(start, start + pageSize)
-  }, [filteredLinkedAuctions, linkedPage, pageSize])
-  const totalLinkedPages = Math.max(1, Math.ceil(filteredLinkedAuctions.length / pageSize))
-  const skipReasonEntries = useMemo(() => {
-    if (!linkSummary) return []
-    const knownReasons = orderedSkipReasons.map((reason) => [reason, linkSummary.skipReasons[reason] ?? 0] as const)
-    const additionalReasons = Object.entries(linkSummary.skipReasons).filter(
-      ([reason]) => !orderedSkipReasons.includes(reason)
-    )
-    return [...knownReasons, ...additionalReasons]
-  }, [linkSummary])
-  const skipReasonOptions = useMemo(() => {
-    if (!linkSummary) return []
-    return skipReasonEntries.filter(([, count]) => count > 0).map(([reason]) => reason)
-  }, [linkSummary, skipReasonEntries])
-  const skipReasonRows = useMemo(() => {
-    if (!linkSummary) return []
-    return linkSummary.skippedExamples?.[selectedSkipReason] ?? []
-  }, [linkSummary, selectedSkipReason])
-
-  const languageOptions = useMemo(() => {
-    const values = new Set<string>()
-    unlinkedAuctions.forEach((auction) => {
-      values.add(normalizeLanguage(auction.pokemonLanguage))
-    })
-    return Array.from(values).sort((left, right) => left.localeCompare(right, 'sv-SE'))
-  }, [unlinkedAuctions])
-
-  useEffect(() => {
-    if (!skipReasonOptions.length) return
-    if (skipReasonOptions.includes('set_total_mismatch')) {
-      setSelectedSkipReason('set_total_mismatch')
-      return
-    }
-    setSelectedSkipReason(skipReasonOptions[0])
-  }, [skipReasonOptions])
-
-
-  useEffect(() => {
-    if (searchOpen) return
-    setSelectedAuction(null)
-    setSearchTerm('')
-    setSearchQuery('')
-    setManualLinkError(null)
-    setManualLinkSuccess(null)
-  }, [searchOpen])
-
-  useEffect(() => {
-    setUnlinkedPage(1)
-  }, [languageFilter, selectedDiagnosticFilters])
-
-  useEffect(() => {
-    setLinkedPage(1)
-  }, [linkedSearchTerm])
-
-  useEffect(() => {
-    if (unlinkedPage <= totalUnlinkedPages) return
-    setUnlinkedPage(totalUnlinkedPages)
-  }, [totalUnlinkedPages, unlinkedPage])
-
-  useEffect(() => {
-    if (linkedPage <= totalLinkedPages) return
-    setLinkedPage(totalLinkedPages)
-  }, [linkedPage, totalLinkedPages])
-
-  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault()
-    setManualLinkError(null)
-    setManualLinkSuccess(null)
-    setSearchQuery(searchTerm.trim())
-  }
-
-  const handleOpenSearch = (auction: UnlinkedAuction): void => {
-    setSelectedAuction(auction)
-    setSearchOpen(true)
-    setManualLinkError(null)
-    setManualLinkSuccess(null)
-  }
-
-  const handleManualLink = async (cardId: string): Promise<void> => {
-    if (!selectedAuction) return
-    setManualLinkPending(true)
-    setManualLinkError(null)
-    setManualLinkSuccess(null)
-    try {
-      await linkAuctionToCard(selectedAuction.itemId, cardId)
-      setManualLinkSuccess(`Linked auction #${selectedAuction.itemId} to card #${cardId}.`)
-      await Promise.all([refetchLinks(), refetchUnlinked()])
-      setSearchOpen(false)
-    } catch (error) {
-      setManualLinkError(`Link failed: ${String(error)}`)
-    } finally {
-      setManualLinkPending(false)
+      total: rows.length,
+      rows: rows.slice(safeOffset, safeOffset + safeLimit).map(row => ({
+        ...row,
+        detected_collector_number: null,
+        detected_expansion_name: null,
+        detected_expansion_code: null
+      }))
     }
   }
 
-  const handleUnlinkAuction = async (auctionId: number): Promise<void> => {
-    setUnlinkError(null)
-    setUnlinkPendingItemId(auctionId)
-    try {
-      await unlinkAuction(auctionId)
-      await Promise.all([refetchLinks(), refetchUnlinked()])
-    } catch (error) {
-      setUnlinkError(`Unlink failed: ${String(error)}`)
-    } finally {
-      setUnlinkPendingItemId(null)
+  // IF FILTERS EXIST: Perform heavy JS diagnostic logic
+  const filteredRows = []
+  // (Helper: Fetch sets for expansion matching if needed)
+  const expansions = (selectedSet.has('No set match') || selectedSet.has('Ready to link')) ? 
+    (await pool.query("SELECT pt_set_id as set_code, name FROM pt_sets WHERE name IS NOT NULL")).rows : []
+
+  for (const row of rows) {
+    const text = normalizeAuctionText(`${row.title || ''} ${row.description || ''}`)
+    const collectorNumber = extractCardNumber(text)
+    
+    // Simple expansion match logic
+    let matchedExp = null
+    if (expansions.length > 0) {
+        matchedExp = expansions.find(e => text.includes(e.name.toLowerCase()) || text.includes(e.set_code.toLowerCase()))
+    }
+
+    const issues = []
+    if (!row.title) issues.push('Missing title')
+    if (!row.description) issues.push('Missing description')
+    if (!collectorNumber) issues.push('No card #')
+    if (!matchedExp) issues.push('No set match')
+    if (!row.pokemon_era) issues.push('No era')
+    if (!row.pokemon_language) issues.push('No language')
+    if (!row.item_condition) issues.push('No condition')
+
+    const rowMarkers = issues.length ? issues : ['Ready to link']
+    if (rowMarkers.some(m => selectedSet.has(m))) {
+      filteredRows.push({
+        ...row,
+        detected_collector_number: collectorNumber,
+        detected_expansion_name: matchedExp?.name || null,
+        detected_expansion_code: matchedExp?.set_code || null
+      })
     }
   }
 
-  const toggleDiagnosticFilter = (option: DiagnosticFilterOption): void => {
-    setSelectedDiagnosticFilters((prev) => {
-      if (prev.includes(option)) {
-        return prev.filter((entry) => entry !== option)
-      }
-      return [...prev, option]
-    })
+  const safeOffset = Number(offset) || 0
+  const safeLimit = Number(limit) || 100
+  return {
+    total: filteredRows.length,
+    rows: filteredRows.slice(safeOffset, safeOffset + safeLimit)
   }
-
-  const toggleAiSelection = (auctionId: number): void => {
-    setSelectedAiAuctionIds((prev) => {
-      if (prev.includes(auctionId)) {
-        return prev.filter((id) => id !== auctionId)
-      }
-      return [...prev, auctionId]
-    })
-  }
-
-  const toggleSelectAllPage = (): void => {
-    setSelectedAiAuctionIds((prev) => {
-      if (allPageSelected) {
-        return prev.filter((id) => !visiblePageIds.includes(id))
-      }
-      const next = new Set(prev)
-      visiblePageIds.forEach((id) => next.add(id))
-      return Array.from(next)
-    })
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Admin</p>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Enrich</h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Review how Tradera auctions are linked to cards and track enrichment coverage.
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Badge variant="secondary" className="inline-flex items-center gap-2">
-            <Link2 className="h-4 w-4" />
-            Auction links
-          </Badge>
-        </div>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Tradera Linking</CardTitle>
-          <CardDescription>Review deterministic matches before writing links into the database.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              Linking runs across all unlinked auctions.
-            </p>
-            <Button onClick={handleRunLink} disabled={linkPending}>
-              {linkPending ? 'Linking…' : 'Link auctions'}
-            </Button>
-          </div>
-
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100">
-            Only deterministic matches are linked. Bundles and unclear titles are skipped.
-          </div>
-
-          {traderaError ? (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-100">
-              {traderaError}
-            </div>
-          ) : null}
-
-          {linkSummary ? (
-            <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Linked</p>
-                  <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                    {linkSummary.linked.toLocaleString('sv-SE')}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Skipped</p>
-                  <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                    {linkSummary.skipped.toLocaleString('sv-SE')}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Scanned</p>
-                  <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                    {linkSummary.scanned.toLocaleString('sv-SE')}
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Skip reasons</p>
-                <ul className="mt-2 space-y-1">
-                  {skipReasonEntries.length ? (
-                    skipReasonEntries.map(([reason, count]) => (
-                      <li key={reason}>
-                        <span className="font-semibold">{reason}</span>: {count}
-                      </li>
-                    ))
-                  ) : (
-                    <li>No skips.</li>
-                  )}
-                </ul>
-              </div>
-
-              <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Skipped auctions</p>
-                  <label className="flex items-center gap-2 text-xs text-slate-500">
-                    Reason
-                    <select
-                      className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
-                      value={selectedSkipReason}
-                      onChange={(event) => setSelectedSkipReason(event.target.value)}
-                    >
-                      {skipReasonOptions.map((reason) => (
-                        <option key={reason} value={reason}>
-                          {reason}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-left">Item</TableHead>
-                        <TableHead className="text-left">Auction title</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {skipReasonRows.length ? (
-                        skipReasonRows.map((example) => (
-                          <TableRow key={`${selectedSkipReason}-${example.itemId}`}>
-                            <TableCell className="text-left text-slate-700 dark:text-slate-200">
-                              #{example.itemId}
-                            </TableCell>
-                            <TableCell className="text-left text-slate-700 dark:text-slate-200">
-                              {example.title ?? 'Untitled'}
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={2} className="text-center text-sm text-slate-500">
-                            No skipped auctions for this reason.
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-
-              <div className="overflow-hidden rounded-xl border border-slate-900/80">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-left">Item</TableHead>
-                      <TableHead className="text-left">Auction title</TableHead>
-                      <TableHead className="text-left">Card</TableHead>
-                      <TableHead className="text-left">Set</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {linkSummary.linkedExamples.length ? (
-                      linkSummary.linkedExamples.map((example) => (
-                        <TableRow key={`${example.itemId}-${example.cardId}`}>
-                          <TableCell className="text-left text-slate-700 dark:text-slate-200">
-                            #{example.itemId}
-                          </TableCell>
-                          <TableCell className="text-left text-slate-700 dark:text-slate-200">
-                            {example.title ?? 'Untitled'}
-                          </TableCell>
-                          <TableCell className="text-left text-slate-700 dark:text-slate-200">
-                            {example.cardName ?? 'Unknown'} (#{example.cardId})
-                          </TableCell>
-                          <TableCell className="text-left text-slate-700 dark:text-slate-200">
-                            {example.setName ?? '—'}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center text-sm text-slate-500">
-                          No linked examples returned.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-col gap-2 space-y-0 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <CardTitle>Unlinked auctions</CardTitle>
-            <CardDescription>
-              Choose diagnostics filters to load auctions, then optionally narrow by language.
-            </CardDescription>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Badge variant="outline">{counts.unlinkedCards.toLocaleString('sv-SE')} unlinked</Badge>
-            <Badge variant="secondary">{selectedAiAuctionIds.length.toLocaleString('sv-SE')} selected</Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              {selectedAiAuctionIds.length
-                ? `${selectedAiAuctionIds.length.toLocaleString('sv-SE')} auction(s) selected.`
-                : 'Select auctions from the table below to run enrichment.'}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={handleRunAiMatch} disabled={aiPending || visionPending || selectedAiAuctionIds.length === 0}>
-                {aiPending ? 'Running title AI…' : 'Run title AI'}
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={handleRunVisionMatch}
-                disabled={aiPending || visionPending || selectedAiAuctionIds.length === 0}
-              >
-                {visionPending ? 'Running image AI…' : 'Run image AI'}
-              </Button>
-            </div>
-          </div>
-
-          {enrichProgress ? (
-            <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
-              Processed {enrichProgress.completed.toLocaleString('sv-SE')} of{' '}
-              {enrichProgress.total.toLocaleString('sv-SE')} selected auctions.
-            </div>
-          ) : null}
-
-          {aiError ? (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-100">
-              {aiError}
-            </div>
-          ) : null}
-
-          {visionError ? (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-100">
-              {visionError}
-            </div>
-          ) : null}
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Title AI summary</p>
-              {aiSummary ? (
-                <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                  <div>
-                    <p className="text-xs text-slate-500">Matched</p>
-                    <p className="font-semibold text-slate-900 dark:text-slate-50">
-                      {aiSummary.matched.toLocaleString('sv-SE')}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Skipped</p>
-                    <p className="font-semibold text-slate-900 dark:text-slate-50">
-                      {aiSummary.skipped.toLocaleString('sv-SE')}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Scanned</p>
-                    <p className="font-semibold text-slate-900 dark:text-slate-50">
-                      {aiSummary.scanned.toLocaleString('sv-SE')}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <p className="mt-2 text-xs text-slate-500">No title AI run yet.</p>
-              )}
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Image AI summary</p>
-              {visionSummary ? (
-                <div className="mt-2 grid gap-2 sm:grid-cols-4">
-                  <div>
-                    <p className="text-xs text-slate-500">Matched</p>
-                    <p className="font-semibold text-slate-900 dark:text-slate-50">
-                      {visionSummary.matched.toLocaleString('sv-SE')}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Linked</p>
-                    <p className="font-semibold text-slate-900 dark:text-slate-50">
-                      {visionSummary.linked.toLocaleString('sv-SE')}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Skipped</p>
-                    <p className="font-semibold text-slate-900 dark:text-slate-50">
-                      {visionSummary.skipped.toLocaleString('sv-SE')}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Scanned</p>
-                    <p className="font-semibold text-slate-900 dark:text-slate-50">
-                      {visionSummary.scanned.toLocaleString('sv-SE')}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <p className="mt-2 text-xs text-slate-500">No image AI run yet.</p>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950/40 dark:text-slate-200">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Enrichment logs</p>
-            {enrichLogs.length ? (
-              <div className="mt-2 max-h-64 space-y-2 overflow-y-auto">
-                {enrichLogs.map((entry, index) => (
-                  <div key={`${entry.itemId}-${entry.stage}-${index}`} className="rounded-md bg-slate-50 p-2">
-                    <p className="text-xs font-semibold text-slate-700">
-                      #{entry.itemId} · {entry.stage}
-                    </p>
-                    <p className="text-xs text-slate-600">{entry.message}</p>
-                    {entry.data ? (
-                      <pre className="mt-1 whitespace-pre-wrap text-[11px] text-slate-500">
-                        {JSON.stringify(entry.data, null, 2)}
-                      </pre>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-2 text-xs text-slate-500">Run an enrichment model to see logs here.</p>
-            )}
-          </div>
-
-          <div className="overflow-hidden rounded-xl border border-slate-900/80">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-300">
-              <div className="flex flex-wrap items-center gap-3">
-                <Label htmlFor="language-filter" className="text-xs uppercase tracking-wide text-slate-500">
-                  Language
-                </Label>
-                <select
-                  id="language-filter"
-                  className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
-                  value={languageFilter}
-                  onChange={(event) => setLanguageFilter(event.target.value)}
-                >
-                  <option value="all">All languages</option>
-                  {languageOptions.map((language) => (
-                    <option key={language} value={language}>
-                      {language}
-                    </option>
-                  ))}
-                </select>
-                <details className="relative">
-                  <summary className="cursor-pointer list-none rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
-                    Diagnostics ({selectedDiagnosticFilters.length}/{diagnosticFilterOptions.length})
-                  </summary>
-                  <div className="absolute z-20 mt-2 w-56 rounded-md border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-800 dark:bg-slate-950">
-                    <div className="mb-2 flex items-center justify-between text-[11px] text-slate-500">
-                      <span>Show auctions with:</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className="text-indigo-600 hover:underline"
-                          onClick={() => setSelectedDiagnosticFilters([...diagnosticFilterOptions])}
-                        >
-                          Select all
-                        </button>
-                        <button
-                          type="button"
-                          className="text-slate-500 hover:underline"
-                          onClick={() => setSelectedDiagnosticFilters([])}
-                        >
-                          Clear
-                        </button>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      {diagnosticFilterOptions.map((option) => (
-                        <label key={option} className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-200">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-slate-300"
-                            checked={selectedDiagnosticFilters.includes(option)}
-                            onChange={() => toggleDiagnosticFilter(option)}
-                          />
-                          <span>{option}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </details>
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-slate-300"
-                    checked={allPageSelected}
-                    onChange={toggleSelectAllPage}
-                    disabled={pagedUnlinkedAuctions.length === 0}
-                    aria-label="Select all auctions on this page"
-                  />
-                  <span>Select page</span>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                <span>
-                  Showing {totalUnlinkedVisible.toLocaleString('sv-SE')} /{' '}
-                  {totalUnlinkedAvailable.toLocaleString('sv-SE')}
-                </span>
-                <span>
-                  Page {unlinkedPage.toLocaleString('sv-SE')} ({((unlinkedPage - 1) * pageSize + 1).toLocaleString('sv-SE')}-
-                  {Math.min(unlinkedPage * pageSize, totalUnlinkedVisible).toLocaleString('sv-SE')})
-                </span>
-                <div className="flex items-center gap-1">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    disabled={unlinkedPage <= 1}
-                    onClick={() => setUnlinkedPage((prev) => Math.max(1, prev - 1))}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    disabled={unlinkedPage >= totalUnlinkedPages}
-                    onClick={() => setUnlinkedPage((prev) => Math.min(totalUnlinkedPages, prev + 1))}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10 text-left">Select</TableHead>
-                  <TableHead className="text-left">Auction</TableHead>
-                  <TableHead className="text-left">Era</TableHead>
-                  <TableHead className="text-left">Language</TableHead>
-                  <TableHead className="text-left">Condition</TableHead>
-                  <TableHead className="text-left">Detected card #</TableHead>
-                  <TableHead className="text-left">Detected set</TableHead>
-                  <TableHead className="text-left">Diagnostics</TableHead>
-                  <TableHead className="text-left">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pagedUnlinkedAuctions.length ? (
-                  pagedUnlinkedAuctions.map((auction) => {
-                    const diagnostics = buildDiagnostics(auction)
-                    const isSelected = selectedAiSet.has(auction.itemId)
-
-                    return (
-                      <TableRow key={auction.itemId}>
-                        <TableCell className="text-left">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-slate-300"
-                            checked={isSelected}
-                            onChange={() => toggleAiSelection(auction.itemId)}
-                            aria-label={`Select auction ${auction.itemId}`}
-                          />
-                        </TableCell>
-                        <TableCell className="text-left">
-                          <div className="space-y-1">
-                            {auction.itemUrl ? (
-                              <a
-                                href={auction.itemUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="font-semibold text-indigo-600 hover:underline"
-                              >
-                                {auction.title ?? `Auction #${auction.itemId}`}
-                              </a>
-                            ) : (
-                              <p className="font-semibold text-slate-900 dark:text-slate-50">
-                                {auction.title ?? `Auction #${auction.itemId}`}
-                              </p>
-                            )}
-                            <p className="text-xs text-slate-600 dark:text-slate-400">
-                              Item #{auction.itemId}
-                            </p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                          {auction.pokemonEra ?? '—'}
-                        </TableCell>
-                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                          {auction.pokemonLanguage ?? '—'}
-                        </TableCell>
-                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                          {auction.itemCondition ?? '—'}
-                        </TableCell>
-                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                          {auction.detectedCollectorNumber ?? '—'}
-                        </TableCell>
-                        <TableCell className="text-left text-slate-600 dark:text-slate-300">
-                          {formatDetectedExpansion(auction)}
-                        </TableCell>
-                        <TableCell className="text-left">
-                          {diagnostics.length ? (
-                            <div className="flex flex-wrap gap-2">
-                              {diagnostics.map((note) => (
-                                <Badge key={note} variant="secondary" className="whitespace-nowrap">
-                                  {note}
-                                </Badge>
-                              ))}
-                            </div>
-                          ) : (
-                            <Badge variant="outline">Ready to link</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-left">
-                          <Button variant="secondary" size="sm" onClick={() => handleOpenSearch(auction)}>
-                            Search for card
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center text-sm text-slate-500">
-                      {unlinkedLoading
-                        ? 'Loading unlinked auctions…'
-                        : unlinkedError
-                          ? 'Unable to load unlinked auctions.'
-                          : 'No unlinked auctions found.'}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-col gap-2 space-y-0 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <CardTitle className="flex items-center gap-2">
-              <Link2 className="h-5 w-5 text-indigo-500" />
-              Linked auctions
-            </CardTitle>
-            <CardDescription>
-              Compact table for reviewing links and unlinking incorrect matches.
-            </CardDescription>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Badge variant="outline">{counts.linkedCards.toLocaleString('sv-SE')} linked</Badge>
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="linked-search" className="text-xs uppercase tracking-wide text-slate-500">
-                Search
-              </Label>
-              <Input
-                id="linked-search"
-                value={linkedSearchTerm}
-                onChange={(event) => setLinkedSearchTerm(event.target.value)}
-                placeholder="Filter by auction, card, set, item id"
-                className="h-8 w-72"
-              />
-            </div>
-            <span>
-              Showing {(pagedLinkedAuctions.length ? (linkedPage - 1) * pageSize + 1 : 0).toLocaleString('sv-SE')}–
-              {Math.min(linkedPage * pageSize, filteredLinkedAuctions.length).toLocaleString('sv-SE')} of{' '}
-              {filteredLinkedAuctions.length.toLocaleString('sv-SE')}
-            </span>
-          </div>
-
-          {unlinkError ? (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-xs text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-100">
-              {unlinkError}
-            </div>
-          ) : null}
-
-          <div className="overflow-hidden rounded-xl border border-slate-900/80">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-left">Item</TableHead>
-                  <TableHead className="text-left">Card</TableHead>
-                  <TableHead className="text-left">Set</TableHead>
-                  <TableHead className="text-left">Method</TableHead>
-                  <TableHead className="text-left">Conf.</TableHead>
-                  <TableHead className="text-left">Linked</TableHead>
-                  <TableHead className="text-left">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pagedLinkedAuctions.length ? (
-                  pagedLinkedAuctions.map((link) => (
-                    <TableRow key={`${link.itemId}-${link.cardId}`} className="text-xs">
-                      <TableCell className="py-2 text-left">
-                        {link.auctionUrl ? (
-                          <a href={link.auctionUrl} target="_blank" rel="noreferrer" className="font-medium text-indigo-600 hover:underline">
-                            #{link.itemId}
-                          </a>
-                        ) : (
-                          <span className="font-medium">#{link.itemId}</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="py-2 text-left text-slate-700 dark:text-slate-200">{formatCardLabel(link)}</TableCell>
-                      <TableCell className="py-2 text-left text-slate-600 dark:text-slate-300">{formatSetLabel(link)}</TableCell>
-                      <TableCell className="py-2 text-left text-slate-600 dark:text-slate-300">{link.method ?? '—'}</TableCell>
-                      <TableCell className="py-2 text-left text-slate-600 dark:text-slate-300">{formatConfidence(link.confidence)}</TableCell>
-                      <TableCell className="py-2 text-left text-slate-600 dark:text-slate-300">{formatLinkedAtCompact(link.linkedAt)}</TableCell>
-                      <TableCell className="py-2 text-left">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          className="h-7 px-2 text-xs"
-                          disabled={unlinkPendingItemId === link.itemId}
-                          onClick={() => handleUnlinkAuction(link.itemId)}
-                        >
-                          {unlinkPendingItemId === link.itemId ? 'Unlinking…' : 'Unlink'}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center text-sm text-slate-500">
-                      {linksLoading ? 'Loading linked auctions…' : 'No linked auctions found.'}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
-          <div className="flex items-center justify-end gap-1">
-            <Button type="button" variant="secondary" size="sm" disabled={linkedPage <= 1} onClick={() => setLinkedPage((prev) => Math.max(1, prev - 1))}>
-              Previous
-            </Button>
-            <Button type="button" variant="secondary" size="sm" disabled={linkedPage >= totalLinkedPages} onClick={() => setLinkedPage((prev) => Math.min(totalLinkedPages, prev + 1))}>
-              Next
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-
-      <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Search for card</DialogTitle>
-            <DialogDescription>
-              {selectedAuction
-                ? `Match auction #${selectedAuction.itemId} to the correct card and save it.`
-                : 'Pick a card to link.'}
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedAuction ? (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-200">
-              <p className="font-semibold text-slate-900 dark:text-slate-50">
-                {selectedAuction.title ?? `Auction #${selectedAuction.itemId}`}
-              </p>
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                Detected card # {selectedAuction.detectedCollectorNumber ?? '—'} · Detected set{' '}
-                {formatDetectedExpansion(selectedAuction)}
-              </p>
-            </div>
-          ) : null}
-
-          <form onSubmit={handleSearchSubmit} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1 space-y-2">
-              <Label htmlFor="card-search">Search</Label>
-              <Input
-                id="card-search"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search by card name, number, set name, or set code"
-              />
-            </div>
-            <Button type="submit" variant="secondary">
-              Search
-            </Button>
-          </form>
-
-          {manualLinkError ? (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-sm text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-100">
-              {manualLinkError}
-            </div>
-          ) : null}
-
-          {manualLinkSuccess ? (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-100">
-              {manualLinkSuccess}
-            </div>
-          ) : null}
-
-          <div className="space-y-2">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Results</p>
-            <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
-              {searchQuery && cardSearchLoading ? (
-                <p className="text-sm text-slate-500">Searching…</p>
-              ) : cardSearchError ? (
-                <p className="text-sm text-rose-400">Failed to load search results.</p>
-              ) : cardSearchResults?.length ? (
-                cardSearchResults.map((card) => (
-                  <div
-                    key={card.id}
-                    className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-200 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div>
-                      <p className="font-semibold text-slate-900 dark:text-slate-50">{card.name ?? 'Unknown card'}</p>
-                      <p className="text-xs text-slate-600 dark:text-slate-400">
-                        {card.setName ?? 'Unknown set'}
-                        {card.ptSetId || card.setCode ? ` · ${card.ptSetId ?? card.setCode}` : ''} ·{' '}
-                        {card.cardNumber ?? 'Unnumbered'}
-                        {card.era ? ` · ${card.era}` : ''}
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      onClick={() => handleManualLink(card.id)}
-                      disabled={manualLinkPending}
-                    >
-                      {manualLinkPending ? 'Linking…' : 'Link card'}
-                    </Button>
-                  </div>
-                ))
-              ) : searchQuery ? (
-                <p className="text-sm text-slate-500">No cards found for that search.</p>
-              ) : (
-                <p className="text-sm text-slate-500">Enter a search term to find cards.</p>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter className="sm:justify-end">
-            <Button variant="secondary" onClick={() => setSearchOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-    </div>
-  )
 }
+
+// --- API Routes ---
+app.get('/api/linking/unlinked', async (req, res) => {
+  try {
+    const result = await fetchUnlinkedAuctionSummaries({
+      limit: req.query.limit,
+      offset: req.query.offset,
+      language: req.query.language,
+      diagnostics: req.query.diagnostics ? req.query.diagnostics.split(',') : []
+    })
+    res.json({
+      total: result.total,
+      rows: result.rows.map(r => ({
+        itemId: r.item_id,
+        title: r.title,
+        description: r.description,
+        endDate: r.end_date,
+        price: r.price,
+        bidCount: r.bid_count,
+        itemUrl: r.item_url,
+        sellerAlias: r.seller_alias,
+        pokemonEra: r.pokemon_era,
+        pokemonLanguage: r.pokemon_language,
+        itemCondition: r.item_condition,
+        detectedCollectorNumber: r.detected_collector_number,
+        detectedExpansionName: r.detected_expansion_name,
+        detectedExpansionCode: r.detected_expansion_code
+      }))
+    })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ total: 0, rows: [] })
+  }
+})
+
+app.get('/api/sales', async (req, res) => {
+  try {
+    const auctionsReady = await ensureTraderaAuctionsTableAvailable()
+    const auctionColumns = await resolveTraderaAuctionColumns()
+    if (!auctionsReady) return res.json({ rows: [], total: 0 })
+
+    const limit = Math.min(Number(req.query.limit) || 100, 500)
+    const offset = Number(req.query.offset) || 0
+    const search = req.query.search ? `%${req.query.search}%` : null
+
+    const where = []
+    const params = []
+    if (search) {
+      params.push(search)
+      where.push(`title ILIKE $${params.length}`)
+    }
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : ''
+
+    const countRes = await pool.query(`SELECT COUNT(*)::int as total FROM tradera_auctions ${whereClause}`, params)
+    const dataRes = await pool.query(`
+      SELECT ${auctionColumns.itemIdColumn} as item_id, title, end_date, price, bid_count, item_url, thumbnail_url, seller_alias, pokemon_era, pokemon_language, item_condition
+      FROM tradera_auctions ${whereClause}
+      ORDER BY end_date DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `, [...params, limit, offset])
+
+    res.json({ rows: dataRes.rows.map(normalizeTraderaAuctionRow), total: countRes.rows[0].total })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ error: 'Failed' })
+  }
+})
+
+// --- Placeholder/Remaining API Routes (Manual, Stats, etc.) ---
+app.get('/api/linking/stats', async (req, res) => {
+    const [linkConfig, auctionsReady] = await Promise.all([getTraderaAuctionLinksConfig(), ensureTraderaAuctionsTableAvailable()])
+    if (!linkConfig || !auctionsReady) return res.json({ total: 0, linked: 0, unlinked: 0 })
+    const { rows } = await pool.query(`
+        SELECT COUNT(*)::int as total, COUNT(l.${linkConfig.auctionIdColumn})::int as linked
+        FROM tradera_auctions a LEFT JOIN ${linkConfig.tableName} l ON l.${linkConfig.auctionIdColumn} = a.item_id
+    `)
+    res.json({ total: rows[0].total, linked: rows[0].linked, unlinked: rows[0].total - rows[0].linked })
+})
+
+app.post('/api/linking/manual', async (req, res) => {
+    const { auctionId, cardId } = req.body
+    const config = await getTraderaAuctionLinksConfig()
+    await pool.query(`INSERT INTO ${config.tableName} (${config.auctionIdColumn}, ${config.cardIdColumn}, method) VALUES ($1, $2, 'manual') ON CONFLICT DO NOTHING`, [auctionId, cardId])
+    res.json({ ok: true })
+})
+
+// --- Static Frontend Serving ---
+if (existsSync(path.join(distPath, 'index.html'))) {
+  app.use(express.static(distPath))
+  app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')))
+}
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`))

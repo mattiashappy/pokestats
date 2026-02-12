@@ -10,7 +10,7 @@ import { getMarketPrice, getMarketPriceValue, getTraderaMarketPrice } from '../u
 import type { CardListItem, CardResponse } from '../types'
 
 export function DashboardPage(): JSX.Element {
-  const featuredCardId = '68af87b6c4f780b5153e99c5'
+  const featuredCardId = '696f67a567063f37df8231a4'
   const { language } = useRegion()
   const { data: featuredCard } = useQuery<CardResponse>({
     queryKey: ['featured-card', featuredCardId],
@@ -113,15 +113,11 @@ export function DashboardPage(): JSX.Element {
             <div className="absolute left-8 top-4 z-10 border-2 border-slate-900 bg-emerald-200 px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-900 shadow-[3px_3px_0px_#0f172a]">
               ROI <span className="text-lg">302%</span>
             </div>
-            {featuredCard?.image_url ? (
-              <img
-                src={featuredCard.image_url}
-                alt={featuredCard.name ?? 'Featured card'}
-                className="h-full max-h-[420px] w-full object-contain"
-              />
-            ) : (
-              <div className="h-96 w-full max-w-sm animate-pulse rounded-lg bg-white/70" />
-            )}
+            <img
+              src={featuredCard?.image_url ?? '/charizard-hero.svg'}
+              alt={featuredCard?.name ?? 'Charizard'}
+              className="h-full max-h-[420px] w-full object-contain"
+            />
           </div>
         </div>
 
