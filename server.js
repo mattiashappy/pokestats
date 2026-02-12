@@ -2842,6 +2842,12 @@ app.get('/api/linking/links', async (req, res) => {
     }
 
     const cardNameSelect = cardsReady ? 'c.name' : 'NULL::text'
+    const { ptSetsLanguageAvailable, ptCardsLanguageAvailable } = usesPtCards
+      ? await ensurePtLanguageColumns()
+      : { ptSetsLanguageAvailable: false, ptCardsLanguageAvailable: false }
+    const { expansionsLanguageAvailable, cardsLanguageAvailable } = !usesPtCards
+      ? await ensureLocalLanguageColumns()
+      : { expansionsLanguageAvailable: false, cardsLanguageAvailable: false }
     const cardNumberSelect = cardsReady
       ? (usesPtCards ? 'c.card_number' : 'c.collector_number_raw')
       : 'NULL::text'
@@ -2850,6 +2856,12 @@ app.get('/api/linking/links', async (req, res) => {
       : 'NULL::text'
     const setCodeSelect = cardsReady
       ? (usesPtCards ? 'c.pt_set_id' : 'e.set_code')
+      : 'NULL::text'
+    const auctionLanguageSelect = 'a.pokemon_language'
+    const cardLanguageSelect = cardsReady
+      ? (usesPtCards
+        ? (ptCardsLanguageAvailable ? 'c.language' : ptSetsLanguageAvailable ? 's.language' : 'NULL::text')
+        : (cardsLanguageAvailable ? 'c.language' : expansionsLanguageAvailable ? 'e.language' : 'NULL::text'))
       : 'NULL::text'
     let joins = ''
     if (cardsReady) {
@@ -2893,12 +2905,14 @@ app.get('/api/linking/links', async (req, res) => {
           a.price AS auction_price,
           a.bid_count AS auction_bid_count,
           a.seller_alias AS auction_seller_alias,
+          ${auctionLanguageSelect} AS auction_language,
           ${cardNameSelect} AS card_name,
           ${cardNumberSelect} AS card_number,
           ${priceMarketSelect},
           stats.tradera_market_price AS tradera_market_price,
           ${setNameSelect} AS set_name,
-          ${setCodeSelect} AS set_code
+          ${setCodeSelect} AS set_code,
+          ${cardLanguageSelect} AS card_language
         FROM ${linksTable} l
         LEFT JOIN public.tradera_auctions a ON a.${auctionColumns.keyColumn} = l.${traderaAuctionLinksAuctionIdColumn}
         LEFT JOIN LATERAL (
@@ -2926,12 +2940,14 @@ app.get('/api/linking/links', async (req, res) => {
         auctionPrice: row.auction_price ?? null,
         auctionBidCount: row.auction_bid_count ?? null,
         auctionSellerAlias: row.auction_seller_alias ?? null,
+        auctionLanguage: row.auction_language ?? null,
         cardName: row.card_name ?? null,
         cardNumber: row.card_number ?? null,
         priceMarket: row.price_market ?? null,
         traderaMarketPrice: row.tradera_market_price ?? null,
         setName: row.set_name ?? null,
-        setCode: row.set_code ?? null
+        setCode: row.set_code ?? null,
+        cardLanguage: row.card_language ?? null
       }))
     )
   } catch (error) {

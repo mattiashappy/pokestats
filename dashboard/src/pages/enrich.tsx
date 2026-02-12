@@ -63,6 +63,13 @@ const formatDetectedExpansion = (auction: UnlinkedAuction): string => {
   return '—'
 }
 
+const isLanguageMismatch = (auctionLanguage: string | null | undefined, cardLanguage: string | null | undefined): boolean => {
+  const auction = normalizeLanguage(auctionLanguage).toLowerCase()
+  const card = normalizeLanguage(cardLanguage).toLowerCase()
+  if (auction === 'unknown' || card === 'unknown') return false
+  return auction !== card
+}
+
 const normalizeLanguage = (language?: string | null): string => {
   const trimmed = language?.trim()
   if (!trimmed) return 'Unknown'
@@ -365,6 +372,7 @@ export function EnrichPage(): JSX.Element {
                     />
                   </TableHead>
                   <TableHead>Auction Title</TableHead>
+                  <TableHead>Language</TableHead>
                   <TableHead>Detected Set</TableHead>
                   <TableHead>Diagnostics</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -372,7 +380,7 @@ export function EnrichPage(): JSX.Element {
               </TableHeader>
               <TableBody>
                 {unlinkedLoading ? (
-                  <TableRow><TableCell colSpan={5} className="h-32 text-center"><Loader2 className="mx-auto animate-spin" /></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="h-32 text-center"><Loader2 className="mx-auto animate-spin" /></TableCell></TableRow>
                 ) : unlinkedAuctions.length ? (
                   unlinkedAuctions.map(a => (
                     <TableRow key={a.itemId}>
@@ -384,6 +392,9 @@ export function EnrichPage(): JSX.Element {
                         />
                       </TableCell>
                       <TableCell className="max-w-xs truncate font-medium">{a.title}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{a.pokemonLanguage || "Unknown"}</Badge>
+                      </TableCell>
                       <TableCell className="text-slate-500">{formatDetectedExpansion(a)}</TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
@@ -398,7 +409,7 @@ export function EnrichPage(): JSX.Element {
                     </TableRow>
                   ))
                 ) : (
-                  <TableRow><TableCell colSpan={5} className="text-center text-slate-500">No unlinked auctions found.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="text-center text-slate-500">No unlinked auctions found.</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -427,6 +438,7 @@ export function EnrichPage(): JSX.Element {
                   <TableHead>Auction</TableHead>
                   <TableHead>Cards</TableHead>
                   <TableHead>Set</TableHead>
+                  <TableHead>Language</TableHead>
                   <TableHead>Confidence</TableHead>
                   <TableHead>Linked at</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -435,7 +447,7 @@ export function EnrichPage(): JSX.Element {
               <TableBody>
                 {linksLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center">
+                    <TableCell colSpan={7} className="h-24 text-center">
                       <Loader2 className="mx-auto animate-spin" />
                     </TableCell>
                   </TableRow>
@@ -453,6 +465,13 @@ export function EnrichPage(): JSX.Element {
                         )}
                       </TableCell>
                       <TableCell>{formatSetLabel(link)}</TableCell>
+                      <TableCell>
+                        {isLanguageMismatch(link.auctionLanguage, link.cardLanguage) ? (
+                          <Badge variant="warning">Mismatch: {link.auctionLanguage || 'Unknown'} vs {link.cardLanguage || 'Unknown'}</Badge>
+                        ) : (
+                          <Badge variant="outline">{link.auctionLanguage || link.cardLanguage || 'Unknown'}</Badge>
+                        )}
+                      </TableCell>
                       <TableCell>{formatConfidence(link.confidence)}</TableCell>
                       <TableCell>{formatLinkedAtCompact(link.linkedAt)}</TableCell>
                       <TableCell className="text-right">
@@ -464,7 +483,7 @@ export function EnrichPage(): JSX.Element {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-slate-500">
+                    <TableCell colSpan={7} className="text-center text-slate-500">
                       No linked auctions yet.
                     </TableCell>
                   </TableRow>

@@ -8,6 +8,47 @@ const SHOULD_LOG_VISION_REQUEST = ['1', 'true', 'yes'].includes(
 // Dynamic fallback system
 const DEFAULT_FALLBACK_MODELS = ['gemini-1.5-pro-latest', 'gemini-1.5-flash-latest', 'gemini-1.5-pro', 'gemini-1.5-flash']
 
+let languageColumnsCheckedAt = 0
+let ptSetsLanguageAvailable = false
+let ptCardsLanguageAvailable = false
+const LANGUAGE_COLUMN_CACHE_MS = 5 * 60 * 1000
+
+function normalizeLanguageTag(value) {
+  const normalized = normalizeText(value).toLowerCase()
+  if (!normalized) return null
+  if (normalized.startsWith('en')) return 'english'
+  if (normalized.startsWith('jp') || normalized.includes('japan')) return 'japanese'
+  if (normalized.startsWith('sv') || normalized.includes('swed')) return 'swedish'
+  if (normalized.startsWith('de') || normalized.includes('german')) return 'german'
+  if (normalized.startsWith('fr') || normalized.includes('french')) return 'french'
+  if (normalized.startsWith('es') || normalized.includes('spanish')) return 'spanish'
+  if (normalized.startsWith('it') || normalized.includes('italian')) return 'italian'
+  if (normalized.startsWith('pt') || normalized.includes('portugu')) return 'portuguese'
+  return normalized
+}
+
+async function resolvePtLanguageColumns(client) {
+  const now = Date.now()
+  if (now - languageColumnsCheckedAt < LANGUAGE_COLUMN_CACHE_MS) {
+    return { ptSetsLanguageAvailable, ptCardsLanguageAvailable }
+  }
+
+  languageColumnsCheckedAt = now
+  const { rows } = await client.query(
+    `
+      SELECT table_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND column_name = 'language'
+        AND table_name IN ('pt_sets', 'pt_cards')
+    `
+  )
+
+  ptSetsLanguageAvailable = rows.some((row) => row.table_name === 'pt_sets')
+  ptCardsLanguageAvailable = rows.some((row) => row.table_name === 'pt_cards')
+  return { ptSetsLanguageAvailable, ptCardsLanguageAvailable }
+}
+
 async function listVisionModels(apiKey) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
   const response = await fetch(url)
@@ -128,7 +169,7 @@ async function requestVisionModel({ apiKey, model, requestBody }) {
   }
 }
 
-async function callVisionModel({ apiKey, model, imageUrl, fallbackModels = [] }) {
+async function callVisionModel({ apiKey, model, imageUrl, fallbackModels = [], expectedLanguage = null }) {
   const base64Image = await fetchImageAsBase64(imageUrl)
   const mimeType = getMimeType(imageUrl)
   const schema = {
@@ -149,7 +190,8 @@ async function callVisionModel({ apiKey, model, imageUrl, fallbackModels = [] })
         parts: [
           {
             text: `You are extracting printed details from a Pokémon TCG card listing image.
-Prioritize the collector number as the most authoritative identifier.`
+Prioritize the collector number as the most authoritative identifier.
+${expectedLanguage ? `Auction metadata says the card language is ${expectedLanguage}. Favor that language and avoid cross-language guesses.` : ''}`
           },
           {
             inline_data: {
@@ -253,16 +295,33 @@ function isNameCompatible(cardName, extractedName) {
   return normalizedCard.includes(normalizedExtracted) || normalizedExtracted.includes(normalizedCard)
 }
 
-async function matchPtCard(client, { cardNumber, setHint, name }) {
+async function matchPtCard(client, { cardNumber, setHint, name, auctionLanguage }) {
+  const normalizedAuctionLanguage = normalizeLanguageTag(auctionLanguage)
+  const { ptSetsLanguageAvailable: hasSetLanguage, ptCardsLanguageAvailable: hasCardLanguage } = await resolvePtLanguageColumns(client)
+
+  const languageClause = normalizedAuctionLanguage
+    ? (hasCardLanguage
+      ? "AND LOWER(COALESCE(c.language, s.language, '')) = $2"
+      : hasSetLanguage
+        ? "AND LOWER(COALESCE(s.language, '')) = $2"
+        : '')
+    : ''
+
   if (cardNumber) {
+    const params = [cardNumber]
+    if (normalizedAuctionLanguage && languageClause) params.push(normalizedAuctionLanguage)
     const { rows } = await client.query(
       `
-        SELECT pt_card_id, name, set_name, card_number
-        FROM public.pt_cards
-        WHERE card_number = $1
+        SELECT c.pt_card_id, c.name, c.set_name, c.card_number,
+               ${hasCardLanguage ? 'c.language' : 'NULL::text'} AS card_language,
+               ${hasSetLanguage ? 's.language' : 'NULL::text'} AS set_language
+        FROM public.pt_cards c
+        LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
+        WHERE c.card_number = $1
+        ${languageClause}
         LIMIT 20
       `,
-      [cardNumber]
+      params
     )
 
     if (rows.length === 1) {
@@ -286,21 +345,30 @@ async function matchPtCard(client, { cardNumber, setHint, name }) {
 
   if (name) {
     const nameParam = `%${normalizeText(name)}%`
+    const params = [nameParam]
+    const nameLanguageClause = normalizedAuctionLanguage && languageClause ? `
+        ${languageClause}` : ''
+    if (normalizedAuctionLanguage && languageClause) params.push(normalizedAuctionLanguage)
+
     const { rows } = await client.query(
       `
-        SELECT pt_card_id, name, set_name, card_number
-        FROM public.pt_cards
-        WHERE name ILIKE $1
-        ORDER BY set_name
+        SELECT c.pt_card_id, c.name, c.set_name, c.card_number,
+               ${hasCardLanguage ? 'c.language' : 'NULL::text'} AS card_language,
+               ${hasSetLanguage ? 's.language' : 'NULL::text'} AS set_language
+        FROM public.pt_cards c
+        LEFT JOIN public.pt_sets s ON s.pt_set_id = c.pt_set_id
+        WHERE c.name ILIKE $1
+        ${nameLanguageClause}
+        ORDER BY c.set_name
         LIMIT 50
       `,
-      [nameParam]
+      params
     )
 
     if (rows.length === 0) return null
 
     const candidates = filterMatchesBySetName(rows, setHint)
-    
+
     if (candidates.length === 1) {
       return { card: candidates[0], method: 'vision-name+set-fuzzy' }
     }
@@ -315,7 +383,6 @@ async function matchPtCard(client, { cardNumber, setHint, name }) {
           return { card: exact, method: 'vision-name+set+number' }
         }
       }
-      // Best guess fallback if set matches but number doesn't
       return { card: candidates[0], method: 'vision-name+set-best-guess' }
     }
   }
@@ -370,7 +437,8 @@ async function matchAuctionsWithVision({ client, apiKey, model, itemIds, minConf
     `
       SELECT a.item_id,
              a.title,
-             a.image_urls
+             a.image_urls,
+             a.pokemon_language
       FROM public.tradera_auctions a
       LEFT JOIN public.tradera_auction_pt_card_links l ON l.auction_id = a.item_id
       WHERE ${whereClauses.join(' AND ')}
@@ -422,7 +490,8 @@ async function matchAuctionsWithVision({ client, apiKey, model, itemIds, minConf
         apiKey,
         model: resolvedModel,
         imageUrl,
-        fallbackModels
+        fallbackModels,
+        expectedLanguage: row.pokemon_language || null
       })
       summary.logs.push({
         itemId: row.item_id,
@@ -449,7 +518,7 @@ async function matchAuctionsWithVision({ client, apiKey, model, itemIds, minConf
       ? Math.min(Math.max(Number(vision.confidence), 0), 1)
       : 0
 
-    const match = await matchPtCard(client, { cardNumber, setHint, name })
+    const match = await matchPtCard(client, { cardNumber, setHint, name, auctionLanguage: row.pokemon_language })
     if (!match) {
       summary.skipped += 1
       summary.skipReasons.no_match = (summary.skipReasons.no_match || 0) + 1
@@ -457,7 +526,7 @@ async function matchAuctionsWithVision({ client, apiKey, model, itemIds, minConf
         itemId: row.item_id,
         stage: 'match',
         message: 'No PT card match found',
-        data: { cardNumber, name, setHint }
+        data: { cardNumber, name, setHint, auctionLanguage: row.pokemon_language ?? null }
       })
       continue
     }
