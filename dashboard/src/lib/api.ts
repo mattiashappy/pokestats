@@ -295,12 +295,14 @@ export type AuctionCardLink = {
   auctionPrice: number | null
   auctionBidCount: number | null
   auctionSellerAlias: string | null
+  auctionLanguage: string | null
   cardName: string | null
   cardNumber: string | null
   priceMarket: number | null
   traderaMarketPrice: number | null
   setName: string | null
   setCode: string | null
+  cardLanguage: string | null
 }
 
 export type CardSearchResult = {

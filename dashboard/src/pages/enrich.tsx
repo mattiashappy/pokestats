@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Link2, Loader2 } from 'lucide-react'
@@ -61,6 +61,13 @@ const formatDetectedExpansion = (auction: UnlinkedAuction): string => {
   const parts = [auction.detectedExpansionName, auction.detectedExpansionCode].filter(Boolean)
   if (parts.length) return parts.join(' • ')
   return '—'
+}
+
+const isLanguageMismatch = (auctionLanguage: string | null | undefined, cardLanguage: string | null | undefined): boolean => {
+  const auction = normalizeLanguage(auctionLanguage).toLowerCase()
+  const card = normalizeLanguage(cardLanguage).toLowerCase()
+  if (auction === 'unknown' || card === 'unknown') return false
+  return auction !== card
 }
 
 const normalizeLanguage = (language?: string | null): string => {
@@ -143,6 +150,12 @@ export function EnrichPage(): JSX.Element {
   const [searchQuery, setSearchQuery] = useState('')
   const { language } = useRegion()
 
+  const { data: searchResults = [], isFetching: searchPending } = useQuery<CardSearchResult[]>({
+    queryKey: ['linking-search-cards', searchQuery, language],
+    queryFn: () => searchCards(searchQuery, 30, 'database', language),
+    enabled: searchQuery.trim().length > 0
+  })
+
   // Action States
   const [linkPending, setLinkPending] = useState(false)
   const [linkSummary, setLinkSummary] = useState<TraderaLinkSummary | null>(null)
@@ -209,6 +222,32 @@ export function EnrichPage(): JSX.Element {
     await Promise.all([refetchLinks(), refetchUnlinked()])
   }
 
+  const handleRunAiMatch = async () => {
+    if (!selectedAiAuctionIds.length) return
+    setAiPending(true)
+    try {
+      const result = await runAiMatch(selectedAiAuctionIds)
+      setAiSummary(result)
+      setEnrichLogs(result.logs ?? [])
+      await Promise.all([refetchLinks(), refetchUnlinked()])
+    } finally {
+      setAiPending(false)
+    }
+  }
+
+  const handleRunVision = async () => {
+    if (!selectedAiAuctionIds.length) return
+    setVisionPending(true)
+    try {
+      const result = await runVisionMatch(selectedAiAuctionIds)
+      setVisionSummary(result)
+      setEnrichLogs(result.logs ?? [])
+      await Promise.all([refetchLinks(), refetchUnlinked()])
+    } finally {
+      setVisionPending(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -235,6 +274,57 @@ export function EnrichPage(): JSX.Element {
           </Button>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Title AI Enrichment</CardTitle>
+          <CardDescription>Use the selected rows and run the title-based AI matcher.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Button onClick={handleRunAiMatch} disabled={aiPending || selectedAiAuctionIds.length === 0}>
+            {aiPending ? 'Running AI title match...' : `Run Title AI (${selectedAiAuctionIds.length} selected)`}
+          </Button>
+          {aiSummary ? (
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Last run: scanned {aiSummary.scanned}, matched {aiSummary.matched}, skipped {aiSummary.skipped}.
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>OpenAI Vision Enrichment</CardTitle>
+          <CardDescription>Use auction images and OpenAI vision matching on selected rows.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Button onClick={handleRunVision} disabled={visionPending || selectedAiAuctionIds.length === 0}>
+            {visionPending ? 'Running vision match...' : `Run OpenAI Vision (${selectedAiAuctionIds.length} selected)`}
+          </Button>
+          {visionSummary ? (
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Last run: scanned {visionSummary.scanned}, matched {visionSummary.matched}, linked {visionSummary.linked}, skipped {visionSummary.skipped}.
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {enrichLogs.length ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Enrichment Logs</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="max-h-64 space-y-2 overflow-auto rounded-md border p-3 font-mono text-xs">
+              {enrichLogs.slice(0, 100).map((log, idx) => (
+                <p key={`${log.itemId}-${log.stage}-${idx}`}>
+                  [{log.stage}] #{log.itemId}: {log.message}
+                </p>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Unlinked Auctions Table */}
       <Card>
@@ -282,6 +372,7 @@ export function EnrichPage(): JSX.Element {
                     />
                   </TableHead>
                   <TableHead>Auction Title</TableHead>
+                  <TableHead>Language</TableHead>
                   <TableHead>Detected Set</TableHead>
                   <TableHead>Diagnostics</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -289,7 +380,7 @@ export function EnrichPage(): JSX.Element {
               </TableHeader>
               <TableBody>
                 {unlinkedLoading ? (
-                  <TableRow><TableCell colSpan={5} className="h-32 text-center"><Loader2 className="mx-auto animate-spin" /></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="h-32 text-center"><Loader2 className="mx-auto animate-spin" /></TableCell></TableRow>
                 ) : unlinkedAuctions.length ? (
                   unlinkedAuctions.map(a => (
                     <TableRow key={a.itemId}>
@@ -301,6 +392,9 @@ export function EnrichPage(): JSX.Element {
                         />
                       </TableCell>
                       <TableCell className="max-w-xs truncate font-medium">{a.title}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{a.pokemonLanguage || "Unknown"}</Badge>
+                      </TableCell>
                       <TableCell className="text-slate-500">{formatDetectedExpansion(a)}</TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
@@ -315,7 +409,7 @@ export function EnrichPage(): JSX.Element {
                     </TableRow>
                   ))
                 ) : (
-                  <TableRow><TableCell colSpan={5} className="text-center text-slate-500">No unlinked auctions found.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="text-center text-slate-500">No unlinked auctions found.</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -344,6 +438,7 @@ export function EnrichPage(): JSX.Element {
                   <TableHead>Auction</TableHead>
                   <TableHead>Cards</TableHead>
                   <TableHead>Set</TableHead>
+                  <TableHead>Language</TableHead>
                   <TableHead>Confidence</TableHead>
                   <TableHead>Linked at</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -352,7 +447,7 @@ export function EnrichPage(): JSX.Element {
               <TableBody>
                 {linksLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center">
+                    <TableCell colSpan={7} className="h-24 text-center">
                       <Loader2 className="mx-auto animate-spin" />
                     </TableCell>
                   </TableRow>
@@ -370,6 +465,13 @@ export function EnrichPage(): JSX.Element {
                         )}
                       </TableCell>
                       <TableCell>{formatSetLabel(link)}</TableCell>
+                      <TableCell>
+                        {isLanguageMismatch(link.auctionLanguage, link.cardLanguage) ? (
+                          <Badge variant="warning">Mismatch: {link.auctionLanguage || 'Unknown'} vs {link.cardLanguage || 'Unknown'}</Badge>
+                        ) : (
+                          <Badge variant="outline">{link.auctionLanguage || link.cardLanguage || 'Unknown'}</Badge>
+                        )}
+                      </TableCell>
                       <TableCell>{formatConfidence(link.confidence)}</TableCell>
                       <TableCell>{formatLinkedAtCompact(link.linkedAt)}</TableCell>
                       <TableCell className="text-right">
@@ -381,7 +483,7 @@ export function EnrichPage(): JSX.Element {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-slate-500">
+                    <TableCell colSpan={7} className="text-center text-slate-500">
                       No linked auctions yet.
                     </TableCell>
                   </TableRow>
@@ -400,14 +502,31 @@ export function EnrichPage(): JSX.Element {
             <DialogDescription>Search for the correct card to link to item #{selectedAuction?.itemId}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <Input 
+            <Input
               placeholder="Search card name or set..." 
               value={searchTerm} 
               onChange={(e) => setSearchTerm(e.target.value)} 
               onKeyDown={(e) => e.key === 'Enter' && setSearchQuery(searchTerm)}
             />
             <Button className="w-full" onClick={() => setSearchQuery(searchTerm)}>Search Cards</Button>
-            {/* Search results would go here using fetchCards API */}
+            {searchPending ? <p className="text-sm text-slate-500">Searching…</p> : null}
+            {searchResults.length ? (
+              <div className="max-h-64 space-y-2 overflow-auto rounded border p-2">
+                {searchResults.map((card) => (
+                  <button
+                    key={card.id}
+                    type="button"
+                    className="w-full rounded border px-2 py-1 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-900"
+                    onClick={() => handleManualLink(card.id)}
+                    disabled={manualLinkPending}
+                  >
+                    {card.name ?? 'Unnamed card'} {card.cardNumber ? `• ${card.cardNumber}` : ''} {card.setName ? `• ${card.setName}` : ''}
+                  </button>
+                ))}
+              </div>
+            ) : searchQuery ? (
+              <p className="text-sm text-slate-500">No cards found.</p>
+            ) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSearchOpen(false)}>Cancel</Button>
