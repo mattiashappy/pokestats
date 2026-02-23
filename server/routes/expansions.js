@@ -74,8 +74,8 @@ function createExpansionService({
     return { ptSetsLanguageAvailable, expansionsLanguageAvailable }
   }
 
-  async function fetchExpansionSummaries(language = null) {
-    if (!pool) return []
+  async function ensurePricingColumns() {
+    if (!pool) return { ptCardsPricesDataAvailable: false }
 
     try {
       const { ptSetsLanguageAvailable, expansionsLanguageAvailable } = await ensureLanguageColumns()
