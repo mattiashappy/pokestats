@@ -75,7 +75,7 @@ function createExpansionService({
   }
 
   async function fetchExpansionSummaries(language = null) {
-    if (!pool) return { ptCardsPricesDataAvailable: false }
+    if (!pool) return []
 
     try {
       const { ptSetsLanguageAvailable, expansionsLanguageAvailable } = await ensureLanguageColumns()
@@ -96,7 +96,7 @@ function createExpansionService({
         expansionsLanguageAvailable && language
           ? `WHERE LOWER(e.language) = LOWER($${params.push(language)})`
           : priceTrackerReady && ptSetsLanguageAvailable && language
-            ? `WHERE LOWER(s.pt_language) = LOWER($${params.push(language)})`
+            ? `WHERE LOWER(s.language) = LOWER($${params.push(language)})`
             : ''
 
       const query = `
