@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Layers, Loader2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { Button } from '../components/ui/button'
-import { SetCard } from '../components/pokemon/set-card'
 import { fetchExpansions } from '../lib/api'
 import { getExpansionIdentifier } from '../lib/sets'
 import type { ExpansionSummary } from '../types'
@@ -14,6 +14,21 @@ const LANGUAGE_OPTIONS = [
   { label: 'English', value: 'english' },
   { label: 'Japanese', value: 'japanese' }
 ]
+
+const formatMoney = (value: number | null | undefined): string => {
+  if (value === null || value === undefined) return 'Pending'
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 'Pending'
+  return `$${parsed.toFixed(2)}`
+}
+
+const formatChange = (value: number | null | undefined): string => {
+  if (value === null || value === undefined) return '0%'
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return '0%'
+  const prefix = parsed > 0 ? '+' : ''
+  return `${prefix}${parsed.toFixed(2)}%`
+}
 
 export function SetsPage(): JSX.Element {
   const [page, setPage] = useState(1)
@@ -89,7 +104,7 @@ export function SetsPage(): JSX.Element {
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Search</span>
             <input
               className="w-40 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
-              placeholder="Evolving Skies..."
+              placeholder="League & Championship..."
               type="text"
               value={searchTerm}
               onChange={(event) => handleSearchChange(event.target.value)}
@@ -136,10 +151,45 @@ export function SetsPage(): JSX.Element {
             </span>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {pagedExpansions.map((expansion) => (
-              <SetCard key={expansion.id} expansion={expansion} language={languageFilter} />
-            ))}
+          <div className="overflow-x-auto rounded-xl border-2 border-slate-900 bg-white shadow-[4px_4px_0px_#0f172a]">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-100">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-600">Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-600">Card amount</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-600">Total set market price</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-600">Change (MoM)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {pagedExpansions.map((expansion) => {
+                  const setIdentifier = getExpansionIdentifier(expansion)
+                  const params = languageFilter ? new URLSearchParams({ language: languageFilter }).toString() : ''
+                  const setLink = params ? `/sets/${setIdentifier}?${params}` : `/sets/${setIdentifier}`
+                  const change = Number(expansion.set_market_change_pct)
+                  const changeClass = Number.isFinite(change)
+                    ? change > 0
+                      ? 'text-emerald-700'
+                      : change < 0
+                        ? 'text-rose-600'
+                        : 'text-slate-600'
+                    : 'text-slate-600'
+
+                  return (
+                    <tr key={String(expansion.id)} className="hover:bg-amber-50/40">
+                      <td className="px-4 py-3 font-semibold text-slate-900">
+                        <Link to={setLink} className="underline decoration-slate-300 underline-offset-4 hover:decoration-slate-700">
+                          {expansion.name ?? 'Unknown set'}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">{expansion.set_total ?? expansion.cards_total ?? 'Pending'}</td>
+                      <td className="px-4 py-3 text-slate-700">{formatMoney(expansion.set_market_total)}</td>
+                      <td className={`px-4 py-3 font-semibold ${changeClass}`}>{formatChange(expansion.set_market_change_pct)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
