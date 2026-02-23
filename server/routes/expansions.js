@@ -81,6 +81,8 @@ function createExpansionService({
       const { ptSetsLanguageAvailable, expansionsLanguageAvailable } = await ensureLanguageColumns()
       const priceTrackerReady = await ensurePriceTrackerTablesAvailable()
       const setValueMonthlyReady = await ensureSetValueMonthlyAvailable()
+      const { rows: expansionCountRows } = await pool.query('SELECT COUNT(*)::int AS n FROM public.expansions')
+      const hasExpansions = (expansionCountRows?.[0]?.n ?? 0) > 0
 
       // Keep parity with older startup checks; do not block set listing on failure.
       if (ensureCardInfrastructure) {
@@ -92,11 +94,69 @@ function createExpansionService({
       }
 
       const params = []
+      if (!hasExpansions && priceTrackerReady) {
+        const ptParams = []
+        const ptLanguageClause =
+          ptSetsLanguageAvailable && language
+            ? `WHERE LOWER(ps.language) = LOWER($${ptParams.push(language)})`
+            : ''
+
+        const ptFallbackQuery = `
+          WITH pt_counts AS (
+            SELECT
+              c.pt_set_id,
+              COUNT(*)::int AS cards_total,
+              COALESCE(SUM(c.price_market), 0)::numeric AS set_market_total
+            FROM public.pt_cards c
+            GROUP BY c.pt_set_id
+          )
+          SELECT
+            ps.pt_set_id AS id,
+            ps.pt_set_id AS set_code,
+            ps.name AS set_name,
+            ps.name,
+            ps.series AS era,
+            ${ptSetsLanguageAvailable ? 'ps.language' : 'NULL::text'} AS language,
+            NULL::int AS base_total,
+            COALESCE(ps.card_count, pc.cards_total) AS set_total,
+            ps.card_count AS pt_card_count,
+            0::int AS db_cards_count,
+            COALESCE(ps.card_count, pc.cards_total) AS derived_total,
+            ps.release_date,
+            COALESCE(ps.image_cdn_url800, ps.image_cdn_url400, ps.image_cdn_url200, ps.image_cdn_url, ps.image_url) AS image_url,
+            ps.image_cdn_url200,
+            ps.image_cdn_url400,
+            ps.image_cdn_url800,
+            ps.pt_set_id,
+            COALESCE(pc.cards_total, 0)::int AS cards_total,
+            COALESCE(pc.set_market_total, 0)::numeric AS set_market_total,
+            NULL::numeric AS set_market_change_pct,
+            0::int AS linked_auctions
+          FROM public.pt_sets ps
+          LEFT JOIN pt_counts pc ON pc.pt_set_id = ps.pt_set_id
+          ${ptLanguageClause}
+          ORDER BY ps.name NULLS LAST, ps.pt_set_id NULLS LAST
+        `
+
+        const { rows } = await pool.query(ptFallbackQuery, ptParams)
+        return rows.map((row) => {
+          const eraLabel = row.era ?? null
+          return {
+            ...row,
+            set_total: row.derived_total ?? row.set_total ?? null,
+            set_number: row.base_total ?? null,
+            cards_in_set: row.base_total ?? null,
+            era_code: resolveEraCode(eraLabel),
+            era_name: eraLabel
+          }
+        })
+      }
+
       const languageClause =
         expansionsLanguageAvailable && language
           ? `WHERE LOWER(e.language) = LOWER($${params.push(language)})`
           : priceTrackerReady && ptSetsLanguageAvailable && language
-            ? `WHERE LOWER(s.language) = LOWER($${params.push(language)})`
+            ? `WHERE LOWER(s.pt_language) = LOWER($${params.push(language)})`
             : ''
 
       const query = `
