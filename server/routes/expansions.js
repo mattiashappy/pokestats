@@ -3,7 +3,10 @@ const { resolveEraCode } = require('../era')
 let languageColumnsCheckedAt = 0
 let ptSetsLanguageAvailable = false
 let expansionsLanguageAvailable = false
+let pricingColumnsCheckedAt = 0
+let ptCardsPricesDataAvailable = false
 const LANGUAGE_CACHE_TTL_MS = 5 * 60 * 1000
+const PRICING_CACHE_TTL_MS = 5 * 60 * 1000
 const SUPPORTED_LANGUAGES = new Set(['english', 'japanese'])
 
 function normalizeLanguage(value) {
@@ -56,13 +59,44 @@ function createExpansionService({
     return { ptSetsLanguageAvailable, expansionsLanguageAvailable }
   }
 
+  async function ensurePricingColumns() {
+    if (!pool) return { ptCardsPricesDataAvailable: false }
+
+    const now = Date.now()
+    if (now - pricingColumnsCheckedAt < PRICING_CACHE_TTL_MS) {
+      return { ptCardsPricesDataAvailable }
+    }
+
+    pricingColumnsCheckedAt = now
+
+    const { rows } = await pool.query(
+      `
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'pt_cards'
+          AND column_name = 'prices_data'
+      `
+    )
+
+    ptCardsPricesDataAvailable = rows.some((row) => row.column_name === 'prices_data')
+    return { ptCardsPricesDataAvailable }
+  }
+
   async function fetchExpansionSummaries(language = null) {
     if (!pool) return []
 
     try {
       const { ptSetsLanguageAvailable, expansionsLanguageAvailable } = await ensureLanguageColumns()
+      const { ptCardsPricesDataAvailable } = await ensurePricingColumns()
       const ptLanguageSelect = ptSetsLanguageAvailable ? 's.language' : 'NULL::text'
       const expansionLanguageSelect = expansionsLanguageAvailable ? 'e.language' : 'NULL::text'
+      const marketChangeSelect = ptCardsPricesDataAvailable
+        ? `CASE
+            WHEN pt_market_monthly.previous_market_total IS NULL OR pt_market_monthly.previous_market_total = 0 THEN NULL::numeric
+            ELSE ((pt_market_monthly.current_market_total - pt_market_monthly.previous_market_total) / pt_market_monthly.previous_market_total) * 100
+          END`
+        : 'NULL::numeric'
 
       const linksReady = ensureTraderaAuctionLinksTableAvailable
         ? await ensureTraderaAuctionLinksTableAvailable()
@@ -93,6 +127,37 @@ function createExpansionService({
             FROM public.pt_cards
             GROUP BY pt_set_id
           )
+          ${ptCardsPricesDataAvailable ? `,
+          pt_market_monthly AS (
+            WITH parsed_history AS (
+              SELECT
+                c.pt_set_id,
+                c.pt_card_id,
+                date_trunc('month', (h.entry->>'date')::timestamptz) AS history_month,
+                CASE
+                  WHEN h.entry->>'market' ~ '^-?\\d+(\\.\\d+)?$' THEN (h.entry->>'market')::numeric
+                  WHEN h.entry->>'price' ~ '^-?\\d+(\\.\\d+)?$' THEN (h.entry->>'price')::numeric
+                  WHEN h.entry->>'value' ~ '^-?\\d+(\\.\\d+)?$' THEN (h.entry->>'value')::numeric
+                  ELSE NULL::numeric
+                END AS market_value,
+                ROW_NUMBER() OVER (
+                  PARTITION BY c.pt_card_id, date_trunc('month', (h.entry->>'date')::timestamptz)
+                  ORDER BY (h.entry->>'date')::timestamptz DESC
+                ) AS monthly_row
+              FROM public.pt_cards c
+              CROSS JOIN LATERAL jsonb_array_elements(COALESCE(c.prices_data->'history', '[]'::jsonb)) AS h(entry)
+              WHERE c.pt_set_id IS NOT NULL
+                AND h.entry->>'date' ~ '^\\d{4}-\\d{2}-\\d{2}'
+            )
+            SELECT
+              pt_set_id,
+              SUM(CASE WHEN history_month = date_trunc('month', CURRENT_DATE) THEN market_value ELSE 0 END) AS current_market_total,
+              SUM(CASE WHEN history_month = date_trunc('month', CURRENT_DATE - INTERVAL '1 month') THEN market_value ELSE 0 END) AS previous_market_total
+            FROM parsed_history
+            WHERE monthly_row = 1
+              AND market_value IS NOT NULL
+            GROUP BY pt_set_id
+          )` : ''}
           SELECT
             s.pt_set_id AS id,
             NULL::text AS set_code,
@@ -110,10 +175,12 @@ function createExpansionService({
             s.image_cdn_url800 AS image_cdn_url800,
             COALESCE(pt_counts.cards_total, 0)::int AS cards_total,
             pt_market_totals.market_total AS set_market_total,
+            ${marketChangeSelect} AS set_market_change_pct,
             0::int AS linked_auctions
           FROM public.pt_sets s
           LEFT JOIN pt_counts ON pt_counts.pt_set_id = s.pt_set_id
           LEFT JOIN pt_market_totals ON pt_market_totals.pt_set_id = s.pt_set_id
+          ${ptCardsPricesDataAvailable ? 'LEFT JOIN pt_market_monthly ON pt_market_monthly.pt_set_id = s.pt_set_id' : ''}
           ${ptLanguageClause}
           ORDER BY s.release_date DESC NULLS LAST, s.name NULLS LAST, s.pt_set_id NULLS LAST
         `,
@@ -158,6 +225,37 @@ function createExpansionService({
           FROM public.pt_cards
           GROUP BY pt_set_id
         )
+        ${ptCardsPricesDataAvailable ? `,
+        pt_market_monthly AS (
+          WITH parsed_history AS (
+            SELECT
+              c.pt_set_id,
+              c.pt_card_id,
+              date_trunc('month', (h.entry->>'date')::timestamptz) AS history_month,
+              CASE
+                WHEN h.entry->>'market' ~ '^-?\\d+(\\.\\d+)?$' THEN (h.entry->>'market')::numeric
+                WHEN h.entry->>'price' ~ '^-?\\d+(\\.\\d+)?$' THEN (h.entry->>'price')::numeric
+                WHEN h.entry->>'value' ~ '^-?\\d+(\\.\\d+)?$' THEN (h.entry->>'value')::numeric
+                ELSE NULL::numeric
+              END AS market_value,
+              ROW_NUMBER() OVER (
+                PARTITION BY c.pt_card_id, date_trunc('month', (h.entry->>'date')::timestamptz)
+                ORDER BY (h.entry->>'date')::timestamptz DESC
+              ) AS monthly_row
+            FROM public.pt_cards c
+            CROSS JOIN LATERAL jsonb_array_elements(COALESCE(c.prices_data->'history', '[]'::jsonb)) AS h(entry)
+            WHERE c.pt_set_id IS NOT NULL
+              AND h.entry->>'date' ~ '^\\d{4}-\\d{2}-\\d{2}'
+          )
+          SELECT
+            pt_set_id,
+            SUM(CASE WHEN history_month = date_trunc('month', CURRENT_DATE) THEN market_value ELSE 0 END) AS current_market_total,
+            SUM(CASE WHEN history_month = date_trunc('month', CURRENT_DATE - INTERVAL '1 month') THEN market_value ELSE 0 END) AS previous_market_total
+          FROM parsed_history
+          WHERE monthly_row = 1
+            AND market_value IS NOT NULL
+          GROUP BY pt_set_id
+        )` : ''}
         SELECT
           e.id,
           e.set_code,
@@ -175,6 +273,7 @@ function createExpansionService({
           s.pt_set_id AS pt_set_id,
           COALESCE(pt_counts.cards_total, COUNT(DISTINCT c.id)::int) AS cards_total,
           pt_market_totals.market_total AS set_market_total,
+          ${marketChangeSelect} AS set_market_change_pct,
           ${linksReady ? 'COUNT(DISTINCT l.auction_id)::int' : '0::int'} AS linked_auctions
         FROM public.expansions e
         LEFT JOIN LATERAL (
@@ -196,6 +295,7 @@ function createExpansionService({
         ) s ON true
         LEFT JOIN pt_counts ON pt_counts.pt_set_id = s.pt_set_id
         LEFT JOIN pt_market_totals ON pt_market_totals.pt_set_id = s.pt_set_id
+        ${ptCardsPricesDataAvailable ? 'LEFT JOIN pt_market_monthly ON pt_market_monthly.pt_set_id = s.pt_set_id' : ''}
         LEFT JOIN public.cards c ON c.expansion_id = e.id
         ${linksReady ? 'LEFT JOIN public.tradera_auction_card_links l ON l.card_id = c.id' : ''}
         ${expansionLanguageClause}
@@ -212,6 +312,9 @@ function createExpansionService({
           s.pt_set_id,
           pt_counts.cards_total,
           pt_market_totals.market_total
+          ${ptCardsPricesDataAvailable ? `,
+          pt_market_monthly.current_market_total,
+          pt_market_monthly.previous_market_total` : ''}
         ORDER BY e.set_name NULLS LAST, e.set_code NULLS LAST
       `
         : `
@@ -232,6 +335,7 @@ function createExpansionService({
           NULL::text AS pt_set_id,
           COUNT(DISTINCT c.id)::int AS cards_total,
           NULL::numeric AS set_market_total,
+          NULL::numeric AS set_market_change_pct,
           ${linksReady ? 'COUNT(DISTINCT l.auction_id)::int' : '0::int'} AS linked_auctions
         FROM public.expansions e
         LEFT JOIN public.cards c ON c.expansion_id = e.id
