@@ -264,7 +264,7 @@ function createExpansionService({
           ${expansionLanguageSelect} AS language,
           COALESCE(s.card_count, e.base_total) AS set_number,
           COALESCE(s.card_count, e.base_total) AS cards_in_set,
-          COALESCE(e.set_total, s.card_count, pt_counts.cards_total) AS set_total,
+          COALESCE(e.set_total, s.card_count, e.base_total, pt_counts.cards_total) AS set_total,
           s.release_date AS release_date,
           COALESCE(s.image_cdn_url800, s.image_cdn_url400, s.image_cdn_url200, s.image_cdn_url, s.image_url) AS image_url,
           s.image_cdn_url200 AS image_cdn_url200,
