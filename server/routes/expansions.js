@@ -13,13 +13,8 @@ const SUPPORTED_LANGUAGES = new Set(['english', 'japanese'])
 
 const toNumberOrNull = (v) => {
   if (v === null || v === undefined) return null
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
   const n = Number(v)
-  return Number.isFinite(n) ? n : null
-}
-
-const toIntOrNull = (v) => {
-  if (v === null || v === undefined) return null
-  const n = Number.parseInt(String(v), 10)
   return Number.isFinite(n) ? n : null
 }
 
@@ -210,9 +205,9 @@ function createExpansionService({ pool, ensureCardInfrastructure }) {
       const normalized = rows.map((row) => {
         const eraLabel = row.era ?? null
 
-        const cardCount = toIntOrNull(row.card_count ?? row.cards_total ?? row.set_total)
-        const cardsTotal = toIntOrNull(row.cards_total ?? row.card_count)
-        const setTotal = toIntOrNull(row.set_total ?? row.card_count)
+        const cardCount = toNumberOrNull(row.card_count ?? row.cards_total ?? row.set_total)
+        const cardsTotal = toNumberOrNull(row.cards_total ?? row.card_count)
+        const setTotal = toNumberOrNull(row.set_total ?? row.card_count)
         const marketTotal = toNumberOrNull(row.market_total ?? row.set_market_total)
         const setMarketTotal = toNumberOrNull(row.set_market_total ?? row.market_total)
         const momChangePct = toNumberOrNull(row.mom_change_pct ?? row.set_market_change_pct)
