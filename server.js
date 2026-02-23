@@ -2,7 +2,7 @@
 const express = require('express')
 const compression = require('compression')
 const path = require('path')
-const { existsSync } = require('fs')
+const { existsSync, readFileSync } = require('fs')
 const { spawn, spawnSync } = require('child_process')
 const { Pool } = require('pg')
 const crypto = require('crypto')
@@ -17,6 +17,24 @@ const { parseAuctionTitle } = require('./scripts/tradera_parser')
 const app = express()
 const PORT = process.env.PORT || 8000
 const distPath = path.join(__dirname, 'dashboard', 'dist')
+
+const readDashboardIndexHtml = () => {
+  const indexPath = path.join(distPath, 'index.html')
+  if (!existsSync(indexPath)) return null
+
+  try {
+    const html = readFileSync(indexPath, 'utf8')
+    if (!IS_PRODUCTION) return html
+
+    return html
+      .replace(/<script[^>]*localhost:8081[^>]*><\/script>\s*/gi, '')
+      .replace(/<script[^>]*refresh\.js[^>]*><\/script>\s*/gi, '')
+  } catch (error) {
+    console.error('Failed to read dashboard index.html', error)
+    return null
+  }
+}
+
 
 app.set('trust proxy', 1)
 
@@ -3345,7 +3363,11 @@ if (hasDashboardBuild) {
   app.use(express.static(distPath))
 
   app.get('*', (_req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'))
+    const indexHtml = readDashboardIndexHtml()
+    if (indexHtml === null) {
+      return res.status(503).send('Dashboard build missing. Run `npm run build --prefix dashboard` and redeploy the app.')
+    }
+    return res.type('html').send(indexHtml)
   })
 } else {
   app.get('*', (_req, res) => {

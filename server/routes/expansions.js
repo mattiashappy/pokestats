@@ -11,6 +11,18 @@ const SNAPSHOT_CACHE_TTL_MS = 5 * 60 * 1000
 const VIEW_CACHE_TTL_MS = 5 * 60 * 1000
 const SUPPORTED_LANGUAGES = new Set(['english', 'japanese'])
 
+const toNumberOrNull = (v) => {
+  if (v === null || v === undefined) return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+const toIntOrNull = (v) => {
+  if (v === null || v === undefined) return null
+  const n = Number.parseInt(String(v), 10)
+  return Number.isFinite(n) ? n : null
+}
+
 function normalizeLanguage(value) {
   const normalized = String(value ?? '').trim().toLowerCase()
   if (!normalized || normalized === 'all') return null
@@ -130,7 +142,7 @@ function createExpansionService({ pool, ensureCardInfrastructure }) {
 
       const snapshotsCtes = snapshotsReady
         ? `,
-        current_month_ranked AS (
+        ranked_snapshots AS (
           SELECT
             svs.set_id,
             svs.market_total,
@@ -139,28 +151,16 @@ function createExpansionService({ pool, ensureCardInfrastructure }) {
               ORDER BY svs.date DESC, svs.created_at DESC
             ) AS rn
           FROM public.set_value_snapshots svs
-          WHERE date_trunc('month', svs.date) = date_trunc('month', CURRENT_DATE)
-        ),
-        previous_month_ranked AS (
-          SELECT
-            svs.set_id,
-            svs.market_total,
-            ROW_NUMBER() OVER (
-              PARTITION BY svs.set_id
-              ORDER BY svs.date DESC, svs.created_at DESC
-            ) AS rn
-          FROM public.set_value_snapshots svs
-          WHERE date_trunc('month', svs.date) = date_trunc('month', CURRENT_DATE - INTERVAL '1 month')
         ),
         snapshot_points AS (
           SELECT
             c.set_id,
             c.market_total AS current_market_total,
             p.market_total AS previous_market_total
-          FROM current_month_ranked c
-          LEFT JOIN previous_month_ranked p
+          FROM ranked_snapshots c
+          LEFT JOIN ranked_snapshots p
             ON p.set_id = c.set_id
-            AND p.rn = 1
+            AND p.rn = 2
           WHERE c.rn = 1
         )`
         : ''
@@ -207,21 +207,36 @@ function createExpansionService({ pool, ensureCardInfrastructure }) {
       `
 
       const { rows } = await pool.query(query, params)
-      return rows.map((row) => {
+      const normalized = rows.map((row) => {
         const eraLabel = row.era ?? null
+
+        const cardCount = toIntOrNull(row.card_count ?? row.cards_total ?? row.set_total)
+        const cardsTotal = toIntOrNull(row.cards_total ?? row.card_count)
+        const setTotal = toIntOrNull(row.set_total ?? row.card_count)
+        const marketTotal = toNumberOrNull(row.market_total ?? row.set_market_total)
+        const setMarketTotal = toNumberOrNull(row.set_market_total ?? row.market_total)
+        const momChangePct = toNumberOrNull(row.mom_change_pct ?? row.set_market_change_pct)
+        const momChangeValue = toNumberOrNull(row.mom_change_value)
+        const setMarketChangePct = toNumberOrNull(row.set_market_change_pct ?? row.mom_change_pct)
+
         return {
           ...row,
+          card_count: cardCount,
+          cards_total: cardsTotal,
+          set_total: setTotal,
+          market_total: marketTotal,
+          set_market_total: setMarketTotal,
+          mom_change_pct: momChangePct,
+          mom_change_value: momChangeValue,
+          set_market_change_pct: setMarketChangePct,
           id: row.set_id,
           pt_set_id: row.set_id,
-          set_total: row.card_count,
-          cards_total: row.card_count,
-          set_market_total: row.market_total,
-          set_market_change_pct: row.mom_change_pct,
           linked_auctions: 0,
           era_code: resolveEraCode(eraLabel),
           era_name: eraLabel
         }
       })
+      return normalized
     } catch (error) {
       console.error('Failed to fetch sets from PT tables', error)
       return []

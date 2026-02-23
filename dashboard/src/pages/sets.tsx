@@ -16,33 +16,34 @@ const LANGUAGE_OPTIONS = [
 ]
 
 const formatMoney = (value: number | string | null | undefined): string => {
-  if (value === null || value === undefined) return 'Pending'
+  if (value === null || value === undefined) return '—'
   const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return 'Pending'
+  if (!Number.isFinite(parsed)) return '—'
   return `$${parsed.toFixed(2)}`
 }
 
 const formatPercentChange = (value: number | string | null | undefined): string => {
-  if (value === null || value === undefined) return 'Pending'
+  if (value === null || value === undefined) return '—'
   const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return 'Pending'
+  if (!Number.isFinite(parsed)) return '—'
   const prefix = parsed > 0 ? '+' : ''
   return `${prefix}${parsed.toFixed(2)}%`
 }
 
 const formatValueChange = (value: number | string | null | undefined): string => {
-  if (value === null || value === undefined) return 'Pending'
+  if (value === null || value === undefined) return '—'
   const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return 'Pending'
+  if (!Number.isFinite(parsed)) return '—'
   const prefix = parsed > 0 ? '+' : ''
   return `${prefix}$${parsed.toFixed(2)}`
 }
 
 
 const formatCardAmount = (expansion: ExpansionSummary): string => {
-  const amount = expansion.card_count ?? expansion.cards_total ?? expansion.set_total ?? 0
+  const amount = expansion.card_count ?? expansion.cards_total ?? expansion.set_total
+  if (amount === null || amount === undefined) return '—'
   const parsed = Number(amount)
-  if (!Number.isFinite(parsed)) return 'Pending'
+  if (!Number.isFinite(parsed)) return '—'
   return String(parsed)
 }
 
