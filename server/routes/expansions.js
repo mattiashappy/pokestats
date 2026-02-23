@@ -103,8 +103,9 @@ function createExpansionService({
         : false
       const priceTrackerReady = await ensurePriceTrackerTablesAvailable()
 
-      const cardInfraReady = await ensureCardInfrastructure()
-      if (!cardInfraReady) return []
+      // Do not hard-fail listing sets if card infrastructure checks fail.
+      // `/sets` and `/expansions` are expansion-driven and should still render
+      // even if auxiliary tables are temporarily unavailable.
 
       const expansionParams = []
       const expansionLanguageClause =
