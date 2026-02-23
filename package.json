@@ -8,7 +8,8 @@
     "start": "node server.js",
     "dev": "npm run dev --prefix dashboard",
     "test": "node --test",
-    "pt:import": "node scripts/pt_import_run.js"
+    "pt:import": "node scripts/pt_import_run.js",
+    "sets:snapshot": "node scripts/set_value_snapshot.js"
   },
   "dependencies": {
     "compression": "^1.7.4",

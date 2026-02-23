@@ -16,7 +16,7 @@ import { getMarketPrice, getTraderaMarketPrice } from '../utils/priceHelper'
 import type { CardListItem, ExpansionSummary } from '../types'
 
 export function PokemonSetPage(): JSX.Element {
-  const { setCode = '' } = useParams()
+  const { setId = '' } = useParams()
   const [searchTerm, setSearchTerm] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
   const languageFilter = searchParams.get('language') || 'all'
@@ -48,18 +48,18 @@ export function PokemonSetPage(): JSX.Element {
     isLoading: isLoadingCards,
     error: cardsError
   } = useQuery<CardListItem[]>({
-    queryKey: ['cards', setCode, languageFilter],
-    queryFn: () => fetchCardsForSet(setCode, languageFilter),
-    enabled: Boolean(setCode)
+    queryKey: ['cards', setId, languageFilter],
+    queryFn: () => fetchCardsForSet(setId, languageFilter),
+    enabled: Boolean(setId)
   })
 
   const expansion = useMemo(() => {
     if (!expansions) return null
-    const normalized = setCode.toLowerCase()
+    const normalized = setId.toLowerCase()
     return (
       expansions.find((expansion) => getExpansionIdentifier(expansion).toLowerCase() === normalized) ?? null
     )
-  }, [expansions, setCode])
+  }, [expansions, setId])
 
   const filteredCards = useMemo(() => {
     if (!cards) return []
@@ -75,8 +75,8 @@ export function PokemonSetPage(): JSX.Element {
     })
   }, [cards, searchTerm])
 
-  const headerLabel = expansion?.name ?? setCode
-  const headerCode = expansion ? getExpansionIdentifier(expansion) : setCode
+  const headerLabel = expansion?.name ?? setId
+  const headerCode = expansion ? getExpansionIdentifier(expansion) : setId
   const setTotal = expansion?.set_total ?? expansion?.cards_total ?? cards?.length ?? null
   const backLink = '/sets'
   const backLabel = 'Back to sets'

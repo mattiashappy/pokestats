@@ -47,6 +47,7 @@ export type CardListItem = CardResponse & {
 
 export type ExpansionSummary = {
   id: number | string
+  set_id?: string | null
   set_code: string | null
   pt_set_id?: string | null
   name: string | null
@@ -66,6 +67,10 @@ export type ExpansionSummary = {
   image_cdn_url400?: string | null
   image_cdn_url800?: string | null
   cards_total?: number | null
+  card_count?: number | null
+  market_total?: number | null
+  mom_change_pct?: number | null
+  mom_change_value?: number | null
   set_market_total?: number | null
   set_market_change_pct?: number | null
   linked_auctions: number
