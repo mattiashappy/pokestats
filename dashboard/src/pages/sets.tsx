@@ -15,14 +15,14 @@ const LANGUAGE_OPTIONS = [
   { label: 'Japanese', value: 'japanese' }
 ]
 
-const formatMoney = (value: number | null | undefined): string => {
+const formatMoney = (value: number | string | null | undefined): string => {
   if (value === null || value === undefined) return 'Pending'
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return 'Pending'
   return `$${parsed.toFixed(2)}`
 }
 
-const formatChange = (value: number | null | undefined): string => {
+const formatPercentChange = (value: number | string | null | undefined): string => {
   if (value === null || value === undefined) return 'Pending'
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return 'Pending'
@@ -30,13 +30,32 @@ const formatChange = (value: number | null | undefined): string => {
   return `${prefix}${parsed.toFixed(2)}%`
 }
 
+const formatValueChange = (value: number | string | null | undefined): string => {
+  if (value === null || value === undefined) return 'Pending'
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 'Pending'
+  const prefix = parsed > 0 ? '+' : ''
+  return `${prefix}$${parsed.toFixed(2)}`
+}
+
 
 const formatCardAmount = (expansion: ExpansionSummary): string => {
-  const amount = expansion.card_count ?? expansion.set_total ?? expansion.pt_card_count ?? expansion.base_total ?? expansion.db_cards_count
-  if (amount === null || amount === undefined) return 'Pending'
+  const amount = expansion.card_count ?? expansion.cards_total ?? expansion.set_total ?? 0
   const parsed = Number(amount)
-  if (!Number.isFinite(parsed) || parsed <= 0) return 'Pending'
+  if (!Number.isFinite(parsed)) return 'Pending'
   return String(parsed)
+}
+
+const getMomChangePct = (expansion: ExpansionSummary): number | string | null | undefined => {
+  return expansion.mom_change_pct ?? expansion.set_market_change_pct
+}
+
+const getMomChangeValue = (expansion: ExpansionSummary): number | string | null | undefined => {
+  return expansion.mom_change_value
+}
+
+if (import.meta.env.DEV) {
+  console.assert(formatPercentChange(0) === '0.00%', 'MoM percent should render 0 values')
 }
 
 export function SetsPage(): JSX.Element {
@@ -175,7 +194,7 @@ export function SetsPage(): JSX.Element {
                   const setIdentifier = getExpansionIdentifier(expansion)
                   const params = languageFilter ? new URLSearchParams({ language: languageFilter }).toString() : ''
                   const setLink = params ? `/sets/${setIdentifier}?${params}` : `/sets/${setIdentifier}`
-                  const change = Number(expansion.set_market_change_pct)
+                  const change = Number(getMomChangePct(expansion))
                   const changeClass = Number.isFinite(change)
                     ? change > 0
                       ? 'text-emerald-700'
@@ -193,7 +212,9 @@ export function SetsPage(): JSX.Element {
                       </td>
                       <td className="px-4 py-3 text-slate-700">{formatCardAmount(expansion)}</td>
                       <td className="px-4 py-3 text-slate-700">{formatMoney(expansion.market_total ?? expansion.set_market_total)}</td>
-                      <td className={`px-4 py-3 font-semibold ${changeClass}`}>{formatChange(expansion.mom_change_pct ?? expansion.set_market_change_pct)}</td>
+                      <td className={`px-4 py-3 font-semibold ${changeClass}`}>
+                        {formatPercentChange(getMomChangePct(expansion))} ({formatValueChange(getMomChangeValue(expansion))})
+                      </td>
                     </tr>
                   )
                 })}
