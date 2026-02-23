@@ -30,6 +30,15 @@ const formatChange = (value: number | null | undefined): string => {
   return `${prefix}${parsed.toFixed(2)}%`
 }
 
+
+const formatCardAmount = (expansion: ExpansionSummary): string => {
+  const amount = expansion.set_total ?? expansion.cards_in_set ?? expansion.set_number ?? expansion.cards_total
+  if (amount === null || amount === undefined) return 'Pending'
+  const parsed = Number(amount)
+  if (!Number.isFinite(parsed) || parsed <= 0) return 'Pending'
+  return String(parsed)
+}
+
 export function SetsPage(): JSX.Element {
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
@@ -182,7 +191,7 @@ export function SetsPage(): JSX.Element {
                           {expansion.name ?? 'Unknown set'}
                         </Link>
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{expansion.set_total ?? expansion.cards_total ?? 'Pending'}</td>
+                      <td className="px-4 py-3 text-slate-700">{formatCardAmount(expansion)}</td>
                       <td className="px-4 py-3 text-slate-700">{formatMoney(expansion.set_market_total)}</td>
                       <td className={`px-4 py-3 font-semibold ${changeClass}`}>{formatChange(expansion.set_market_change_pct)}</td>
                     </tr>

@@ -101,118 +101,18 @@ function createExpansionService({
       const linksReady = ensureTraderaAuctionLinksTableAvailable
         ? await ensureTraderaAuctionLinksTableAvailable()
         : false
-      let priceTrackerReady = await ensurePriceTrackerTablesAvailable()
-
-      if (priceTrackerReady) {
-        const { rows: ptSetRows } = await pool.query(`SELECT COUNT(*)::int AS total FROM public.pt_sets`)
-        if ((ptSetRows?.[0]?.total ?? 0) === 0) {
-          priceTrackerReady = false
-        }
-      }
-
-      if (priceTrackerReady) {
-        const ptParams = []
-        const ptLanguageClause =
-          ptSetsLanguageAvailable && language ? `WHERE LOWER(s.language) = LOWER($${ptParams.push(language)})` : ''
-
-        const { rows } = await pool.query(
-          `
-          WITH pt_counts AS (
-            SELECT pt_set_id, COUNT(*)::int AS cards_total
-            FROM public.pt_cards
-            GROUP BY pt_set_id
-          ),
-          pt_market_totals AS (
-            SELECT pt_set_id, SUM(price_market)::numeric AS market_total
-            FROM public.pt_cards
-            GROUP BY pt_set_id
-          )
-          ${ptCardsPricesDataAvailable ? `,
-          pt_market_monthly AS (
-            WITH parsed_history AS (
-              SELECT
-                c.pt_set_id,
-                c.pt_card_id,
-                date_trunc('month', (h.entry->>'date')::timestamptz) AS history_month,
-                CASE
-                  WHEN h.entry->>'market' ~ '^-?\\d+(\\.\\d+)?$' THEN (h.entry->>'market')::numeric
-                  WHEN h.entry->>'price' ~ '^-?\\d+(\\.\\d+)?$' THEN (h.entry->>'price')::numeric
-                  WHEN h.entry->>'value' ~ '^-?\\d+(\\.\\d+)?$' THEN (h.entry->>'value')::numeric
-                  ELSE NULL::numeric
-                END AS market_value,
-                ROW_NUMBER() OVER (
-                  PARTITION BY c.pt_card_id, date_trunc('month', (h.entry->>'date')::timestamptz)
-                  ORDER BY (h.entry->>'date')::timestamptz DESC
-                ) AS monthly_row
-              FROM public.pt_cards c
-              CROSS JOIN LATERAL jsonb_array_elements(COALESCE(c.prices_data->'history', '[]'::jsonb)) AS h(entry)
-              WHERE c.pt_set_id IS NOT NULL
-                AND h.entry->>'date' ~ '^\\d{4}-\\d{2}-\\d{2}'
-            )
-            SELECT
-              pt_set_id,
-              SUM(CASE WHEN history_month = date_trunc('month', CURRENT_DATE) THEN market_value ELSE 0 END) AS current_market_total,
-              SUM(CASE WHEN history_month = date_trunc('month', CURRENT_DATE - INTERVAL '1 month') THEN market_value ELSE 0 END) AS previous_market_total
-            FROM parsed_history
-            WHERE monthly_row = 1
-              AND market_value IS NOT NULL
-            GROUP BY pt_set_id
-          )` : ''}
-          SELECT
-            s.pt_set_id AS id,
-            NULL::text AS set_code,
-            s.pt_set_id AS pt_set_id,
-            s.name AS name,
-            s.series AS era,
-            ${ptLanguageSelect} AS language,
-            s.card_count AS set_number,
-            s.card_count AS cards_in_set,
-            COALESCE(s.card_count, pt_counts.cards_total) AS set_total,
-            s.release_date AS release_date,
-            COALESCE(s.image_cdn_url800, s.image_cdn_url400, s.image_cdn_url200, s.image_cdn_url) AS image_url,
-            s.image_cdn_url200 AS image_cdn_url200,
-            s.image_cdn_url400 AS image_cdn_url400,
-            s.image_cdn_url800 AS image_cdn_url800,
-            COALESCE(pt_counts.cards_total, 0)::int AS cards_total,
-            pt_market_totals.market_total AS set_market_total,
-            ${marketChangeSelect} AS set_market_change_pct,
-            0::int AS linked_auctions
-          FROM public.pt_sets s
-          LEFT JOIN pt_counts ON pt_counts.pt_set_id = s.pt_set_id
-          LEFT JOIN pt_market_totals ON pt_market_totals.pt_set_id = s.pt_set_id
-          ${ptCardsPricesDataAvailable ? 'LEFT JOIN pt_market_monthly ON pt_market_monthly.pt_set_id = s.pt_set_id' : ''}
-          ${ptLanguageClause}
-          ORDER BY s.release_date DESC NULLS LAST, s.name NULLS LAST, s.pt_set_id NULLS LAST
-        `,
-          ptParams
-        )
-
-        if (rows.length) {
-          return rows.map((row) => {
-            const eraLabel = row.era ?? null
-            return {
-              ...row,
-              era_code: resolveEraCode(eraLabel),
-              era_name: eraLabel
-            }
-          })
-        }
-      }
+      const priceTrackerReady = await ensurePriceTrackerTablesAvailable()
 
       const cardInfraReady = await ensureCardInfrastructure()
       if (!cardInfraReady) return []
 
       const expansionParams = []
-      const fallbackParams = []
       const expansionLanguageClause =
         expansionsLanguageAvailable && language
           ? `WHERE LOWER(e.language) = LOWER($${expansionParams.push(language)})`
           : ptSetsLanguageAvailable && language
             ? `WHERE LOWER(s.language) = LOWER($${expansionParams.push(language)})`
             : ''
-      const fallbackLanguageClause =
-        expansionsLanguageAvailable && language ? `WHERE LOWER(e.language) = LOWER($${fallbackParams.push(language)})` : ''
-
       const query = priceTrackerReady
         ? `
         WITH pt_counts AS (
@@ -259,12 +159,22 @@ function createExpansionService({
         SELECT
           e.id,
           e.set_code,
+          e.set_name,
           COALESCE(s.name, e.set_name) AS name,
           e.era AS era,
           ${expansionLanguageSelect} AS language,
           COALESCE(s.card_count, e.base_total) AS set_number,
           COALESCE(s.card_count, e.base_total) AS cards_in_set,
-          COALESCE(e.set_total, s.card_count, pt_counts.cards_total) AS set_total,
+          e.set_total AS raw_set_total,
+          e.base_total AS raw_base_total,
+          s.card_count AS pt_set_card_count,
+          COUNT(DISTINCT c.id)::int AS db_cards_count,
+          COALESCE(
+            e.set_total,
+            CASE WHEN s.pt_join_reliable THEN s.card_count ELSE NULL::int END,
+            e.base_total,
+            COUNT(DISTINCT c.id)::int
+          ) AS set_total,
           s.release_date AS release_date,
           COALESCE(s.image_cdn_url800, s.image_cdn_url400, s.image_cdn_url200, s.image_cdn_url, s.image_url) AS image_url,
           s.image_cdn_url200 AS image_cdn_url200,
@@ -280,17 +190,36 @@ function createExpansionService({
           SELECT
             name,
             card_count,
+            tcgplayer_set_id,
             release_date,
             image_cdn_url,
             image_cdn_url200,
             image_cdn_url400,
             image_cdn_url800,
             image_url,
-            pt_set_id
+            pt_set_id,
+            CASE
+              WHEN e.set_code IS NOT NULL AND pt_set_id = e.set_code THEN true
+              WHEN e.set_code IS NOT NULL AND tcgplayer_set_id = e.set_code THEN true
+              ELSE false
+            END AS pt_join_reliable
           FROM public.pt_sets
-          WHERE lower(name) = lower(e.set_name)
-             OR pt_set_id = e.set_code
-          ORDER BY release_date DESC NULLS LAST
+          WHERE (
+            e.set_code IS NOT NULL
+            AND (
+              pt_set_id = e.set_code
+              OR tcgplayer_set_id = e.set_code
+            )
+          )
+             OR lower(trim(name)) = lower(trim(e.set_name))
+          ORDER BY
+            CASE
+              WHEN e.set_code IS NOT NULL AND pt_set_id = e.set_code THEN 0
+              WHEN e.set_code IS NOT NULL AND tcgplayer_set_id = e.set_code THEN 1
+              WHEN lower(trim(name)) = lower(trim(e.set_name)) THEN 2
+              ELSE 3
+            END,
+            release_date DESC NULLS LAST
           LIMIT 1
         ) s ON true
         LEFT JOIN pt_counts ON pt_counts.pt_set_id = s.pt_set_id
@@ -301,8 +230,10 @@ function createExpansionService({
         ${expansionLanguageClause}
         GROUP BY
           e.id,
+          e.set_name,
           s.name,
           s.card_count,
+          s.pt_join_reliable,
           s.release_date,
           s.image_cdn_url,
           s.image_cdn_url200,
@@ -321,12 +252,17 @@ function createExpansionService({
         SELECT
           e.id,
           e.set_code,
+          e.set_name,
           e.set_name AS name,
           e.era AS era,
           ${expansionsLanguageAvailable ? 'e.language' : 'NULL::text'} AS language,
           e.base_total AS set_number,
           e.base_total AS cards_in_set,
-          e.set_total AS set_total,
+          e.set_total AS raw_set_total,
+          e.base_total AS raw_base_total,
+          NULL::int AS pt_set_card_count,
+          COUNT(DISTINCT c.id)::int AS db_cards_count,
+          COALESCE(e.set_total, e.base_total, COUNT(DISTINCT c.id)::int) AS set_total,
           NULL::date AS release_date,
           NULL::text AS image_url,
           NULL::text AS image_cdn_url200,
@@ -340,13 +276,23 @@ function createExpansionService({
         FROM public.expansions e
         LEFT JOIN public.cards c ON c.expansion_id = e.id
         ${linksReady ? 'LEFT JOIN public.tradera_auction_card_links l ON l.card_id = c.id' : ''}
-        ${fallbackLanguageClause}
+        ${expansionsLanguageAvailable && language ? `WHERE LOWER(e.language) = LOWER($${expansionParams.push(language)})` : ''}
         GROUP BY e.id
         ORDER BY e.set_name NULLS LAST, e.set_code NULLS LAST
       `
 
-      const params = priceTrackerReady ? expansionParams : fallbackParams
-      const { rows } = await pool.query(query, params)
+      const { rows } = await pool.query(query, expansionParams)
+
+      if (priceTrackerReady) {
+        const missingReliablePtMappings = rows.filter((row) => !row.pt_set_id || row.pt_set_card_count == null)
+        if (missingReliablePtMappings.length > 0) {
+          console.warn(
+            `[expansions] Missing reliable pt_sets mapping for ${missingReliablePtMappings.length} expansions. Examples:`,
+            missingReliablePtMappings.slice(0, 5).map((row) => ({ id: row.id, set_code: row.set_code, set_name: row.set_name }))
+          )
+        }
+      }
+
       return rows.map((row) => {
         const eraLabel = row.era ?? null
         return {
