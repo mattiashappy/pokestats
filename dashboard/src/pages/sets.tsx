@@ -23,16 +23,16 @@ const formatMoney = (value: number | null | undefined): string => {
 }
 
 const formatChange = (value: number | null | undefined): string => {
-  if (value === null || value === undefined) return '0%'
+  if (value === null || value === undefined) return 'Pending'
   const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return '0%'
+  if (!Number.isFinite(parsed)) return 'Pending'
   const prefix = parsed > 0 ? '+' : ''
   return `${prefix}${parsed.toFixed(2)}%`
 }
 
 
 const formatCardAmount = (expansion: ExpansionSummary): string => {
-  const amount = expansion.set_total ?? expansion.cards_in_set ?? expansion.set_number ?? expansion.cards_total
+  const amount = expansion.set_total ?? expansion.pt_card_count ?? expansion.base_total ?? expansion.db_cards_count
   if (amount === null || amount === undefined) return 'Pending'
   const parsed = Number(amount)
   if (!Number.isFinite(parsed) || parsed <= 0) return 'Pending'
