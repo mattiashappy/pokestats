@@ -77,30 +77,6 @@ function createExpansionService({
   async function ensurePricingColumns() {
     if (!pool) return { ptCardsPricesDataAvailable: false }
 
-    const now = Date.now()
-    if (now - pricingColumnsCheckedAt < PRICING_CACHE_TTL_MS) {
-      return { ptCardsPricesDataAvailable }
-    }
-
-    pricingColumnsCheckedAt = now
-
-    const { rows } = await pool.query(
-      `
-        SELECT column_name
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'pt_cards'
-          AND column_name = 'prices_data'
-      `
-    )
-
-    ptCardsPricesDataAvailable = rows.some((row) => row.column_name === 'prices_data')
-    return { ptCardsPricesDataAvailable }
-  }
-
-  async function fetchExpansionSummaries(language = null) {
-    if (!pool) return []
-
     try {
       const { ptSetsLanguageAvailable, expansionsLanguageAvailable } = await ensureLanguageColumns()
       const priceTrackerReady = await ensurePriceTrackerTablesAvailable()
@@ -119,7 +95,7 @@ function createExpansionService({
       const languageClause =
         expansionsLanguageAvailable && language
           ? `WHERE LOWER(e.language) = LOWER($${params.push(language)})`
-          : ptSetsLanguageAvailable && language
+          : priceTrackerReady && ptSetsLanguageAvailable && language
             ? `WHERE LOWER(s.pt_language) = LOWER($${params.push(language)})`
             : ''
 
@@ -131,7 +107,7 @@ function createExpansionService({
         )
         ${priceTrackerReady ? `,
         pt_set_match AS (
-          SELECT
+          SELECT DISTINCT ON (e.id)
             e.id AS expansion_id,
             s.pt_set_id,
             s.card_count,
@@ -147,6 +123,7 @@ function createExpansionService({
           LEFT JOIN public.pt_sets s
             ON e.set_code IS NOT NULL
             AND s.pt_set_id = e.set_code
+          ORDER BY e.id, s.release_date DESC NULLS LAST
         )` : ''}
         ${setValueMonthlyReady ? `,
         monthly_ranked AS (
