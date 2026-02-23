@@ -10,12 +10,12 @@ type SetCardProps = {
 }
 
 export function SetCard({ expansion, language }: SetCardProps): JSX.Element {
-  const cardsLabel = expansion.set_total ?? expansion.cards_total
+  const cardsLabel = expansion.card_count ?? expansion.set_total ?? expansion.cards_total
   const setIdentifier = getExpansionIdentifier(expansion)
   const params = language ? new URLSearchParams({ language }).toString() : ''
   const setLink = params ? `/sets/${setIdentifier}?${params}` : `/sets/${setIdentifier}`
   const imageUrl =
-    expansion.image_cdn_url800 ?? expansion.image_cdn_url400 ?? expansion.image_cdn_url200 ?? expansion.image_url
+    expansion.image_cdn_url800 ?? expansion.image_cdn_url400 ?? expansion.image_cdn_url200 ?? expansion.image_url ?? undefined
   const formatMarketTotal = (value: number | null | undefined): string => {
     if (value === null || value === undefined) return 'Pending'
     const parsed = Number(value)
@@ -29,7 +29,7 @@ export function SetCard({ expansion, language }: SetCardProps): JSX.Element {
         <div className="space-y-2 text-sm text-slate-700">
           <div className="flex items-center justify-between gap-3 border-2 border-slate-900 bg-amber-50 px-3 py-2 font-semibold shadow-[2px_2px_0px_#0f172a]">
             <span className="text-xs font-bold uppercase tracking-wide text-slate-700">Cards</span>
-            <span>{cardsLabel ? `${cardsLabel} cards` : 'Cards pending'}</span>
+            <span>{cardsLabel === null || cardsLabel === undefined ? 'Cards pending' : `${cardsLabel} cards`}</span>
           </div>
           <div className="flex items-center justify-between gap-3 border-2 border-slate-900 bg-white px-3 py-2 font-semibold shadow-[2px_2px_0px_#0f172a]">
             <span className="text-xs font-bold uppercase tracking-wide text-slate-700">Total set value</span>

@@ -77,7 +77,7 @@ export function PokemonSetPage(): JSX.Element {
 
   const headerLabel = expansion?.name ?? setId
   const headerCode = expansion ? getExpansionIdentifier(expansion) : setId
-  const setTotal = expansion?.set_total ?? expansion?.cards_total ?? cards?.length ?? null
+  const setTotal = expansion?.card_count ?? expansion?.set_total ?? expansion?.cards_total ?? cards?.length ?? null
   const backLink = '/sets'
   const backLabel = 'Back to sets'
 
@@ -122,7 +122,7 @@ export function PokemonSetPage(): JSX.Element {
                   <Calendar className="h-3.5 w-3.5" /> Released {format(new Date(expansion.release_date), 'PP')}
                 </span>
               ) : null}
-              {setTotal ? <span className="text-slate-600 dark:text-slate-300">{setTotal} cards</span> : null}
+              {setTotal === null || setTotal === undefined ? null : <span className="text-slate-600 dark:text-slate-300">{setTotal} cards</span>}
               <Badge variant="secondary" className="uppercase">
                 {headerCode}
               </Badge>
