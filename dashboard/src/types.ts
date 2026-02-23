@@ -54,16 +54,20 @@ export type ExpansionSummary = {
   era_code?: string | null
   era_name?: string | null
   language: string | null
-  set_number: number | null
-  cards_in_set: number | null
-  set_total: number | null
+  set_number?: number | null
+  cards_in_set?: number | null
+  set_total?: number | null
+  base_total?: number | null
+  db_cards_count?: number | null
+  pt_card_count?: number | null
   release_date: string | null
   image_url: string | null
   image_cdn_url200?: string | null
   image_cdn_url400?: string | null
   image_cdn_url800?: string | null
-  cards_total: number
+  cards_total?: number | null
   set_market_total?: number | null
+  set_market_change_pct?: number | null
   linked_auctions: number
 }
 
