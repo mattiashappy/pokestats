@@ -97,7 +97,7 @@ export async function fetchCardAuctions(cardId: number | string): Promise<Auctio
 
 export async function fetchExpansions(language?: string): Promise<ExpansionSummary[]> {
   const params = language && language !== 'all' ? new URLSearchParams({ language }) : null
-  const response = await fetch(params ? `/api/expansions?${params.toString()}` : '/api/expansions')
+  const response = await fetch(params ? `/api/sets?${params.toString()}` : '/api/sets')
   if (!response.ok) throw new Error('Failed to fetch expansions')
   return response.json()
 }
@@ -121,18 +121,18 @@ export async function fetchEraExpansions(eraCode: string, language?: string): Pr
 }
 
 /**
- * Fetch cards for a set using set identifier (local set_code or PT pt_set_id).
- * Backend must support: GET /api/expansions/:setCode/cards
+ * Fetch cards for a set using canonical pt_set_id.
+ * Backend: GET /api/sets/:setId/cards
  */
-export async function fetchCardsForSet(setCode: string, language?: string): Promise<CardListItem[]> {
-  const code = (setCode || '').trim()
+export async function fetchCardsForSet(setId: string, language?: string): Promise<CardListItem[]> {
+  const code = (setId || '').trim()
   if (!code) return []
 
   const params = language && language !== 'all' ? new URLSearchParams({ language }) : null
   const response = await fetch(
     params
-      ? `/api/expansions/${encodeURIComponent(code)}/cards?${params.toString()}`
-      : `/api/expansions/${encodeURIComponent(code)}/cards`
+      ? `/api/sets/${encodeURIComponent(code)}/cards?${params.toString()}`
+      : `/api/sets/${encodeURIComponent(code)}/cards`
   )
   if (!response.ok) throw new Error('Failed to fetch cards')
   return response.json()
@@ -515,7 +515,7 @@ export async function fetchLinkingStats(): Promise<LinkingStats> {
  */
 export async function fetchSets(language?: string): Promise<ExpansionSummary[]> {
   const params = language ? new URLSearchParams({ language }) : null
-  const res = await fetch(params ? `/api/expansions?${params.toString()}` : '/api/expansions')
+  const res = await fetch(params ? `/api/sets?${params.toString()}` : '/api/sets')
   if (!res.ok) throw new Error('Failed to load sets')
   return res.json()
 }

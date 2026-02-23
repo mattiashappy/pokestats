@@ -2402,40 +2402,23 @@ app.get('/api/health', (_req, res) => {
   })
 })
 
-/**
- * ✅ Canonical route used by the frontend:
- * GET /api/expansions/:setCode/cards
- */
-app.get('/api/expansions/:setCode/cards', async (req, res) => {
+async function handleSetCardsRequest(req, res) {
   try {
-    const setCode = String(req.params.setCode || '').trim()
-    if (!setCode) return res.status(400).json({ error: 'Invalid set code' })
+    const setId = String(req.params.setId || req.params.setCode || '').trim()
+    if (!setId) return res.status(400).json({ error: 'Invalid set id' })
     const rawLang = req.query.language
     const language = rawLang && rawLang !== 'all' ? normalizeLanguage(rawLang) : null
 
     const ptReady = await ensurePriceTrackerImportTablesAvailable()
-    console.log('[expansions cards]', { setCode, ptReady })
+    console.log('[set cards]', { setId, ptReady })
     if (ptReady) {
-      let cards = await fetchCardsListFromPtImport({ setCode, language })
-      console.log('[expansions cards]', { setCode, ptReady, count: cards.length })
+      let cards = await fetchCardsListFromPtImport({ setCode: setId, language })
+      console.log('[set cards]', { setId, ptReady, count: cards.length })
 
       if (!cards.length) {
-        const ptSet = await fetchPtSetByIdentifier(setCode)
+        const ptSet = await fetchPtSetByIdentifier(setId)
         if (ptSet?.pt_set_id) {
           cards = await fetchCardsListFromPtImport({ setCode: ptSet.pt_set_id, language })
-        }
-
-        if (!cards.length) {
-          if (ptSet?.name) {
-            cards = await fetchCardsListFromPtImport({ setCode: ptSet.name, language })
-          }
-        }
-
-        if (!cards.length) {
-          const expansion = await fetchExpansionBySetCodeOrName(setCode)
-          if (expansion?.set_name) {
-            cards = await fetchCardsListFromPtImport({ setCode: expansion.set_name, language })
-          }
         }
       }
 
@@ -2443,17 +2426,20 @@ app.get('/api/expansions/:setCode/cards', async (req, res) => {
     }
 
     if (PRICE_TRACKER_API_KEY) {
-      const cards = await fetchCardsListFromPriceTracker({ setCode, language })
+      const cards = await fetchCardsListFromPriceTracker({ setCode: setId, language })
       return res.json(cards)
     }
 
-    const cards = await fetchCardsListFromDatabase({ setCode, language })
+    const cards = await fetchCardsListFromDatabase({ setCode: setId, language })
     return res.json(cards)
   } catch (error) {
-    console.error('Failed to fetch cards for expansion', error)
+    console.error('Failed to fetch cards for set', error)
     return res.status(500).json({ error: 'Failed to load cards' })
   }
-})
+}
+
+app.get('/api/sets/:setId/cards', handleSetCardsRequest)
+app.get('/api/expansions/:setCode/cards', handleSetCardsRequest)
 
 registerExpansionRoutes(app)
 registerTraderaRoutes(app, { pool })

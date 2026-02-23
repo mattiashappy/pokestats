@@ -33,13 +33,13 @@ function App(): JSX.Element {
         <Route element={<AppLayout />}>
           <Route path="/collections" element={<CollectionsPage />} />
           <Route path="/sets" element={<SetsPage />} />
-          <Route path="/sets/:setCode" element={<PokemonSetPage />} />
-          <Route path="/sets/:setCode/:id" element={<CardPage />} />
+          <Route path="/sets/:setId" element={<PokemonSetPage />} />
+          <Route path="/sets/:setId/:id" element={<CardPage />} />
           <Route path="/era" element={<ErasPage />} />
           <Route path="/era/:eraCode" element={<EraSetsPage />} />
-          <Route path="/era/:eraCode/:setCode" element={<PokemonSetPage />} />
-          <Route path="/era/:eraCode/:setCode/:id" element={<CardPage />} />
-          <Route path="/era/sets/:setCode" element={<PokemonSetPage />} />
+          <Route path="/era/:eraCode/:setId" element={<PokemonSetPage />} />
+          <Route path="/era/:eraCode/:setId/:id" element={<CardPage />} />
+          <Route path="/era/sets/:setId" element={<PokemonSetPage />} />
           <Route path="/cards/:id" element={<CardPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>

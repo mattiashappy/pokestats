@@ -32,7 +32,7 @@ const formatChange = (value: number | null | undefined): string => {
 
 
 const formatCardAmount = (expansion: ExpansionSummary): string => {
-  const amount = expansion.set_total ?? expansion.pt_card_count ?? expansion.base_total ?? expansion.db_cards_count
+  const amount = expansion.card_count ?? expansion.set_total ?? expansion.pt_card_count ?? expansion.base_total ?? expansion.db_cards_count
   if (amount === null || amount === undefined) return 'Pending'
   const parsed = Number(amount)
   if (!Number.isFinite(parsed) || parsed <= 0) return 'Pending'
@@ -58,7 +58,7 @@ export function SetsPage(): JSX.Element {
     const term = searchTerm.trim().toLowerCase()
     if (!term) return expansions
     return expansions.filter((expansion) => {
-      const haystack = [expansion.name, expansion.set_code, expansion.era, expansion.era_name]
+      const haystack = [expansion.name, expansion.set_id, expansion.pt_set_id, expansion.set_code, expansion.era, expansion.era_name]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
@@ -69,8 +69,8 @@ export function SetsPage(): JSX.Element {
   const sortedExpansions = useMemo(() => {
     if (!filteredExpansions.length) return []
     return [...filteredExpansions].sort((a, b) => {
-      const marketA = Number.isFinite(Number(a.set_market_total)) ? Number(a.set_market_total) : null
-      const marketB = Number.isFinite(Number(b.set_market_total)) ? Number(b.set_market_total) : null
+      const marketA = Number.isFinite(Number(a.market_total ?? a.set_market_total)) ? Number(a.market_total ?? a.set_market_total) : null
+      const marketB = Number.isFinite(Number(b.market_total ?? b.set_market_total)) ? Number(b.market_total ?? b.set_market_total) : null
 
       if (marketA === null && marketB === null) {
         return (a.name ?? getExpansionIdentifier(a)).localeCompare(b.name ?? getExpansionIdentifier(b))
@@ -192,8 +192,8 @@ export function SetsPage(): JSX.Element {
                         </Link>
                       </td>
                       <td className="px-4 py-3 text-slate-700">{formatCardAmount(expansion)}</td>
-                      <td className="px-4 py-3 text-slate-700">{formatMoney(expansion.set_market_total)}</td>
-                      <td className={`px-4 py-3 font-semibold ${changeClass}`}>{formatChange(expansion.set_market_change_pct)}</td>
+                      <td className="px-4 py-3 text-slate-700">{formatMoney(expansion.market_total ?? expansion.set_market_total)}</td>
+                      <td className={`px-4 py-3 font-semibold ${changeClass}`}>{formatChange(expansion.mom_change_pct ?? expansion.set_market_change_pct)}</td>
                     </tr>
                   )
                 })}
