@@ -64,6 +64,7 @@ export type ExpansionSummary = {
   image_cdn_url800?: string | null
   cards_total: number
   set_market_total?: number | null
+  set_market_change_pct?: number | null
   linked_auctions: number
 }
 
