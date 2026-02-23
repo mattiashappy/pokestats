@@ -74,6 +74,30 @@ function createExpansionService({
     return { ptSetsLanguageAvailable, expansionsLanguageAvailable }
   }
 
+  async function ensurePricingColumns() {
+    if (!pool) return { ptCardsPricesDataAvailable: false }
+
+    const now = Date.now()
+    if (now - pricingColumnsCheckedAt < PRICING_CACHE_TTL_MS) {
+      return { ptCardsPricesDataAvailable }
+    }
+
+    pricingColumnsCheckedAt = now
+
+    const { rows } = await pool.query(
+      `
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'pt_cards'
+          AND column_name = 'prices_data'
+      `
+    )
+
+    ptCardsPricesDataAvailable = rows.some((row) => row.column_name === 'prices_data')
+    return { ptCardsPricesDataAvailable }
+  }
+
   async function fetchExpansionSummaries(language = null) {
     if (!pool) return []
 
